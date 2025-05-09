@@ -1,0 +1,3 @@
+[submodule "omnipose"]
+	path = github/omnipose
+	url = https://github.com/kevinjohncutler/omnipose
