@@ -175,3 +175,11 @@ cython_debug/
 
 # slurm files
 slurm/
+
+data/
+build/
+dist/
+logs/
+models/
+Untitled/
+tmp/

@@ -7,7 +7,7 @@ import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 from PIL import Image
-import tifffile
+import tifffile as tiff
 from tqdm import tqdm
 
 
@@ -23,7 +23,7 @@ def save_predictions(img, masks, flows, image_file=None, n=None, save_dir=None, 
 
     # Save results
     base_name = image_file.stem.replace('_BF', '')
-    io.imsave(os.path.join(save_dir, 'masks', f'{base_name}.tif'), masks)
+    tiff.imsave(os.path.join(save_dir, 'masks', f'{base_name}.tif'), masks)
     # io.imsave(os.path.join(save_dir, f'{base_name}_masks.tif'), masks)
 
     # Optional: Save outlines overlaid on original image
@@ -80,8 +80,8 @@ if __name__ == "__main__":
     for image_file in tqdm(image_files):
         # Load image
         # img = io.imread(str(image_file))
-        img = tifffile.imread(str(image_file))
-        label = tifffile.imread(str(image_file).replace("_BF.tif", "_Cells.tif"))
+        img = tiff.imread(str(image_file))
+        label = tiff.imread(str(image_file).replace("_BF.tif", "_Cells.tif"))
         
         # Normalize
         # img = transforms.normalize_img(img)
