@@ -7,6 +7,45 @@ from glob import glob
 
 def measure_patchwise_blur(img, patch_size=(50, 50), stride_size=(50, 50)):
     """
+    Measure patchwise blur using Laplacian variance without padding.
+
+    Args:
+        img (ndarray): 2D image array.
+        patch_size (tuple): Size of the patches (height, width).
+        stride_size (tuple): Stride size for sliding the patch.
+
+    Returns:
+        ndarray: 2D array representing the blur map.
+    """
+    if isinstance(patch_size, int):
+        patch_size = (patch_size, patch_size)
+    if isinstance(stride_size, int):
+        stride_size = (stride_size, stride_size)
+
+    height, width = img.shape
+    patch_height, patch_width = patch_size
+    stride_y, stride_x = stride_size
+
+    # Calculate the output dimensions
+    out_height = (height - patch_height) // stride_y + 1
+    out_width = (width - patch_width) // stride_x + 1
+
+    blur_map = np.zeros((out_height, out_width))
+
+    # Perform convolution-like operation with patches
+    for i in range(out_height):
+        for j in range(out_width):
+            start_y = i * stride_y
+            start_x = j * stride_x
+            patch = img[start_y:start_y + patch_height, start_x:start_x + patch_width]
+            laplacian = laplace(patch)
+            variance = np.var(laplacian)
+            blur_map[i, j] = variance
+
+    return blur_map
+
+def measure_patchwise_blur_new(img, patch_size=(50, 50), stride_size=(50, 50)):
+    """
     Measure patchwise blur using Laplacian variance and find areas of highest focus
     across multiple z-stacks in a 3D TIFF file.
 
@@ -18,6 +57,11 @@ def measure_patchwise_blur(img, patch_size=(50, 50), stride_size=(50, 50)):
     Returns:
         ndarray: 2D array representing the blur map.
     """
+    if isinstance(patch_size, int):
+        patch_size = (patch_size, patch_size)
+    if isinstance(stride_size, int):   
+        stride_size = (stride_size, stride_size)
+
     height, width = img.shape
     stride_y, stride_x = stride_size
     pad_y, pad_x = patch_size[0] // 2, patch_size[1] // 2
@@ -25,7 +69,6 @@ def measure_patchwise_blur(img, patch_size=(50, 50), stride_size=(50, 50)):
     # Pad the image to ensure the i_th pixel is centered
     padded_img = np.pad(img, ((pad_y, pad_y), (pad_x, pad_x)), mode='reflect')
     blur_map = np.zeros(((height - 1) // stride_y + 1, (width - 1) // stride_x + 1))
-
     # Perform convolution-like operation with patches
     for i in range(0, height, stride_y):
         for j in range(0, width, stride_x):
@@ -35,9 +78,16 @@ def measure_patchwise_blur(img, patch_size=(50, 50), stride_size=(50, 50)):
             laplacian = laplace(patch)
             variance = np.var(laplacian)
             blur_map[i // stride_y, j // stride_x] = variance
+
+    # Normalize the blur map
+    # blur_map = (blur_map - np.min(blur_map)) / (np.max(blur_map) - np.min(blur_map) + 1e-8)
     return blur_map
 
 def resize_heatmap(normalized_heatmap, tiff_data, stride_size):
+
+    if isinstance(stride_size, int):
+        stride_size = (stride_size, stride_size)
+
     resized_heatmap = np.zeros_like(tiff_data, dtype=np.float32)
     for z_index in range(normalized_heatmap.shape[0]):
         kron_result = np.kron(
@@ -54,6 +104,7 @@ def resize_heatmap(normalized_heatmap, tiff_data, stride_size):
 def measure_blur_heatmap(tiff_path, patch_size=(50, 50), stride_size=(50,50)):
     """
     """
+
     # Load the 3D TIFF file
     tiff_data = tiff.imread(tiff_path)
     if tiff_data.ndim != 3:
@@ -86,7 +137,7 @@ def measure_blur_heatmap(tiff_path, patch_size=(50, 50), stride_size=(50,50)):
 
     # return z_focus_areas
 
-def test_measure_blur_heatmap():
+def test_measure_blur_heatmap(output_folder):
     input_path = "data/BF+IF Experiments_3D_train_test_dataset/train/p2126_J03_BF.tif"
 
     patch_size = (32, 32)
@@ -104,8 +155,10 @@ def test_measure_blur_heatmap():
 # Example usage
 if __name__ == "__main__":
 
-    input_directory = "data/BF+IF Experiments_3D_train_test_dataset/test"  # Replace with your input directory
-    output_directory = "data/BF+IF Experiments_3D_train_test_dataset/blur_heatmaps"
+    input_directory = "data/Plate 2426_3D_train_test_dataset/test"  # Replace with your input directory
+    output_directory = "data/Plate 2426_3D_train_test_dataset/blur_heatmaps"
+    # input_directory = "data/BF+IF Experiments_3D_train_test_dataset/train"  # Replace with your input directory
+    # output_directory = "data/BF+IF Experiments_3D_train_test_dataset/blur_heatmaps"
 
     patch_size = (32, 32)
     stride_size = (8, 8)
@@ -113,15 +166,16 @@ if __name__ == "__main__":
     # Create the output directory if it doesn't exist
     os.makedirs(output_directory, exist_ok=True)
 
+    ext = "_BF_3d.tif"
 
-    image_files = glob(os.path.join(input_directory, "*_BF.tif"))
+    image_files = glob(os.path.join(input_directory, f"*{ext}"))
 
     # Iterate through all TIFF files in the input directory
     for file_name in tqdm(image_files, desc="Processing TIFF files"):
         input_path = file_name  # file_name already contains the full path
         output_path = os.path.join(
             output_directory,
-            os.path.basename(file_name).replace("_BF.tif", f"_blur_heatmap_{patch_size[0]}_{stride_size[0]}.tif")
+            os.path.basename(file_name).replace(ext, f"_blur_heatmap_{patch_size[0]}_{stride_size[0]}.tif")
         )
 
         # Measure blur heatmap

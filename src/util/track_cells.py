@@ -2,12 +2,13 @@ from skimage.measure import regionprops
 import os
 import tifffile
 import numpy as np
+from tqdm import tqdm
 import trackpy as tp
 import pandas as pd
 from glob import glob
-from .blur_measure import measure_blur_heatmap
+from blur_measure import measure_blur_heatmap
 
-def get_label_centers(segmentation_mask, sharpness_image = None, blur_thresh = .5):
+def get_label_centers(segmentation_mask, sharpness_image = None, blur_thresh = .5, inv=False):
     """
     Get the center coordinates of labels from an instance segmentation mask.
 
@@ -18,13 +19,24 @@ def get_label_centers(segmentation_mask, sharpness_image = None, blur_thresh = .
         list of tuple: List of (y, x) coordinates for the centers of each label.
     """
 
+    def comp(x, y, inv):
+        if inv:
+            return x > y
+        else:
+            return x < y
+
     if sharpness_image is not None:
         # TODO add sharpness as intensity image
         regions_unfiltered = regionprops(segmentation_mask, intensity_image=sharpness_image, extra_properties=[blur_intensity])
-        regions = list(filter(lambda x: x['blur_intensity'] < blur_thresh, regions_unfiltered))
+        regions = list(filter(lambda x: comp(x['blur_intensity'], blur_thresh, inv), regions_unfiltered))
         # regions = regions_unfiltered
     else:
         regions = regionprops(segmentation_mask)
+
+    # Filter regions based on area percentiles
+    areas = [region.area for region in regions]
+    # lower_bound, upper_bound = np.percentile(areas, [0.1, 99.9])
+    regions_SF = [region for region in regions if 10 <= region.area <= 5000]
 
     # Get the coordinates of the centroids of each region
     props = dict(
@@ -148,35 +160,54 @@ def test_tracking():
 
 def main():
 
-    input_directory = "data/BF+IF Experiments_2D_train_test_dataset/predictions_test/pretrained_cell2d_cyto3_FlowT0.4/3d_view"  # Replace with your input directory
-    output_directory = "data/BF+IF Experiments_2D_train_test_dataset/predictions_test/pretrained_cell2d_cyto3_FlowT0.4/3d_view_tracked"  # Replace with your input directory
+    # image_directory = "data/BF+IF Experiments_3D_train_test_dataset/test"
+    # mask_directory = "data/BF+IF Experiments_2D_train_test_dataset/predictions_test/pretrained_cell2d_cyto3_FlowT0.4/3d_view"
+    # output_directory = "data/BF+IF Experiments_2D_train_test_dataset/predictions_test/pretrained_cell2d_cyto3_FlowT0.4/3d_view_tracked"  # Replace with your input directory
+    # blur_directory = "data/BF+IF Experiments_3D_train_test_dataset/blur_heatmaps"  
+
+    '''
+    # 2426
+    image_directory = "data/Plate 2426_3D_train_test_dataset/test"
+    mask_directory = "data/Plate 2426_2D_train_test_dataset/predictions_test/pretrained_cell2d_cyto3_FlowT0.2/3d_view"
+    output_directory = "data/Plate 2426_2D_train_test_dataset/predictions_test/pretrained_cell2d_cyto3_FlowT0.2/3d_view_tracked"  # Replace with your input directory
+    blur_directory = "data/Plate 2426_3D_train_test_dataset/blur_heatmaps"  
+    '''
+
+    # old_plates
+    image_directory = "data/BF+IF Experiments_3D_train_test_dataset/train"
+    mask_directory = "data/BF+IF Experiments_2D_train_test_dataset/predictions_test/pretrained_cell2d_cyto3_FlowT0.4/3d_view"
+    output_directory = "data/BF+IF Experiments_2D_train_test_dataset/predictions_test/pretrained_cell2d_cyto3_FlowT0.4/3d_view_tracked_SF"  # Replace with your input directory
     blur_directory = "data/BF+IF Experiments_3D_train_test_dataset/blur_heatmaps"  
 
-    blur_thresh = .2
+
+    blur_thresh = .5
+    inv = False
 
     os.makedirs(output_directory, exist_ok=True)
+    os.makedirs(blur_directory, exist_ok=True)
 
-    prediction_files = glob(os.path.join(input_directory, "*_3d.tif"))
+    mask_files = glob(os.path.join(mask_directory, "*_3d.tif"))
 
-    for prediction_file in prediction_files:
-        output_file = os.path.join(output_directory, os.path.basename(prediction_file).replace("_3d.tif", f"_3d_filtered_{blur_thresh:.1f}.tif"))
+    for mask_file in tqdm(mask_files):
+        output_file = os.path.join(output_directory, os.path.basename(mask_file).replace("_3d.tif", f"_3d_filtered_{blur_thresh:.1f}.tif"))
 
         # Read the segmentation stack
-        segmentation_stack = tifffile.imread(prediction_file).astype(int)
+        segmentation_stack = tifffile.imread(mask_file).astype(int)
 
         # Read the corresponding sharpness image
-        sharpness_image_name = os.path.join(blur_directory, os.path.basename(prediction_file).replace("_3d.tif", "_blur_heatmap_32_8.tif"))
+        sharpness_image_name = os.path.join(blur_directory, os.path.basename(mask_file).replace("_3d.tif", "_blur_heatmap_32_8.tif"))
         if not os.path.exists(sharpness_image_name):
             # Measure blur heatmap
-            sharpness_image = measure_blur_heatmap(prediction_file, patch_size=32, stride_size=8)
+            img_file = os.path.join(image_directory, os.path.basename(mask_file).replace("_3d.tif", "_BF_3d.tif"))
+            sharpness_image = measure_blur_heatmap(img_file, patch_size=32, stride_size=8)
 
             # Save the resized heatmap as a TIFF file
-            tifffile.imwrite(sharpness_image, sharpness_image.astype(np.float32))
+            tifffile.imwrite(sharpness_image_name, sharpness_image.astype(np.float32))
         else:
             sharpness_image = tifffile.imread(sharpness_image_name)
 
         # Call the tracking function
-        tracked_stack = track_3d_centers(segmentation_stack, sharpness_image=sharpness_image, blur_thresh=blur_thresh)
+        tracked_stack = track_3d_centers(segmentation_stack, sharpness_image=sharpness_image, blur_thresh=blur_thresh, inv=inv)
 
         # Save the tracked 3D array as a new .tif file
         tifffile.imwrite(output_file, tracked_stack)
