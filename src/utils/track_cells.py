@@ -6,7 +6,7 @@ from tqdm import tqdm
 import trackpy as tp
 import pandas as pd
 from glob import glob
-from blur_measure import measure_blur_heatmap
+from ..preprocessing.blur_measure import measure_blur_heatmap
 
 def get_label_centers(segmentation_mask, sharpness_image = None, blur_thresh = .5, inv=False):
     """
