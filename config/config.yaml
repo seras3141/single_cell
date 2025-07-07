@@ -1,0 +1,106 @@
+# Single Cell Analysis Pipeline Configuration
+
+# Data paths
+paths:
+  data_root: "data/"
+  raw_data: "data/raw/"
+  processed_data: "data/processed/"
+  results: "results/"
+  models: "models/"
+  temp: "temp/"
+
+# Segmentation parameters
+segmentation:
+  # Cellpose parameters
+  cellpose:
+    model_type: "cyto3"
+    channels: [0, 0]  # Grayscale
+    diameter: null  # Auto-diameter
+    flow_threshold: 0.4
+    cellprob_threshold: 0.0
+    min_size: 30
+    normalize: true
+    invert: false
+    gpu: true
+  
+
+
+# Training parameters
+training:
+  learning_rate: 0.1
+  weight_decay: 1e-4
+  n_epochs: 100
+  batch_size: 8
+  min_train_masks: 5
+  SGD: true
+  channels: [0, 0]
+  normalize: true
+
+# Cell tracking parameters
+tracking:
+  search_range: 5
+  memory: 1
+  blur_threshold: 0.5
+  min_track_length: 3
+
+# Image quality assessment
+quality:
+  blur_detection:
+    patch_size: [32, 32]
+    stride_size: [8, 8]
+    laplacian_threshold: 100
+
+# File processing parameters
+file_processing:
+  # Dataset splitting
+  test_size: 0.2
+  random_state: 42
+  split_by_group: true
+  
+  # File naming patterns
+  image_patterns:
+    brightfield: "*_BF*.tif"
+    fluorescence: "*_IF*.tif"
+    masks: "*_Cells*.tif"
+    nuclei: "*_Nuclei*.tif"
+
+# Feature extraction parameters
+features:
+  radiomics:
+    binWidth: 25
+    interpolator: "sitkLinear"
+    resampledPixelSpacing: null
+    padDistance: 10
+    
+  morphology:
+    extract_shape: true
+    extract_firstorder: true
+    extract_glcm: true
+    extract_glrlm: false
+    extract_glszm: false
+
+# Visualization parameters
+visualization:
+  figure_size: [12, 8]
+  dpi: 300
+  colormap: "viridis"
+  napari:
+    gamma: 1.0
+    contrast_limits: [0, 65535]
+
+# Output formats
+output:
+  save_masks: true
+  save_outlines: true
+  save_flows: false
+  save_features: true
+  formats:
+    images: "tiff"
+    features: "csv"
+    metadata: "json"
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/pipeline.log"
