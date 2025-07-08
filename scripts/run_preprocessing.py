@@ -33,13 +33,14 @@ def main():
     )
 
     # Step 2: Combine 2D to 3D (for train set only)
-    input_2d_dir = os.path.join(split_dir, "train")
+    input_2d_dir = split_dir
     output_3d_dir = os.path.join(args.output_root, "3d_images")
     print(f"Combining 2D images into 3D stacks at {output_3d_dir} ...")
     combine_2d_to_3d(
         input_dir=input_2d_dir,
         output_dir=output_3d_dir,
-        pattern=args.combine_pattern
+        pattern=args.combine_pattern,
+        recursive=True,
     )
 
     # Step 3: Generate blur heatmaps
