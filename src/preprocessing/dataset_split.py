@@ -28,7 +28,7 @@ class DatasetSplit(NamedTuple):
     test_masks: List[str]
 
 
-def get_groups_from_filenames(file_map, file_handler : DefaultFileHandler) -> Dict[str, List[str]]:
+def get_groups_from_filenames(file_map, file_handler: AbstractFileHandler) -> Dict[str, List[str]]:
     """
     Group files based on a pattern in their filenames.
     
@@ -60,14 +60,22 @@ def copy_file(
         src_file: Source file to copy
         dest_file: Destination file path
     """
+
     src = Path(src_file).resolve()
-    dst = Path(dest_file).resolve()
+    dst = Path(dest_file)
 
     # Ensure the parent directory exists
     dst.parent.mkdir(parents=True, exist_ok=True)
 
+    if not src.exists():
+        raise FileNotFoundError(f"Source file '{src}' does not exist")
+
     if dst.exists() or dst.is_symlink():
         dst.unlink()  # Remove existing file
+
+    # print(src, dst)
+    # return
+
 
     try:
         dst.symlink_to(src, target_is_directory=False)
@@ -82,8 +90,8 @@ def split_dataset(
     masks: List[str],
     test_size: float = 0.2,
     random_state: int = 42,
-    file_handler: AbstractFileHandler = DefaultFileHandler,
-    output_dir: Union[str, Path] = None,
+    file_handler: AbstractFileHandler = DefaultFileHandler(),
+    output_dir: Optional[Union[str, Path]] = None,
 ) -> Tuple[List[str], List[str], List[str], List[str]]:
     """
     Split a dataset of images and masks into train and test sets, keeping groups together.
@@ -94,8 +102,7 @@ def split_dataset(
         test_size: Fraction of data to use for testing (0-1)
         random_state: Random seed for reproducibility
         file_handler: File renamer/handler for extracting group info
-        copy_files: If True, copy files to output directory; if False, just return paths
-
+        output_dir: Directory to save the split files. If None, files are not copied.
     Returns:
         Tuple containing (train_images, train_masks, test_images, test_masks)
     """
@@ -139,6 +146,10 @@ def split_dataset(
 
     if output_dir:
         # Create output directories
+        if isinstance(output_dir, str):
+            output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
         train_dir = output_dir / 'train'
         test_dir = output_dir / 'test'
         train_dir.mkdir(parents=True, exist_ok=True)
@@ -194,14 +205,15 @@ def train_test_split_directory(
     
     logger.info(f"Found {len(images)} images and {len(masks)} masks in {data_dir}")
 
-    # Use provided file handler or default to BF_IF_FileHandler
-    if file_handler is None:
-        file_handler = BF_IF_FileHandler()
+    if not images:
+        raise ValueError(f"No images found matching pattern '{image_pattern}' in {data_dir}")
+    if not masks:
+        raise ValueError(f"No masks found matching pattern '{mask_pattern}' in {data_dir}")
     
-    
+    # TODO : Check if random seed works
     # Split the dataset
     train_images, train_masks, test_images, test_masks = split_dataset(
-        images, masks, test_size, random_state, file_handler, output_dir
+        images, masks, test_size, random_state, file_handler=file_handler, output_dir=output_dir, 
     )
     
     result = {
@@ -209,7 +221,12 @@ def train_test_split_directory(
         'train_masks': train_masks,
         'test_images': test_images,
         'test_masks': test_masks
-    }    
+    }
+
+    # Save the split information to a JSON file
+    split_info_path = output_dir / "dataset_split.json"
+    with open(split_info_path, 'w') as f:
+        json.dump(result, f, indent=4)
     
     return result
 

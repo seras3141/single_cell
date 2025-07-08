@@ -328,9 +328,6 @@ class CellTrackingPipeline:
         
         # Save batch summary
         self._save_batch_summary(all_results, output_dir)
-
-        # Debugging output
-        print(all_results)
         
         return all_results
     

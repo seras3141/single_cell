@@ -12,13 +12,10 @@ The library provides:
 """
 
 __version__ = "0.1.0"
-__author__ = "Helmholtz Single Cell Team"
-__email__ = "your.email@example.com"
 
-from . import models
 from . import utils
 from . import inference
 from . import preprocessing
 from . import postprocessing
 
-__all__ = ["models", "utils", "inference", "preprocessing", "postprocessing"]
+__all__ = ["utils", "inference", "preprocessing", "postprocessing"]

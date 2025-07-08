@@ -2,9 +2,8 @@
 
 A comprehensive, modular pipeline for single-cell segmentation, tracking, and feature extraction in brightfield microscopy images using Cellpose models.
 
-## 🚀 Quick Start
 
-### Training a Model
+<!-- ### Training a Model
 ```python
 from models.config_presets import create_training_config_from_preset
 from models.cellpose_trainer import CellposeTrainer
@@ -38,7 +37,7 @@ config = create_evaluation_config_from_preset(
 # Run evaluation
 evaluator = CellposeEvaluator(config)
 results = evaluator.evaluate()
-```
+``` -->
 
 ## Overview
 
@@ -56,56 +55,17 @@ This project provides a complete, modular workflow for:
 
 ```
 single_cell/
-├── src/
-│   ├── models/                        # 🤖 Model implementations (REFACTORED)
-│   │   ├── base_trainer.py            # Abstract base classes for training/evaluation
-│   │   ├── cellpose_trainer.py        # Cellpose trainer and evaluator
-│   │   ├── train_eval_2d.py           # Unified 2D training interface
-│   │   ├── config_presets.py          # Configuration presets (7 training, 6 eval)
-│   │   └── cellpose/                  # Cellpose-specific scripts
-│   │       ├── cellpose_2D_prediction.py  # 2D Cellpose prediction
-│   │       ├── cellpose_2D_train.py       # 2D Cellpose training
-│   │       └── cellpose_3D_train.py       # 3D Cellpose training
-│   ├── preprocessing/                 # 🔄 Data preprocessing pipeline (NEW)
-│   │   ├── blur_analysis.py           # Blur heatmap generation for quality control
-│   │   ├── dataset_split.py           # Group-aware train/test splitting
-│   │   └── __init__.py                # Preprocessing module interface
-│   ├── utils/                         # 🔧 Core utilities (CONSOLIDATED)
-│   │   ├── blur_measure.py            # Image blur/sharpness detection
-│   │   ├── file_utils.py              # Unified file handling (replaces file_handler.py + file_naming.py)
-│   │   ├── conversion.py              # 2D/3D format conversion utilities
-│   │   └── ...                        # Other utility modules
-│   ├── data/                          # 📁 Data processing and management
-│   │   ├── analyze_tif_labels.py      # Label analysis and validation
-│   │   ├── make_train_3D.py           # 3D training data preparation  
-│   │   └── reformat_data.py           # Data reformatting utilities
-│   ├── util/                         # 🔧 Legacy utilities (to be migrated)
-│   │   ├── converter_2d_3d.py        # Legacy 2D/3D conversion
-│   │   ├── feature_extractor.py      # PyRadiomics feature extraction
-│   │   ├── file_renamer.py           # File naming standardization
-│   │   ├── track_cells.py            # Cell tracking algorithms
-│   │   ├── train_test_split.py       # Legacy dataset splitting
-│   │   └── tif_to_png.py             # TIFF to PNG conversion
-│   └── visualize/                    # 👁️ Visualization tools
-│       ├── view_3d_tiff.py           # 3D TIFF viewer
-│       ├── view_4d_tiff.py           # 4D TIFF viewer
-│       └── visualize_predcition.py   # Prediction visualization
-├── examples/                         # 📚 Usage examples and tutorials
-│   ├── training_examples.py          # Basic training examples
-│   └── complete_usage_examples.py    # Comprehensive usage guide
-├── docs/                            # 📖 Documentation
-│   └── TRAINING_GUIDE.md             # Detailed training guide
-├── tests/                           # ✅ Test suite
-│   ├── preprocessing/                # Preprocessing module tests
-│   │   ├── test_blur_analysis.py     # Blur analysis tests (6 tests)
-│   │   └── test_dataset_split.py     # Dataset splitting tests
-│   ├── utils/                       # Utility tests
-│   │   └── test_blur_measure.py      # Blur measurement tests (19 tests)
-│   ├── test_training_system.py       # Modular system tests (19 tests)
-│   └── test_integration.py           # Integration tests
-├── config/                          # ⚙️ Configuration files
-├── scripts/                         # 🔧 Standalone scripts
-└── github/                          # 📦 Git submodules (cellpose, omnipose)
+├── src/    # source files
+│   ├── models/ #  Model implementations
+│   ├── preprocessing/  # Data preprocessing pipeline
+│   ├── utils/  # Other utility modules
+│   ├── data/                          #  │   └── visualize/                    # 
+├── examples/   # Usage examples and tutorials
+├── docs/   # Documentation
+├── tests/  # Test suite
+├── config/ # Configuration files
+├── scripts/    # Standalone scripts
+└── github/ # 📦 Git submodules (cellpose, omnipose)
 ```
 
 ## Installation
@@ -151,43 +111,13 @@ python tests/test_training_system.py
 python tests/test_integration.py
 ```
 
-### ✅ **Installation Status**
-- **Environment Tested**: cellpose-env conda environment
-- **PyTorch**: v1.13.1+cu117 with CUDA 11.7 support verified
-- **Cellpose**: v4.0.6 installed and tested
-- **All Tests**: 19 modular system tests + integration tests passing
 
-## Quick Start
+## 🚀 Quick Start
 
 ### 1. Preprocess Raw Data
 
-Before training or analysis, preprocess your raw dataset:
+> **Note:** For detailed CLI and API usage for preprocessing, see [`preprocessing/README.md`](preprocessing/README.md).
 
-```python
-# Generate blur heatmaps for quality assessment
-from src.preprocessing.blur_analysis import measure_dataset_blur_heatmaps
-
-blur_results = measure_dataset_blur_heatmaps(
-    input_dir="data/raw/images",
-    output_dir="data/processed/blur_heatmaps"
-)
-
-# Create train/test split with group awareness
-from src.preprocessing.dataset_split import split_dataset
-from src.utils.file_utils import BF_IF_FileHandler
-
-file_patterns = {
-    'images': 'data/raw/*/t1_*_w1_*.tif',
-    'masks': 'data/raw/*/Cells_*.tif'
-}
-
-split_results = split_dataset(
-    file_patterns=file_patterns,
-    output_dir="data/processed/split",
-    test_fraction=0.2,
-    file_handler=BF_IF_FileHandler()
-)
-```
 
 ### 2. Train Models
 
@@ -269,160 +199,6 @@ from src.visualize.view_3d_tiff import view_3d_data
 # Visualize 3D data in Napari
 view_3d_data("results/3d_predictions/")
 ```
-
-## Preprocessing Pipeline
-
-Before training models or running analysis, raw datasets need to be preprocessed. This involves two key steps:
-
-### Step 1: Generate Blur Heatmaps
-
-Generate blur quality heatmaps for all images to enable quality assessment and filtering:
-
-```python
-from src.preprocessing.blur_analysis import measure_dataset_blur_heatmaps
-
-# Generate blur heatmaps for the entire dataset
-results = measure_dataset_blur_heatmaps(
-    input_dir="data/raw/images",
-    output_dir="data/processed/blur_heatmaps",
-    pattern="*.tif",
-    patch_size=32,           # Size of patches for blur detection
-    stride_size=16,          # Stride between patches
-    normalize=True,          # Normalize values to [0,1] range
-    center_values=True,      # Center values on patches
-    overwrite=False          # Skip existing files
-)
-
-print(f"Generated blur heatmaps for {len(results)} images")
-```
-
-**Command Line Usage:**
-```bash
-python -m src.preprocessing.blur_analysis \
-    --input data/raw/images \
-    --output data/processed/blur_heatmaps \
-    --patch-size 32 \
-    --stride-size 16 \
-    --normalize
-```
-
-### Step 2: Split Dataset into Train/Test
-
-Create group-aware train/test splits ensuring all images from the same experimental group stay together:
-
-```python
-from src.preprocessing.dataset_split import split_dataset
-from src.utils.file_utils import BF_IF_FileHandler
-
-# Define file patterns for images and masks
-file_patterns = {
-    'images': 'data/raw/*/t1_*_w1_*.tif',
-    'masks': 'data/raw/*/Cells_*.tif'
-}
-
-# Split dataset with group awareness
-results = split_dataset(
-    file_patterns=file_patterns,
-    output_dir="data/processed/split",
-    test_fraction=0.2,        # 20% for testing
-    random_seed=42,           # For reproducibility
-    file_handler=BF_IF_FileHandler(),  # Handles standardized naming
-    copy_files=True           # Copy files (Windows compatible)
-)
-
-print(f"Train set: {len(results['train']['images'])} images")
-print(f"Test set: {len(results['test']['images'])} images")
-```
-
-**Alternative Directory-based Split:**
-```python
-from src.preprocessing.dataset_split import train_test_split_directory
-
-# Split an existing directory structure
-train_test_split_directory(
-    input_dir="data/raw",
-    output_dir="data/processed/split",
-    test_fraction=0.2,
-    file_handler=BF_IF_FileHandler(),
-    random_seed=42
-)
-```
-
-### Complete Preprocessing Workflow
-
-```python
-from pathlib import Path
-from src.preprocessing.blur_analysis import measure_dataset_blur_heatmaps  
-from src.preprocessing.dataset_split import split_dataset
-from src.utils.file_utils import BF_IF_FileHandler
-
-# Setup paths
-raw_data_dir = Path("data/raw")
-processed_dir = Path("data/processed")
-
-# Step 1: Generate blur heatmaps
-print("Step 1: Generating blur heatmaps...")
-blur_results = measure_dataset_blur_heatmaps(
-    input_dir=raw_data_dir / "images",
-    output_dir=processed_dir / "blur_heatmaps",
-    pattern="*.tif",
-    normalize=True,
-    overwrite=False
-)
-
-# Step 2: Split dataset
-print("Step 2: Creating train/test split...")
-file_patterns = {
-    'images': str(raw_data_dir / '*' / 't1_*_w1_*.tif'),
-    'masks': str(raw_data_dir / '*' / 'Cells_*.tif')
-}
-
-split_results = split_dataset(
-    file_patterns=file_patterns,
-    output_dir=processed_dir / "split",
-    test_fraction=0.2,
-    random_seed=42,
-    file_handler=BF_IF_FileHandler(),
-    copy_files=True
-)
-
-print(f"✅ Preprocessing complete!")
-print(f"   📊 Blur heatmaps: {len(blur_results)} images")
-print(f"   🎯 Train set: {len(split_results['train']['images'])} images") 
-print(f"   🧪 Test set: {len(split_results['test']['images'])} images")
-```
-
-### Output Structure
-
-After preprocessing, your data will be organized as:
-
-```
-data/
-├── raw/                              # Original data
-│   ├── plate1/
-│   ├── plate2/
-│   └── ...
-└── processed/
-    ├── blur_heatmaps/               # Quality assessment maps
-    │   ├── image1_blur_heatmap.tif
-    │   ├── image2_blur_heatmap.tif
-    │   └── ...
-    └── split/                       # Train/test split
-        ├── train/
-        │   ├── images/
-        │   └── masks/ 
-        └── test/
-            ├── images/
-            └── masks/
-```
-
-### Preprocessing Benefits
-
-- **🎯 Quality Control**: Blur heatmaps identify low-quality regions for filtering
-- **🔄 Group Awareness**: Train/test split maintains experimental groups
-- **📁 Organization**: Standardized structure for downstream analysis
-- **🔧 Reproducibility**: Configurable parameters with seeded random splits
-- **💾 Efficiency**: Skip existing files to avoid reprocessing
 
 ## Configuration
 

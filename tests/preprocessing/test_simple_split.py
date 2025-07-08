@@ -91,11 +91,7 @@ class TestSimpleDatasetSplit(unittest.TestCase):
             match = re.search(r't1_([A-Z]\d+)_s1_w1_z1', filename)
             if match:
                 test_wells.add(match.group(1))
-        
-        # Print the wells for debugging
-        print(f"Train wells: {train_wells}")
-        print(f"Test wells: {test_wells}")
-        
+                
         # Verify wells are kept together (no overlap between train and test)
         overlap = train_wells & test_wells
         self.assertEqual(len(overlap), 0, 

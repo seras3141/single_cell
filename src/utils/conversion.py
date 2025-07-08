@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
 from tqdm import tqdm
+from glob import glob
 
-
-def combine_2d_to_3d(input_dir: str, output_dir: str, pattern: str = r"(.*)_z(\d+)(?:_(BF|Cells))?\.(tif|tiff)"):
+def combine_2d_to_3d(input_dir: str, output_dir: str, pattern: str = r"(.+?)_z(\d+)(?:_(BF|Cells))?\.(tif|tiff)"):
     """
     Combine 2D TIFF images into 3D volumetric TIFF files.
     
@@ -33,9 +33,17 @@ def combine_2d_to_3d(input_dir: str, output_dir: str, pattern: str = r"(.*)_z(\d
 
     # Group files by base name and suffix (_BF or _Cells)
     file_groups = defaultdict(list)
-    for file_name in tqdm(os.listdir(input_dir), desc="Finding 2D files"):
+    file_names = []
+    for ext in ("*.tif", "*.tiff"):
+        file_names.extend([os.path.relpath(f, input_dir) for f in glob(os.path.join(input_dir, "**", ext), recursive=True)])
+    if not file_names:
+        print(f"No TIFF files found in {input_dir}. Please check the directory and file pattern.")
+        return
+    
+    for file_name in tqdm(file_names, desc="Finding 2D files"):
         if file_name.endswith(".tif") or file_name.endswith(".tiff"):
-            match = re.match(pattern, file_name)
+            fname_only = os.path.basename(file_name)
+            match = re.match(pattern, fname_only)
             if match:
                 base_name = match.group(1)
                 z_index = int(match.group(2))
@@ -45,6 +53,11 @@ def combine_2d_to_3d(input_dir: str, output_dir: str, pattern: str = r"(.*)_z(\d
                 else:
                     key = f"{base_name}_{suffix}"
                 file_groups[key].append((z_index, file_name))
+
+    print(f"Found {len(file_groups)} groups of 2D images to combine into 3D volumes.")
+    print("Example groups:")
+    for key in list(file_groups.keys())[:5]:  # Show first 5 groups
+        print(f"  {key}: {len(file_groups[key])} files")    
 
     # Combine 2D TIFFs into 3D TIFFs
     for key, files in tqdm(file_groups.items(), desc="Combining to 3D"):
@@ -119,7 +132,7 @@ if __name__ == "__main__":
     combine_parser = subparsers.add_parser("combine", help="Combine 2D TIFFs into 3D volumes")
     combine_parser.add_argument("--input", required=True, help="Input directory containing 2D TIFF images")
     combine_parser.add_argument("--output", required=True, help="Output directory for 3D TIFF volumes")
-    combine_parser.add_argument("--pattern", default=r"(.*)_z(\d+)(?:_(BF|Cells))?\.(tif|tiff)", 
+    combine_parser.add_argument("--pattern", default=r"(.+?)_z(\d+)(?:_(BF|Cells))?\.(tif|tiff)", 
                              help="Regular expression pattern to extract base name, z-index, and suffix")
     
     # Split 3D to 2D command

@@ -297,11 +297,7 @@ class TestIntegratedPipeline(unittest.TestCase):
             test_files.append((new_seg, new_img))
         
         output_dir = Path(self.temp_dir) / "batch_output"
-        
-        # Debug: List all files in temp dir
-        all_files = list(Path(self.temp_dir).glob("*.tif"))
-        print(f"All .tif files in temp dir: {[f.name for f in all_files]}")
-        
+                
         results = self.pipeline.process_batch(
             self.temp_dir, output_dir, segmentation_pattern="*_seg_3d.tif", image_pattern="*_BF_3d.tif"
         )
