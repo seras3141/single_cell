@@ -54,8 +54,8 @@ class OutputManager:
         self.dataset_name = dataset_name
         self.create_subdirs = create_subdirs
         
-        # Create main output directory: {out_dir}/pred/{model_name}/{dataset}
-        self.output_dir = self.base_output_dir / "pred" / model_name / dataset_name
+        # Create main output directory: {out_dir}/{model_name}/{dataset}
+        self.output_dir = self.base_output_dir / model_name / dataset_name
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         # Create subdirectories if requested

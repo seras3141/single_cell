@@ -13,6 +13,7 @@ import logging
 import tifffile as tiff
 from tqdm import tqdm
 import yaml
+from ..utils.conversion import combine_2d_to_3d
 
 from .base_predictor import BasePredictor
 from .cellpose_predictor import CellposePredictor
@@ -136,7 +137,8 @@ class InferencePipeline:
             'processed_files': [],
             'failed_files': [],
             'total_cells': 0,
-            'total_files': len(input_files)
+            'total_files': len(input_files),
+            '2d_files': 0,
         }
         
         for idx, file_path in enumerate(tqdm(input_files, desc="Processing files")):
@@ -151,6 +153,8 @@ class InferencePipeline:
                 
                 results['processed_files'].append(file_result)
                 results['total_cells'] += file_result.get('num_cells', 0)
+                if file_result['is_2d']:
+                    results['2d_files'] += 1
                 
                 # Call progress callback if provided
                 if progress_callback:
@@ -162,6 +166,15 @@ class InferencePipeline:
                     'file': str(file_path),
                     'error': str(e)
                 })
+        
+        # Combine 2D masks to 3D if needed
+        if process_z_stacks and input_files and results['2d_files']:
+            mask_dir = self.output_manager.masks_dir
+            output_dir = self.output_manager.masks_dir.parent / (self.output_manager.masks_dir.name + "_3d")
+
+            print(mask_dir, output_dir)  # Debugging line to check directories
+            pattern = r"(.+?)_z(\d+)(?:_(masks))?\.(tif|tiff)"
+            combine_2d_to_3d(str(mask_dir), str(output_dir), pattern=pattern)
         
         # Finalize run
         summary_path = self.output_manager.finalize_run()
@@ -254,14 +267,15 @@ class InferencePipeline:
                 )
                 
                 num_cells = metadata.get('num_cells', 0)
-            
+
             return {
                 'file_path': str(file_path),
                 'num_cells': num_cells,
                 'saved_files': saved_files,
                 'image_shape': image.shape,
                 'processing_mode': 'z_stack' if process_z_stacks and image.ndim == 3 else 'single',
-                'status': 'success'
+                'status': 'success',
+                'is_2d': image.ndim == 2
             }
             
         except Exception as e:

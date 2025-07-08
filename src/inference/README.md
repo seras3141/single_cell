@@ -6,7 +6,7 @@ This module provides a comprehensive inference pipeline for running cell segment
 
 - **Modular Design**: Separate components for predictors, output management, and pipeline orchestration
 - **Multiple Model Support**: Currently supports Cellpose with easy extensibility for other models
-- **Organized Output**: Structured output directories following the pattern `{output_dir}/pred/{model_name}/{dataset}`
+- **Organized Output**: Structured output directories following the pattern `{output_dir}/{model_name}/{dataset}`
 - **Z-Stack Support**: Handle both 2D images and 3D Z-stacks
 - **Comprehensive Logging**: Detailed logging and metadata tracking
 - **Configuration-Driven**: YAML-based configuration for reproducible experiments
