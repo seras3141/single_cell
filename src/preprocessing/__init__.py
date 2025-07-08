@@ -11,7 +11,9 @@ from .dataset_split import (
     DatasetSplit, 
     split_dataset, 
     train_test_split_directory, 
-    get_groups_from_filenames
+    get_groups_from_filenames,
+    get_image_from_pattern,
+    get_mask_from_pattern,
 )
 from .blur_measure import (
     measure_patchwise_blur,
@@ -27,6 +29,8 @@ __all__ = [
     "split_dataset",
     "train_test_split_directory",
     "get_groups_from_filenames",
+    "get_image_from_pattern",
+    "get_mask_from_pattern",
     # Blur analysis
     "measure_patchwise_blur",
     "measure_image_blur",

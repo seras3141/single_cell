@@ -109,6 +109,8 @@ def split_dataset(
     # Set random seed for reproducibility
     random.seed(random_state)
 
+    assert file_handler is not None, "File handler must be provided"
+
     # Map images and masks to desired output names using the file handler
     images_map = {image_name : file_handler.rename_image(image_name) for image_name in images}
     masks_map = {mask_name : file_handler.rename_mask(mask_name) for mask_name in masks}
@@ -169,6 +171,49 @@ def split_dataset(
 
     return train_images, train_masks, test_images, test_masks
 
+def get_image_from_pattern(
+    data_dir: Union[str, Path],
+    pattern: str = "*_w1_*.tif",
+) -> List[str]:
+    """
+    Get a list of image files matching a glob pattern in a directory.
+    
+    Args:
+        data_dir: Directory to search for images
+        pattern: Glob pattern to match image files
+        
+    Returns:
+        List of image file paths matching the pattern
+    """
+    data_dir = Path(data_dir)
+    images = sorted(glob(str(data_dir / "**" / pattern), recursive=True))
+    
+    if not images:
+        raise ValueError(f"No images found matching pattern '{pattern}' in {data_dir}")
+    
+    return images
+
+def get_mask_from_pattern(
+    data_dir: Union[str, Path], 
+    pattern: str = "Cells_*.tif",
+) -> List[str]:
+    """
+    Get a list of mask files matching a glob pattern in a directory.
+    
+    Args:
+        data_dir: Directory to search for masks
+        pattern: Glob pattern to match mask files
+        
+    Returns:
+        List of mask file paths matching the pattern
+    """
+    data_dir = Path(data_dir)
+    masks = sorted(glob(str(data_dir / "**" / pattern), recursive=True))
+    
+    if not masks:
+        raise ValueError(f"No masks found matching pattern '{pattern}' in {data_dir}")
+    
+    return masks
 
 def train_test_split_directory(
     data_dir: Union[str, Path],
@@ -198,17 +243,12 @@ def train_test_split_directory(
     output_dir = Path(output_dir)
 
     # Find all images and masks
-    images = sorted(glob(str(data_dir / "**" / image_pattern), recursive=True))
+    images = get_image_from_pattern(data_dir, image_pattern)
     
     # Check if masks are in a subdirectory
-    masks = sorted(glob(str(data_dir / "**" / mask_pattern), recursive=True))
+    masks = get_mask_from_pattern(data_dir, mask_pattern)
     
     logger.info(f"Found {len(images)} images and {len(masks)} masks in {data_dir}")
-
-    if not images:
-        raise ValueError(f"No images found matching pattern '{image_pattern}' in {data_dir}")
-    if not masks:
-        raise ValueError(f"No masks found matching pattern '{mask_pattern}' in {data_dir}")
     
     # TODO : Check if random seed works
     # Split the dataset
