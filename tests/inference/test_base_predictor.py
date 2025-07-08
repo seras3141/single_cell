@@ -6,13 +6,10 @@ import pytest
 import numpy as np
 from abc import ABC
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
+from unittest.mock import MagicMock
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-
 from src.inference.base_predictor import BasePredictor
-
 
 class MockPredictor(BasePredictor):
     """Mock implementation of BasePredictor for testing."""
@@ -70,111 +67,107 @@ class MockPredictor(BasePredictor):
             'default_parameters': getattr(self, 'default_params', {})
         }
 
+def test_abstract_class_cannot_be_instantiated():
+    """Test that BasePredictor cannot be instantiated directly."""
+    with pytest.raises(TypeError):
+        BasePredictor(model_name="test")
 
-class TestBasePredictor:
-    """Test cases for BasePredictor base class."""
+def test_mock_predictor_initialization():
+    """Test that mock predictor initializes correctly."""
+    predictor = MockPredictor(model_name="test_model")
+    assert predictor.model_name == "test_model"
+    assert predictor._is_loaded is True
+
+def test_mock_predictor_with_kwargs():
+    """Test mock predictor initialization with additional kwargs."""
+    predictor = MockPredictor(
+        model_name="test_model",
+        gpu=True,
+        flow_threshold=0.5
+    )
+    assert predictor.model_name == "test_model"
+    assert hasattr(predictor, 'gpu')
+    assert hasattr(predictor, 'flow_threshold')
+
+def test_load_model():
+    """Test model loading functionality."""
+    predictor = MockPredictor()
+    predictor._is_loaded = False
     
-    def test_abstract_class_cannot_be_instantiated(self):
-        """Test that BasePredictor cannot be instantiated directly."""
-        with pytest.raises(TypeError):
-            BasePredictor(model_name="test")
+    result = predictor.load_model("fake/path")
+    assert result is True
+    assert predictor._is_loaded is True
+
+def test_predict_single_image():
+    """Test prediction on a single image."""
+    predictor = MockPredictor()
+    test_image = np.random.randint(0, 255, (512, 512), dtype=np.uint8)
     
-    def test_mock_predictor_initialization(self):
-        """Test that mock predictor initializes correctly."""
-        predictor = MockPredictor(model_name="test_model")
-        assert predictor.model_name == "test_model"
-        assert predictor._is_loaded is True
+    masks, metadata = predictor.predict(test_image)
     
-    def test_mock_predictor_with_kwargs(self):
-        """Test mock predictor initialization with additional kwargs."""
-        predictor = MockPredictor(
-            model_name="test_model",
-            gpu=True,
-            flow_threshold=0.5
-        )
-        assert predictor.model_name == "test_model"
-        assert hasattr(predictor, 'gpu')
-        assert hasattr(predictor, 'flow_threshold')
+    assert masks.shape == test_image.shape
+    assert masks.dtype == np.uint16
+    assert 'num_cells' in metadata
+    assert 'image_shape' in metadata
+    assert metadata['image_shape'] == test_image.shape
+
+def test_predict_with_parameters():
+    """Test prediction with custom parameters."""
+    predictor = MockPredictor()
+    test_image = np.random.randint(0, 255, (256, 256), dtype=np.uint8)
     
-    def test_load_model(self):
-        """Test model loading functionality."""
-        predictor = MockPredictor()
-        predictor._is_loaded = False
-        
-        result = predictor.load_model("fake/path")
-        assert result is True
-        assert predictor._is_loaded is True
+    masks, metadata = predictor.predict(
+        test_image,
+        flow_threshold=0.3,
+        min_size=20
+    )
     
-    def test_predict_single_image(self):
-        """Test prediction on a single image."""
-        predictor = MockPredictor()
-        test_image = np.random.randint(0, 255, (512, 512), dtype=np.uint8)
-        
-        masks, metadata = predictor.predict(test_image)
-        
-        assert masks.shape == test_image.shape
-        assert masks.dtype == np.uint16
+    assert 'prediction_params' in metadata
+    assert metadata['prediction_params']['flow_threshold'] == 0.3
+    assert metadata['prediction_params']['min_size'] == 20
+
+def test_predict_z_stack_2d_processing():
+    """Test Z-stack prediction with 2D slice processing."""
+    predictor = MockPredictor()
+    z_stack = np.random.randint(0, 255, (5, 256, 256), dtype=np.uint8)
+    
+    results = predictor.predict_z_stack(z_stack, process_2d=True)
+    
+    assert len(results) == 5  # 5 slices
+    for i, (masks, metadata) in enumerate(results):
+        assert masks.shape == (256, 256)
+        assert metadata['slice_index'] == i
         assert 'num_cells' in metadata
-        assert 'image_shape' in metadata
-        assert metadata['image_shape'] == test_image.shape
+
+def test_predict_z_stack_3d_processing():
+    """Test Z-stack prediction with 3D processing."""
+    predictor = MockPredictor()
+    z_stack = np.random.randint(0, 255, (5, 256, 256), dtype=np.uint8)
     
-    def test_predict_with_parameters(self):
-        """Test prediction with custom parameters."""
-        predictor = MockPredictor()
-        test_image = np.random.randint(0, 255, (256, 256), dtype=np.uint8)
-        
-        masks, metadata = predictor.predict(
-            test_image,
-            flow_threshold=0.3,
-            min_size=20
-        )
-        
-        assert 'prediction_params' in metadata
-        assert metadata['prediction_params']['flow_threshold'] == 0.3
-        assert metadata['prediction_params']['min_size'] == 20
+    masks, metadata = predictor.predict_z_stack(z_stack, process_2d=False)
     
-    def test_predict_z_stack_2d_processing(self):
-        """Test Z-stack prediction with 2D slice processing."""
-        predictor = MockPredictor()
-        z_stack = np.random.randint(0, 255, (5, 256, 256), dtype=np.uint8)
-        
-        results = predictor.predict_z_stack(z_stack, process_2d=True)
-        
-        assert len(results) == 5  # 5 slices
-        for i, (masks, metadata) in enumerate(results):
-            assert masks.shape == (256, 256)
-            assert metadata['slice_index'] == i
-            assert 'num_cells' in metadata
+    assert masks.shape == z_stack.shape
+    assert metadata['processing_mode'] == '3d'
+    assert metadata['stack_shape'] == z_stack.shape
+
+def test_get_model_info():
+    """Test model info retrieval."""
+    predictor = MockPredictor(model_name="test_model")
     
-    def test_predict_z_stack_3d_processing(self):
-        """Test Z-stack prediction with 3D processing."""
-        predictor = MockPredictor()
-        z_stack = np.random.randint(0, 255, (5, 256, 256), dtype=np.uint8)
-        
-        masks, metadata = predictor.predict_z_stack(z_stack, process_2d=False)
-        
-        assert masks.shape == z_stack.shape
-        assert metadata['processing_mode'] == '3d'
-        assert metadata['stack_shape'] == z_stack.shape
+    info = predictor.get_model_info()
     
-    def test_get_model_info(self):
-        """Test model info retrieval."""
-        predictor = MockPredictor(model_name="test_model")
-        
-        info = predictor.get_model_info()
-        
-        assert info['model_name'] == "test_model"
-        assert info['status'] == 'loaded'
-        assert 'gpu_enabled' in info
-        assert 'default_parameters' in info
+    assert info['model_name'] == "test_model"
+    assert info['status'] == 'loaded'
+    assert 'gpu_enabled' in info
+    assert 'default_parameters' in info
+
+def test_model_info_when_not_loaded():
+    """Test model info when model is not loaded."""
+    predictor = MockPredictor()
+    predictor._is_loaded = False
     
-    def test_model_info_when_not_loaded(self):
-        """Test model info when model is not loaded."""
-        predictor = MockPredictor()
-        predictor._is_loaded = False
-        
-        info = predictor.get_model_info()
-        assert info['status'] == 'not_loaded'
+    info = predictor.get_model_info()
+    assert info['status'] == 'not_loaded'
 
 
 if __name__ == "__main__":

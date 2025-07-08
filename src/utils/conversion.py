@@ -51,9 +51,7 @@ def combine_2d_to_3d(
     # No need to check extension again; already filtered by glob
     for file_name in tqdm(file_names, desc="Finding 2D files"):
         fname_only = os.path.basename(file_name)
-        print(f"Processing file: {fname_only}", pattern)  # Debugging line to see matched files
         match = re.match(pattern, fname_only)
-        print(fname_only, match) # Debugging line to see matched files
         if match:
             base_name = match.group(1)
             z_index = int(match.group(2))

@@ -153,7 +153,7 @@ class InferencePipeline:
                 
                 results['processed_files'].append(file_result)
                 results['total_cells'] += file_result.get('num_cells', 0)
-                if file_result['is_2d']:
+                if file_result.get('is_2d', False):
                     results['2d_files'] += 1
                 
                 # Call progress callback if provided

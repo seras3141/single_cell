@@ -5,6 +5,7 @@ Run inference on test dataset using trained Cellpose models.
 This script provides a command-line interface for running cell segmentation
 inference on test datasets with organized output structure.
 
+#TODO : Update usage
 Usage:
     python scripts/run_inference.py --input-dir data/test --output-dir results --model-name cyto3
     
@@ -42,6 +43,7 @@ def main():
         required=True,
         help="Base output directory for results"
     )
+    # TODO : model_type argument is not used in v4.0.1+. Ignoring this argument...
     parser.add_argument(
         "--model-name", "-m", 
         type=str, 
@@ -146,6 +148,9 @@ def main():
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
     
+    # Concatenate dataset_name to input_dir
+    input_dir = str(Path(args.input_dir) / args.dataset_name)
+    
     try:
         # Load configuration if provided
         config = {}
@@ -200,11 +205,11 @@ def main():
         logging.info(f"Model information: {model_info}")
         
         # Run inference
-        logging.info(f"Starting inference on {args.input_dir}")
+        logging.info(f"Starting inference on {input_dir}")
         logging.info(f"Output will be saved to: {output_manager.output_dir}")
         
         results = pipeline.run_inference(
-            input_dir=args.input_dir,
+            input_dir=input_dir,
             file_pattern=args.file_pattern,
             process_z_stacks=args.process_z_stacks,
             save_overlays=not args.no_overlays,
