@@ -15,7 +15,7 @@ import tifffile as tiff
 from typing import List, Tuple, Dict, Optional, Union, Callable
 from pathlib import Path
 
-from ..preprocessing.blur_measure import measure_blur_heatmap
+from .blur_measure import measure_blur_heatmap
 
 
 def extract_cell_features(segmentation_mask: np.ndarray, 

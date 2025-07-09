@@ -430,6 +430,73 @@ class StandardFileHandler(AbstractFileHandler):
         return Path(filepath).stem.split('_')[0]
 
 
+
+class BlurFileHandler(AbstractFileHandler):
+    """Implementation of file renaming for blur maps with configurable patterns.
+    
+    """
+
+    DEFAULT_PATTERNS = {
+        'image_BF_3d': FilePattern(
+            pattern = r'(.+?)(_BF_3d)?\.tif',
+            groups=['key', 'image_suffix'],
+            output_format="{key}{image_suffix}_{blur_suffix}.tif"
+        ),
+    }
+
+    def __init__(self, patterns: Dict[str, FilePattern] = None):
+        """Initialize with optional custom patterns.
+        
+        Args:
+            patterns: Dictionary of file type to FilePattern mappings
+        """
+        self.patterns = patterns or self.DEFAULT_PATTERNS
+
+    def extract_plate_number(self, filepath: str) -> str:
+        """Extract plate number from filepath."""
+        plate_match = re.search(r'Plate\s*(\d+)', filepath)
+        if not plate_match:
+            # Default to empty plate identifier if not found
+            return "unknown"
+        return plate_match.group(1)
+
+    def rename_file(self, filename: str, file_type: str, suffix: str) -> str:
+        if file_type not in self.patterns:
+            raise ValueError(f"Unknown file type: {file_type}")
+
+        filename = Path(filename).name
+        pattern = self.patterns[file_type]
+        match = re.search(pattern.pattern, filename)
+        
+        if not match:
+            raise ValueError(f"Filename '{filename}' does not match pattern '{pattern.pattern}'")
+
+        values = dict(zip(pattern.groups, match.groups()))
+
+        if values['image_suffix'] is None:
+            raise ValueError(f"Image suffix not found in filename '{filename}'")
+        
+        values['blur_suffix'] = suffix
+        
+        return pattern.output_format.format(**values)
+
+    def rename_image(self, filename: str, suffix: str) -> str:
+        return self.rename_file(filename, 'image_BF_3d', suffix)
+
+    def rename_mask(self, filename: str) -> str:
+        raise NotImplementedError("BlurFileHandler does not handle mask files.")
+        
+    def extract_group_id(self, filename: str) -> str:
+        """Extract position grouping from filename."""
+        # Try to match standard pattern like "A01_z1_BF.tif"
+        match = re.search(r'([A-Z]\d+)', filename)
+        if match:
+            return match.group(1)
+            
+        # Fallback to filename without extension
+        return Path(filename).stem.split('_')[0]
+
+
 # Enhanced functionality from file_naming.py
 def standardize_dataset(image_dir: str, mask_dir: str, output_dir: str, 
                        file_handler: Optional[AbstractFileHandler] = None):
