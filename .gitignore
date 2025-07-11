@@ -185,4 +185,4 @@ Untitled/
 tmp*
 tmp/
 tmp1/
-*.md
+src/**/*.md

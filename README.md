@@ -2,70 +2,163 @@
 
 A comprehensive, modular pipeline for single-cell segmentation, tracking, and feature extraction in brightfield microscopy images using Cellpose models.
 
+## Quick Start
 
-<!-- ### Training a Model
-```python
-from models.config_presets import create_training_config_from_preset
-from models.cellpose_trainer import CellposeTrainer
+### Using Scripts (Recommended)
 
-# Create configuration using preset
-config = create_training_config_from_preset(
-    "mammalian_cells_cellpose",
-    train_dir="path/to/training/data",
-    test_dir="path/to/test/data", 
-    output_dir="path/to/save/models"
-)
+```bash
+# 1. Preprocess data
+python scripts/run_preprocessing.py data/raw data/processed
 
-# Train the model
-trainer = CellposeTrainer(config)
-trainer.train()
+# 2. Run inference
+python scripts/run_inference.py --input-dir data/test --output-dir results
+
+# 3. Postprocess results
+python scripts/run_postprocessing.py results/segmentation results/tracked
+
+# 4. Launch GUI for visualization
+python scripts/launch_gui_safe.py
 ```
 
-### Evaluating a Model
+### Using Python API
+
 ```python
-from models.config_presets import create_evaluation_config_from_preset
-from models.cellpose_trainer import CellposeEvaluator
+from src.inference.inference_pipeline import InferencePipeline
+from src.inference.cellpose_predictor import CellposePredictor
+from src.inference.output_manager import OutputManager
 
-# Create evaluation configuration
-config = create_evaluation_config_from_preset(
-    "default",
-    test_dir="path/to/test/data",
-    model_path="cyto2",  # or path to custom model
-    output_dir="path/to/results"
-)
+# Create inference pipeline
+predictor = CellposePredictor(model_type="cyto3", gpu=True)
+output_manager = OutputManager(base_output_dir="results")
+pipeline = InferencePipeline(predictor, output_manager)
 
-# Run evaluation
-evaluator = CellposeEvaluator(config)
-results = evaluator.evaluate()
-``` -->
+
+# Run inference
+results = pipeline.run_inference(input_dir="data/test")
+```
 
 ## Overview
 
 This project provides a complete, modular workflow for:
-- **🎯 2D/3D Cell Segmentation**: Using Cellpose models with preset configurations
-- **📊 Modular Training System**: Easy-to-use trainers with configuration presets
-- **🔍 Model Evaluation**: Comprehensive evaluation with multiple preset configurations  
-- **🔄 Cell Tracking**: Tracking cells across z-stacks using trackpy
-- **📈 Feature Extraction**: PyRadiomics-based feature extraction for cell analysis
-- **📁 Data Management**: Standardized file naming and dataset organization
-- **✅ Quality Control**: Blur detection and filtering for improved segmentation
-- **👁️ Visualization**: 3D/4D visualization tools using Napari
+- **2D/3D Cell Segmentation**: Using Cellpose models with preset configurations
+- **Cell Tracking**: Tracking cells across z-stacks using trackpy
+- **Feature Extraction**: PyRadiomics-based feature extraction for cell analysis
+- **Data Management**: Standardized file naming and dataset organization
+- **Quality Control**: Blur detection and filtering for improved segmentation
+- **Visualization**: 3D/4D visualization tools using Napari
 
 ## Project Structure
 
 ```
 single_cell/
-├── src/    # source files
-│   ├── models/ #  Model implementations
-│   ├── preprocessing/  # Data preprocessing pipeline
-│   ├── utils/  # Other utility modules
-│   ├── data/                          #  │   └── visualize/                    # 
-├── examples/   # Usage examples and tutorials
-├── docs/   # Documentation
-├── tests/  # Test suite
-├── config/ # Configuration files
-├── scripts/    # Standalone scripts
-└── github/ # 📦 Git submodules (cellpose, omnipose)
+├── src/                               # Core modules
+│   ├── core/                          # Core functionality and base classes
+│   ├── preprocessing/                 # Data preprocessing pipeline
+│   │   ├── blur_analysis.py          # Blur heatmap generation for quality control
+│   │   ├── dataset_split.py          # Group-aware train/test splitting
+│   │   └── README.md                 # Detailed preprocessing guide
+│   ├── inference/                     # Inference pipeline
+│   │   ├── inference_pipeline.py     # Main inference orchestration
+│   │   ├── cellpose_predictor.py     # Cellpose prediction wrapper
+│   │   ├── output_manager.py         # Organized output handling
+│   │   └── README.md                 # Inference pipeline guide
+│   ├── postprocessing/               # Post-inference processing
+│   │   ├── cell_tracking.py          # 3D cell tracking across z-stacks
+│   │   ├── blur_filtering.py         # Quality assessment and filtering
+│   │   ├── tracking_processor.py     # Complete postprocessing pipeline
+│   │   └── README.md                 # Postprocessing guide
+│   ├── utils/                         # Core utilities
+│   │   ├── file_utils.py             # Unified file handling
+│   │   ├── blur_measure.py           # Image blur/sharpness detection
+│   │   ├── conversion.py             # 2D/3D format conversion utilities
+│   │   └── config.py                 # Configuration management
+│   └── visualize/                     # Visualization tools
+│       ├── view_3d_tiff.py           # 3D TIFF viewer
+│       ├── view_4d_tiff.py           # 4D TIFF viewer
+│       └── visualize_prediction.py   # Prediction visualization
+├── scripts/                           # Command-line interfaces
+│   ├── run_preprocessing.py          # Data preprocessing script
+│   ├── run_inference.py              # Inference execution script
+│   ├── run_postprocessing.py         # Postprocessing script
+│   ├── run_pipeline.py               # Complete pipeline script
+│   └── launch_gui_safe.py            # GUI launcher with dependency checking
+├── examples/                          # Usage examples and tutorials
+│   └── complete_usage_examples.py    # Comprehensive usage guide
+├── tests/                            # Test suite
+│   ├── preprocessing/                # Preprocessing module tests
+│   ├── utils/                        # Utility tests
+│   └── inference/                    # Inference tests
+├── config/                           # Configuration files
+│   ├── config.yaml                   # Main configuration
+│   └── inference_config.yaml         # Inference-specific settings
+├── data/                             # Data directories
+│   ├── sample_plates/                # Raw sample data
+│   └── sample_plates_processed/      # Processed sample data
+└── github/                           # Git submodules
+    └── cellpose/                     # Cellpose repository
+```
+
+## Project Structure
+
+```
+single_cell/
+├── src/                               # Core modules
+│   ├── core/                          # 🏗️ Core functionality and base classes
+│   ├── preprocessing/                 # 🔄 Data preprocessing pipeline
+│   │   ├── blur_analysis.py          # Blur heatmap generation for quality control
+│   │   ├── dataset_split.py          # Group-aware train/test splitting
+│   │   └── README.md                 # Detailed preprocessing guide
+│   ├── models/                        # 🤖 Model implementations
+│   │   ├── base_trainer.py           # Abstract base classes for training/evaluation
+│   │   ├── cellpose_trainer.py       # Cellpose trainer and evaluator
+│   │   ├── config_presets.py         # Configuration presets (7 training, 6 eval)
+│   │   └── README.md                 # Model training and evaluation guide
+│   ├── inference/                     # � Inference pipeline
+│   │   ├── inference_pipeline.py     # Main inference orchestration
+│   │   ├── cellpose_predictor.py     # Cellpose prediction wrapper
+│   │   ├── output_manager.py         # Organized output handling
+│   │   └── README.md                 # Inference pipeline guide
+│   ├── postprocessing/               # � Post-inference processing
+│   │   ├── cell_tracking.py          # 3D cell tracking across z-stacks
+│   │   ├── blur_filtering.py         # Quality assessment and filtering
+│   │   ├── tracking_processor.py     # Complete postprocessing pipeline
+│   │   └── README.md                 # Postprocessing guide
+│   ├── training/                      # 🎓 Training utilities and workflows
+│   ├── evaluation/                    # 📈 Model evaluation and metrics
+│   ├── data/                          # 📁 Data processing and management
+│   │   ├── analyze_tif_labels.py     # Label analysis and validation
+│   │   ├── make_train_3D.py          # 3D training data preparation  
+│   │   └── reformat_data.py          # Data reformatting utilities
+│   ├── utils/                         # 🔧 Core utilities
+│   │   ├── file_utils.py             # Unified file handling
+│   │   ├── blur_measure.py           # Image blur/sharpness detection
+│   │   ├── conversion.py             # 2D/3D format conversion utilities
+│   │   └── config.py                 # Configuration management
+│   └── visualize/                     # 👁️ Visualization tools
+│       ├── view_3d_tiff.py           # 3D TIFF viewer
+│       ├── view_4d_tiff.py           # 4D TIFF viewer
+│       └── visualize_prediction.py   # Prediction visualization
+├── scripts/                           # �️ Command-line interfaces
+│   ├── run_preprocessing.py          # Data preprocessing script
+│   ├── run_inference.py              # Inference execution script
+│   ├── run_postprocessing.py         # Postprocessing script
+│   ├── run_pipeline.py               # Complete pipeline script
+│   └── launch_gui_safe.py            # GUI launcher with dependency checking
+├── examples/                          # � Usage examples and tutorials
+│   ├── training_examples.py          # Basic training examples
+│   └── complete_usage_examples.py    # Comprehensive usage guide
+├── tests/                            # Test suite
+│   ├── preprocessing/                # Preprocessing module tests
+│   ├── utils/                        # Utility tests
+│   └── test_training_system.py       # Modular system tests
+├── config/                           # Configuration files
+│   ├── config.yaml                   # Main configuration
+│   └── inference_config.yaml         # Inference-specific settings
+├── data/                             # Data directories
+│   ├── sample_plates/                # Raw sample data
+│   └── sample_plates_processed/      # Processed sample data
+└── github/                           # Git submodules
+    └── cellpose/                     # Cellpose repository
 ```
 
 ## Installation
@@ -75,7 +168,7 @@ single_cell/
 - CUDA-capable GPU (optional, for faster processing)
 - **Verified Environment**: Windows 10/11, Anaconda/Miniconda
 
-### Environment Setup (Tested & Validated ✅)
+### Environment Setup (Tested & Validated)
 
 1. **Create conda environment:**
 ```bash
@@ -107,102 +200,161 @@ pip install -r requirements.txt
 5. **Verify installation:**
 ```bash
 # Run the test suite to verify everything works
-python tests/test_training_system.py
-python tests/test_integration.py
+python -m pytest tests/ -v
 ```
 
+### Installation Status
+- **Environment Tested**: cellpose-env conda environment
+- **PyTorch**: v1.13.1+cu117 with CUDA 11.7 support verified
+- **Cellpose**: v4.0.6 installed and tested
+- **All Tests**: 49 total tests passing
 
-## 🚀 Quick Start
+## Usage
 
-### 1. Preprocess Raw Data
+### Command Line Interface (Recommended)
 
-> **Note:** For detailed CLI and API usage for preprocessing, see [`preprocessing/README.md`](preprocessing/README.md).
-
-
-### 2. Train Models
-
-```python
-from models.config_presets import create_training_config_from_preset
-from models.cellpose_trainer import CellposeTrainer
-
-# Create configuration using preset
-config = create_training_config_from_preset(
-    "mammalian_cells_cellpose",
-    train_dir="data/processed/split/train",
-    test_dir="data/processed/split/test", 
-    output_dir="models/cellpose"
-)
-
-# Train the model
-trainer = CellposeTrainer(config)
-trainer.train()
-```
-
-### 3. Evaluate Models
-
-```python
-from models.config_presets import create_evaluation_config_from_preset
-from models.cellpose_trainer import CellposeEvaluator
-
-# Create evaluation configuration
-config = create_evaluation_config_from_preset(
-    "default",
-    test_dir="data/processed/split/test",
-    model_path="cyto2",  # or path to custom model
-    output_dir="results/evaluation"
-)
-
-# Run evaluation
-evaluator = CellposeEvaluator(config)
-results = evaluator.evaluate()
-```
-
-### 4. Run Predictions
-
-#### 2D Cell Segmentation
+#### 1. Data Preprocessing
 ```bash
-python src/cellpose_2D_prediction.py --flow-threshold 0.4
+# Full preprocessing pipeline
+python scripts/run_preprocessing.py data/raw data/processed \
+    --test-size 0.2 \
+    --random-seed 42 \
+    --patch-size 32 \
+    --stride-size 16
+
+# Options:
+#   --test-size: Fraction for test set (default: 0.2)
+#   --random-seed: Random seed for reproducibility
+#   --patch-size: Patch size for blur detection
+#   --stride-size: Stride size for blur detection
+#   --overwrite: Overwrite existing files
 ```
 
-#### 3D Cell Segmentation
+#### 2. Inference
 ```bash
-python src/models/cellpose/cellpose_3D_train.py --input-dir data/test --output-dir results/3d_predictions
+# Run inference on test data
+python scripts/run_inference.py \
+    --input-dir data/processed/split/test \
+    --output-dir results/inference \
+    --model-name cyto3 \
+    --flow-threshold 0.4 \
+    --gpu
+
+# Batch inference with config file
+python scripts/run_inference.py \
+    --config config/inference_config.yaml
 ```
 
-### 5. Cell Tracking
-```python
-from src.util.track_cells import track_3d_centers
-import tifffile
+#### 3. Postprocessing
+```bash
+# 3D cell tracking and blur filtering
+python scripts/run_postprocessing.py \
+    --input-dir results/inference \
+    --output-dir results/tracked \
+    --search-range 5 \
+    --memory 1 \
+    --blur-threshold 0.5
 
-# Load 3D segmentation
-segmentation = tifffile.imread("results/3d_predictions/sample.tif")
-
-# Track cells across z-stacks
-tracked = track_3d_centers(segmentation)
-
-# Save results
-tifffile.imwrite("results/tracked/sample_tracked.tif", tracked)
+# Single file processing
+python scripts/run_postprocessing.py \
+    --single-file results/inference/sample_3d.tif \
+    --output-dir results/tracked \
+    --image-file data/test/sample_BF_3d.tif
 ```
 
-### 6. Feature Extraction
-```python
-from src.util.feature_extractor import extract_features
-
-# Extract PyRadiomics features
-features = extract_features("image.tif", "mask.tif")
+#### 4. Complete Pipeline
+```bash
+# Run entire pipeline from raw data to results
+python scripts/run_pipeline.py \
+    --input-dir data/raw \
+    --output-dir results \
+    --config config/config.yaml \
+    --preprocess \
+    --inference \
+    --postprocess
 ```
 
-### 7. Visualization
-```python
-from src.visualize.view_3d_tiff import view_3d_data
+#### 5. Visualization GUI
+```bash
+# Launch safe GUI with dependency checking
+python scripts/launch_gui_safe.py
 
-# Visualize 3D data in Napari
-view_3d_data("results/3d_predictions/")
+# Direct visualization
+python scripts/visualize_results.py \
+    --input results/tracked \
+    --type 3d
 ```
+
+### Python API Usage
+
+For detailed Python API usage, see the module-specific README files:
+
+- **Preprocessing**: `src/preprocessing/README.md`
+- **Inference**: `src/inference/README.md`
+- **Postprocessing**: `src/postprocessing/README.md`
+
+## Core Modules
+
+### Preprocessing (`src/preprocessing/`)
+Data preprocessing pipeline with blur analysis and group-aware dataset splitting.
+
+**Key Features:**
+- Blur heatmap generation for quality assessment
+- Group-aware train/test splitting
+- 2D to 3D stack combination
+- Standardized file naming and organization
+
+**Usage:** `python scripts/run_preprocessing.py`  
+**Details:** See `src/preprocessing/README.md`
+
+### Inference (`src/inference/`)
+Organized inference pipeline for running predictions on test datasets.
+
+**Key Features:**
+- Modular predictor architecture
+- Structured output management
+- Z-stack and batch processing support
+- Visualization and logging
+
+**Usage:** `python scripts/run_inference.py`  
+**Details:** See `src/inference/README.md`
+
+### 📊 Postprocessing (`src/postprocessing/`)
+3D cell tracking and quality filtering pipeline.
+
+**Key Features:**
+- 3D cell tracking across z-stacks
+- Blur-based quality filtering
+- Configurable processing workflows
+- Comprehensive result reporting
+
+**Usage:** `python scripts/run_postprocessing.py`  
+**Details:** See `src/postprocessing/README.md`
+
+### � Utils (`src/utils/`)
+Core utilities for file handling, format conversion, and configuration management.
+
+**Key Features:**
+- Unified file handling and naming
+- Blur measurement and assessment
+- 2D/3D format conversion
+- Configuration loading and validation
+
+### 👁️ Visualization (`src/visualize/`)
+3D/4D visualization tools using Napari.
+
+**Key Features:**
+- 3D/4D TIFF stack visualization
+- Prediction overlay visualization
+- Interactive GUI with dependency checking
+
+**Usage:** `python scripts/launch_gui_safe.py`
 
 ## Configuration
 
-Edit `config/config.yaml` to customize pipeline parameters:
+The pipeline uses YAML configuration files for reproducible experiments:
+
+### Main Configuration (`config/config.yaml`)
 ```yaml
 segmentation:
   model_type: "cyto3"
@@ -213,6 +365,29 @@ tracking:
   search_range: 5
   memory: 1
   blur_threshold: 0.5
+
+preprocessing:
+  test_fraction: 0.2
+  random_seed: 42
+  patch_size: 32
+  stride_size: 16
+```
+
+### Inference Configuration (`config/inference_config.yaml`)
+```yaml
+model:
+  name: "cyto3"
+  flow_threshold: 0.4
+  gpu: true
+
+input:
+  directory: "data/processed/split/test"
+  pattern: "*_BF.tif"
+
+output:
+  directory: "results/inference"
+  save_overlays: true
+  save_metadata: true
 ```
 
 ## Supported File Formats
@@ -220,26 +395,55 @@ tracking:
 - **Input**: Multi-well plate TIFF files with standardized naming
 - **Output**: Segmentation masks, tracked labels, feature tables (CSV)
 - **Visualization**: 3D/4D TIFF stacks compatible with Napari
+- **Configuration**: YAML files for reproducible experiments
 
 ## Examples
 
-### 📚 Complete Examples Available
+### Complete Examples Available
 - **`examples/complete_usage_examples.py`**: Comprehensive usage demonstrations
-- **`examples/training_examples.py`**: Basic training workflow examples  
-- **`docs/TRAINING_GUIDE.md`**: Detailed step-by-step training guide
+- **`examples/inference_example.py`**: Basic inference workflow examples
 
-### Quick Examples
+### Quick Command Line Examples
+
+#### Complete Pipeline
+```bash
+# Process raw data through entire pipeline
+python scripts/run_pipeline.py \
+    --input-dir data/raw \
+    --output-dir results \
+    --preprocess \
+    --inference \
+    --postprocess
+```
+
+#### Individual Steps
+```bash
+# 1. Preprocess data
+python scripts/run_preprocessing.py data/raw data/processed
+
+# 2. Run inference
+python scripts/run_inference.py \
+    --input-dir data/processed/split/test \
+    --output-dir results/inference \
+    --model-name cyto3
+
+# 3. Postprocess results
+python scripts/run_postprocessing.py \
+    --input-dir results/inference \
+    --output-dir results/tracked
+```
+
+### Quick Python API Examples
 
 #### Modular Training with Presets
 ```python
-# Train a Cellpose model for mammalian cells
-from models.config_presets import create_training_config_from_preset
-from models.cellpose_trainer import CellposeTrainer
+from src.models.config_presets import create_training_config_from_preset
+from src.models.cellpose_trainer import CellposeTrainer
 
 config = create_training_config_from_preset(
     "mammalian_cells_cellpose",
-    train_dir="data/training",
-    test_dir="data/test",
+    train_dir="data/processed/split/train",
+    test_dir="data/processed/split/test",
     output_dir="models/cellpose"
 )
 trainer = CellposeTrainer(config)
@@ -248,37 +452,30 @@ trainer.train()
 
 #### Modular Evaluation
 ```python
-# Evaluate model performance
-from models.config_presets import create_evaluation_config_from_preset  
-from models.cellpose_trainer import CellposeEvaluator
+from src.models.config_presets import create_evaluation_config_from_preset
+from src.models.cellpose_trainer import CellposeEvaluator
 
 config = create_evaluation_config_from_preset(
     "default",
-    test_dir="data/test",
-    model_path="cyto2",  # or path to custom model
+    test_dir="data/processed/split/test",
+    model_path="cyto2",
     output_dir="results/evaluation"
 )
 evaluator = CellposeEvaluator(config)
 results = evaluator.evaluate()
 ```
 
-## 🧪 Testing & Validation
-
-The system includes comprehensive testing to ensure reliability:
+## Testing & Validation
 
 ### Test Suite
 ```bash
-# Run all modular system tests (19 tests)
-python tests/test_training_system.py
+# Run all tests
+python -m pytest tests/ -v
 
-# Run integration tests
-python tests/test_integration.py
-
-# Run preprocessing tests
-python -m pytest tests/preprocessing/ -v  # 11 tests total
-
-# Run utility tests  
-python -m pytest tests/utils/ -v          # 19 tests total
+# Run specific test modules
+python -m pytest tests/preprocessing/ -v     # Preprocessing tests
+python -m pytest tests/utils/ -v            # Utility tests  
+python -m pytest tests/test_training_system.py -v  # Training system tests
 
 # Verify GPU/CUDA functionality
 python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
@@ -286,50 +483,59 @@ python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
 ### Test Coverage
 - **Configuration Management**: Preset creation, validation, parameter overrides
-- **Trainer Initialization**: Cellpose trainer setup and configuration
-- **Evaluator Setup**: Model evaluation configuration
+- **Training System**: Cellpose trainer setup and configuration (19 tests)
 - **Preprocessing Pipeline**: Blur analysis and dataset splitting (11 tests)
 - **Utility Functions**: File handling, blur measurement (19 tests)
 - **Data Loading**: File discovery and data validation
 - **GPU Support**: CUDA availability and PyTorch compatibility
 - **End-to-End Workflows**: Complete training and evaluation pipelines
 
-### Validation Results ✅
-- **All 19 unit tests pass** (training system)
-- **All 11 preprocessing tests pass** (blur analysis + dataset splitting)
-- **All 19 utility tests pass** (blur measurement)
-- **All integration tests pass** 
+### Validation Results
+- **All 49 tests pass** (19 training + 11 preprocessing + 19 utilities)
 - **Environment verified**: Python 3.10.18, PyTorch 1.13.1+cu117, CUDA 11.7
 - **Models verified**: Cellpose 4.0.6 installed and tested
 - **GPU acceleration confirmed**: CUDA support working
 
-## 🏆 Project Status
+## Project Status
 
-### ✅ **COMPLETED & TESTED**
+### **COMPLETED & TESTED**
 - **Modular Architecture**: Complete refactoring with abstract base classes
-- **Preprocessing Pipeline**: Blur analysis & group-aware dataset splitting (NEW)
-- **Utility Consolidation**: Unified file handling, blur measurement refactoring (NEW)
+- **Preprocessing Pipeline**: Blur analysis & group-aware dataset splitting
+- **Inference Pipeline**: Organized prediction workflow with output management
+- **Postprocessing Pipeline**: 3D cell tracking and quality filtering
+- **Utility Consolidation**: Unified file handling, blur measurement, format conversion
+- **Command Line Interface**: Complete CLI scripts for all major operations
 - **Environment Setup**: PyTorch (CUDA 11.7), Cellpose 4.0.6 installed & verified
 - **Configuration System**: 7 training + 6 evaluation presets implemented
-- **Testing Suite**: 49 total tests (19 training + 11 preprocessing + 19 utilities), all passing
-- **Documentation**: Comprehensive guides and examples with preprocessing workflows
+- **Testing Suite**: 49 total tests passing (19 training + 11 preprocessing + 19 utilities)
+- **Documentation**: Comprehensive guides and examples with module-specific README files
 - **GPU Support**: CUDA acceleration verified and working
 
-### 🚀 **READY FOR PRODUCTION**
+### **READY FOR PRODUCTION**
 The system is fully operational for:
 - **Data Preprocessing**: Quality assessment with blur heatmaps + group-aware splitting
-- Training custom Cellpose models with preprocessed data
-- Evaluating model performance with standardized metrics  
-- Processing large datasets with GPU acceleration
-- Research workflows with reproducible configurations
+- **Model Training**: Custom Cellpose models with preprocessed data
+- **Inference**: Large-scale prediction with organized output structure
+- **Postprocessing**: 3D cell tracking and quality filtering
+- **Evaluation**: Model performance assessment with standardized metrics
+- **Visualization**: Interactive 3D/4D visualization with Napari
+- **Research Workflows**: Reproducible configurations and command-line automation
 
-### 📋 **Future Enhancements** (Optional)
-- 3D training workflow modularization
-- Advanced cell tracking integration
-- Additional cell-type presets
-- GUI interface development
+### 📋 **Available Scripts**
+- `scripts/run_preprocessing.py`: Complete data preprocessing pipeline
+- `scripts/run_training.py`: Model training with configuration presets
+- `scripts/run_inference.py`: Batch inference with organized output
+- `scripts/run_postprocessing.py`: 3D tracking and quality filtering
+- `scripts/run_pipeline.py`: Complete end-to-end pipeline
+- `scripts/launch_gui_safe.py`: Safe GUI launcher with dependency checking
+
+### 🔮 **Future Enhancements** (Optional)
+- Integration with additional segmentation models
+- Advanced feature extraction pipelines
+- Web-based interface for remote processing
+- Cloud deployment configurations
 
 ---
 
-*Last updated: July 3, 2025 - Cellpose-focused system verified and production-ready* ✅
+*Last updated: July 11, 2025 - Complete modular system with CLI interface ready for production* ✅
 
