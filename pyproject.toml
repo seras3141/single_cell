@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Sera", email = "serena.sritharan@helmholtz-munich.de"},
+    {name = "Serena", email = "serena.sritharan@helmholtz-munich.de"},
 ]
 keywords = ["microscopy", "cell-segmentation", "cell-tracking", "cellpose", "brightfield"]
 classifiers = [
