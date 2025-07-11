@@ -182,4 +182,7 @@ dist/
 logs/
 models/
 Untitled/
+tmp*
 tmp/
+tmp1/
+*.md
