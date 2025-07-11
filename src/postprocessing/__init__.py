@@ -22,10 +22,8 @@ from .blur_filtering import (
 )
 
 from .tracking_processor import (
-    TrackingProcessor,
-    TrackingProcessorConfig,
-    run_tracking_pipeline,
-    main_compatible
+    CellTrackingPipeline,
+    PostprocessingConfig
 )
 
 __all__ = [
@@ -39,9 +37,7 @@ __all__ = [
     "FilterConfig",
     "filter_cells_by_blur",
     "assess_segmentation_quality",
-    # Complete tracking processor
-    "TrackingProcessor",
-    "TrackingProcessorConfig", 
-    "run_tracking_pipeline",
-    "main_compatible"
+    # Unified postprocessing pipeline
+    "CellTrackingPipeline",
+    "PostprocessingConfig"
 ]

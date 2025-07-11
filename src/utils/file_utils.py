@@ -440,7 +440,7 @@ class BlurFileHandler(AbstractFileHandler):
         'image_BF_3d': FilePattern(
             pattern = r'(.+?)(_BF_3d)?\.tif',
             groups=['key', 'image_suffix'],
-            output_format="{key}{image_suffix}_{blur_suffix}.tif"
+            output_format="{key}{image_suffix}{blur_suffix}.tif"
         ),
     }
 

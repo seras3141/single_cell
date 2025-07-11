@@ -16,6 +16,8 @@ import logging
 from typing import Union, Tuple, List, Dict, Optional
 from skimage.transform import resize
 
+from src.utils.logging_utils import setup_logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -200,36 +202,26 @@ def filter_blurry_images(
 
 
 def measure_blur_heatmap(
-    input_data: Union[str, np.ndarray], 
+    input_data: np.ndarray, 
     patch_size: int = 32,
     stride_size: int = 8,
     normalize: bool = True,
     center_values: bool = True,
-    output_path: Optional[str] = None
 ) -> np.ndarray:
     """
     Generate a blur heatmap for an image or stack of images.
     
     Args:
-        input_data: Path to image file or numpy array
+        input_data: Image numpy array
         patch_size: Size of patches for blur detection
         stride_size: Stride size between patches
         normalize: Whether to normalize the output to [0, 1] range
         center_values: Whether to center blur values on patches (pad to original size)
-        output_path: Optional path to save the heatmap
         
     Returns:
         Blur heatmap as a numpy array
     """
-    # Load image if path is provided
-    if isinstance(input_data, str):
-        if input_data.lower().endswith(('.tif', '.tiff')):
-            img = tiff.imread(input_data)
-        else:
-            from PIL import Image
-            img = np.array(Image.open(input_data).convert('L'))
-    else:
-        img = input_data
+    img = input_data
         
     # Handle 3D image stacks
     if img.ndim > 2:
@@ -291,13 +283,24 @@ def measure_blur_heatmap(
         if blur_heatmap.shape != target_shape:
             blur_heatmap = resize(blur_heatmap, target_shape, order=1, mode='reflect',
                                 preserve_range=True, anti_aliasing=False)
-
-    # Save if output path provided
-    if output_path:
-        tiff.imwrite(output_path, blur_heatmap.astype(np.float32))
-        logger.info(f"Blur heatmap saved to {output_path}")
     
     return blur_heatmap
+
+def read_image(image_path: Union[str, Path]) -> np.ndarray:
+    """
+    Read an image file and return it as a numpy array.
+    
+    Args:
+        image_path: Path to the image file
+    Returns:
+        Numpy array representing the image.
+    """
+    if isinstance(image_path, str):
+        image_path = Path(image_path)
+    if image_path.suffix.lower() in ['.tif', '.tiff']:
+        return tiff.imread(image_path)
+    else:
+        raise ValueError(f"Unsupported image format: {image_path.suffix}. Only TIFF files are supported.")
         
 def get_or_compute_blur_heatmap(
     image_path: Union[str, Path],
@@ -305,6 +308,7 @@ def get_or_compute_blur_heatmap(
     patch_size: int = 32,
     stride_size: int = 8,
     normalize: bool = True,
+    center_values: bool = True,
 ) -> np.ndarray:
     """    Get or compute a blur heatmap for an image.
     Args:
@@ -316,22 +320,24 @@ def get_or_compute_blur_heatmap(
     Returns:
         2D numpy array representing the blur heatmap.
     """
-
-    image_path = Path(image_path)
         
     # Check disk cache
     if blur_path is not None and blur_path.exists():
         try:
-            blur_map = tiff.imread(str(blur_path))
+            blur_map = tiff.imread(blur_path)
         except Exception as e:
             raise Warning(f"Failed to load cached blur map {blur_path}: {e}")
 
     else:
+        image_path = Path(image_path)
+        image = read_image(image_path)
+
         blur_map = measure_blur_heatmap(
-            str(image_path),
+            image,
             patch_size=patch_size,
             stride_size=stride_size,
-            normalize=normalize
+            normalize=normalize,
+            center_values=center_values,
         )
 
         if blur_path is not None:
@@ -342,6 +348,8 @@ def get_or_compute_blur_heatmap(
 
             except Exception as e:
                 raise Warning(f"Failed to save blur map to cache: {e}")
+            
+    print(f"Blur heatmap for {image_path.name} computed with shape {blur_map.shape}") # Debugging line to check shape
 
     return blur_map
 
@@ -361,8 +369,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Configure logging
-    logging.basicConfig(level=logging.INFO, 
-                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    setup_logging()
     
     # Run analysis
     results = analyze_dataset_blur(args.input_dir, args.pattern, args.threshold)

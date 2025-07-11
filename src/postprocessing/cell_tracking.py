@@ -34,6 +34,7 @@ class TrackingConfig:
     min_track_length: int = 3
     """Minimum length of tracks to keep"""
     
+    # TODO : Why is area based filtering in tracking config?
     # Region filtering parameters
     min_area: int = 10
     """Minimum cell area to consider"""
@@ -75,7 +76,7 @@ class CellTracker3D:
         self.last_tracking_data: Optional[pd.DataFrame] = None
         self.tracking_stats: Dict[str, Any] = {}
     
-    def extract_cell_properties(
+    def extract_cell_properties( 
         self, 
         segmentation_mask: np.ndarray,
         intensity_image: Optional[np.ndarray] = None,

@@ -9,6 +9,32 @@ paths:
   models: "models/"
   temp: "temp/"
 
+# File processing parameters
+file_processing:
+  # Dataset splitting
+  test_size: 0.2
+  random_state: 42
+  split_by_group: true
+  split_folder: "processed_data"
+
+  raw_data_patterns:
+    brightfield: "t1_*_w1_*.tif"
+    masks: "Cells_*.tif"
+    nuclei: "Nuclei_*.tif"
+  
+  # File naming patterns
+  output_suffixes:
+    brightfield: "*_BF*.tif"
+    masks: "*_Cells*.tif"
+    nuclei: "*_Nuclei*.tif"
+
+# Image quality assessment
+quality:
+  blur_detection:
+    patch_size: [32, 32]
+    stride_size: [8, 8]
+    laplacian_threshold: 100
+
 # Segmentation parameters
 segmentation:
   # Cellpose parameters
@@ -36,33 +62,26 @@ training:
   channels: [0, 0]
   normalize: true
 
+filtering:
+  # Cell filtering parameters
+  # min_cell_size: 30
+  # max_cell_size: 1000
+  # min_nucleus_size: 10
+  # max_nucleus_size: 500
+  blur_threshold: 0.5
+
 # Cell tracking parameters
 tracking:
+  min_area: 30
+  max_area: 1000
   search_range: 5
   memory: 1
-  blur_threshold: 0.5
   min_track_length: 3
 
-# Image quality assessment
-quality:
-  blur_detection:
-    patch_size: [32, 32]
-    stride_size: [8, 8]
-    laplacian_threshold: 100
-
-# File processing parameters
-file_processing:
-  # Dataset splitting
-  test_size: 0.2
-  random_state: 42
-  split_by_group: true
-  
-  # File naming patterns
-  image_patterns:
-    brightfield: "*_BF*.tif"
-    fluorescence: "*_IF*.tif"
-    masks: "*_Cells*.tif"
-    nuclei: "*_Nuclei*.tif"
+postprocessing:
+  enable_blur_filtering: true
+  filter_before_tracking: true
+  save_intermediate_results: false
 
 # Feature extraction parameters
 features:
@@ -95,7 +114,7 @@ output:
   save_flows: false
   save_features: true
   formats:
-    images: "tiff"
+    images: "tif"
     features: "csv"
     metadata: "json"
 

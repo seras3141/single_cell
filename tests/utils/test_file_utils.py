@@ -28,7 +28,7 @@ class TestBlurFileHandler:
     def test_rename_image(self):
         # Example: A01_BF_3d.tif with suffix 'blur32'
         input_path = 'A01_BF_3d.tif'
-        suffix = 'blur32'
+        suffix = '_blur32'
         expected = 'A01_BF_3d_blur32.tif'
         assert self.handler.rename_image(input_path, suffix) == expected
 

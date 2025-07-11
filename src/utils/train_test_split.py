@@ -16,6 +16,8 @@ import shutil
 from collections import defaultdict
 from typing import List, Tuple, Dict, Optional, Union, NamedTuple, Set
 
+from src.utils.logging_utils import setup_logging
+
 from .file_utils import StandardFileHandler
 
 logger = logging.getLogger(__name__)
@@ -374,8 +376,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Configure logging
-    logging.basicConfig(level=logging.INFO, 
-                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    setup_logging()
     
     # Run the split
     result = train_test_split_directory(

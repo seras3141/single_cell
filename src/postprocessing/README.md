@@ -8,8 +8,7 @@ The postprocessing module consists of three main components:
 
 1. **Cell Tracking** (`cell_tracking.py`) - 3D cell tracking across z-stacks using trackpy
 2. **Blur Filtering** (`blur_filtering.py`) - Quality assessment and filtering based on image sharpness  
-3. **Integrated Pipeline** (`pipeline.py`) - Complete processing pipeline combining all components
-4. **Tracking Processor** (`tracking_processor.py`) - Comprehensive 3D tracking with blur filtering
+3. **Postprocessing Pipeline** (`tracking_processor.py`) - Complete processing pipeline combining all components
 
 ## Features
 
@@ -25,7 +24,7 @@ The postprocessing module consists of three main components:
 - Support for 2D and 3D data
 - Quality assessment reporting
 
-###  Integrated Pipeline
+### Postprocessing Pipeline
 - Complete end-to-end processing
 - Flexible processing order (filter→track or track→filter)
 - Batch processing capabilities
@@ -36,10 +35,11 @@ The postprocessing module consists of three main components:
 ### Single File Processing
 
 ```python
-from src.postprocessing.pipeline import process_single_stack
+from src.postprocessing.tracking_processor import CellTrackingPipeline
 
 # Process a single 3D segmentation stack
-result = process_single_stack(
+pipeline = CellTrackingPipeline()
+result = pipeline.process_single_file(
     segmentation_path="path/to/segmentation_3d.tif",
     image_path="path/to/image_BF_3d.tif", 
     output_dir="path/to/output"
@@ -51,14 +51,13 @@ print(f"Results saved to: {result['final_output']}")
 ### Batch Processing
 
 ```python
-from src.postprocessing.pipeline import process_batch_stacks
+from src.postprocessing.tracking_processor import CellTrackingPipeline
 
-# Process all files in a directory
-results = process_batch_stacks(
+pipeline = CellTrackingPipeline()
+results = pipeline.process_batch(
     input_dir="path/to/input",
     output_dir="path/to/output"
 )
-
 print(f"Processed {len(results)} files")
 ```
 
@@ -109,12 +108,12 @@ config = FilterConfig(
 )
 ```
 
-### Pipeline Configuration
+### Unified Pipeline Configuration
 
 ```python
-from src.postprocessing.pipeline import PipelineConfig
+from src.postprocessing.tracking_processor import PostprocessingConfig
 
-config = PipelineConfig(
+config = PostprocessingConfig(
     enable_blur_filtering=True,      # Enable blur filtering
     filter_before_tracking=True,     # Processing order
     save_intermediate_results=True   # Save intermediate files
@@ -182,7 +181,8 @@ config = FilterConfig(cache_blur_maps=True)
 blur_filter = BlurFilter(config)
 
 # Specify cache directory for batch processing
-results = process_batch_stacks(
+pipeline = CellTrackingPipeline()
+results = pipeline.process_batch(
     input_dir="input",
     output_dir="output", 
     blur_cache_dir="blur_cache"
@@ -194,13 +194,11 @@ For large datasets, process files individually to manage memory:
 
 ```python
 import glob
-
+pipeline = CellTrackingPipeline()
 for seg_file in glob.glob("*.tif"):
     img_file = seg_file.replace("_3d.tif", "_BF_3d.tif")
-    
-    result = process_single_stack(
-        seg_file, img_file, "output",
-        config=PipelineConfig(save_intermediate_results=False)
+    result = pipeline.process_single_file(
+        seg_file, img_file, "output"
     )
 ```
 
@@ -290,13 +288,14 @@ If migrating from the old `track_cells.py`:
 from src.utils.track_cells import track_3d_centers
 
 # New approach  
-from src.postprocessing.pipeline import process_single_stack
+from src.postprocessing.tracking_processor import CellTrackingPipeline
 
-# The new pipeline provides the same functionality with:
-# - Better error handling
-# - Configurable parameters  
-# - Comprehensive output
-# - Quality assessment
+pipeline = CellTrackingPipeline()
+result = pipeline.process_single_file(
+    segmentation_path="path/to/segmentation_3d.tif",
+    image_path="path/to/image_BF_3d.tif",
+    output_dir="path/to/output"
+)
 ```
 
 ## Dependencies

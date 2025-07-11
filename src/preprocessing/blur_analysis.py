@@ -14,13 +14,9 @@ from tqdm import tqdm
 import numpy as np
 
 
-try:
-    from .blur_measure import measure_blur_heatmap
-except ImportError:
-    # Fallback to absolute imports if running as a script
-    from src.preprocessing.blur_measure import measure_blur_heatmap
-
-from src.utils.file_utils import AbstractFileHandler, BF_IF_FileHandler
+from src.utils.blur_measure import get_or_compute_blur_heatmap
+from src.utils.file_utils import AbstractFileHandler, BlurFileHandler
+from src.utils.logging_utils import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +71,8 @@ def measure_dataset_blur_heatmaps(
         try:
             # Generate output filename
             if file_handler:
-                # Use standardized naming
-                standardized_name = file_handler.rename_image(str(img_path))
-                output_name = Path(standardized_name).stem + "_blur_heatmap.tif"
+                # Use file handler for standardized naming
+                output_name = file_handler.rename_image(str(img_path), suffix="_blur_heatmap")
             else:
                 # Use original filename with suffix
                 output_name = img_path.stem + "_blur_heatmap.tif"
@@ -91,13 +86,13 @@ def measure_dataset_blur_heatmaps(
                 continue
             
             # Generate blur heatmap
-            blur_heatmap = measure_blur_heatmap(
-                str(img_path),
+            blur_heatmap = get_or_compute_blur_heatmap(
+                img_path,
                 patch_size=patch_size,
+                blur_path=output_path,
                 stride_size=stride_size,
                 normalize=normalize,
                 center_values=center_values,
-                output_path=str(output_path)
             )
             
             results[str(img_path)] = str(output_path)
@@ -130,10 +125,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+    setup_logging()
     
     results = measure_dataset_blur_heatmaps(
         input_dir=args.input,
@@ -142,6 +134,7 @@ if __name__ == "__main__":
         patch_size=args.patch_size,
         stride_size=args.stride_size,
         normalize=not args.no_normalize,
-        overwrite=args.overwrite
+        overwrite=args.overwrite,
+        file_handler=BlurFileHandler()
     )
     print(f"Processed {len(results)} images")

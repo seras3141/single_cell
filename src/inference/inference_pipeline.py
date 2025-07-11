@@ -168,11 +168,11 @@ class InferencePipeline:
                 })
         
         # Combine 2D masks to 3D if needed
-        if process_z_stacks and input_files and results['2d_files']:
+        if input_files and results['2d_files']:
+            logging.info("Combining 2D masks into 3D volumes")
             mask_dir = self.output_manager.masks_dir
             output_dir = self.output_manager.masks_dir.parent / (self.output_manager.masks_dir.name + "_3d")
 
-            print(mask_dir, output_dir)  # Debugging line to check directories
             pattern = r"(.+?)_z(\d+)(?:_(masks))?\.(tif|tiff)"
             combine_2d_to_3d(str(mask_dir), str(output_dir), pattern=pattern)
         
@@ -312,20 +312,14 @@ class InferencePipeline:
     
     def _setup_logging(self) -> None:
         """Set up logging configuration."""
+
+        from ..utils.logging_utils import setup_logging
+
         log_level = self.config.get('logging', {}).get('level', 'INFO')
-        
-        logging.basicConfig(
-            level=getattr(logging, log_level),
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.StreamHandler(),
-                logging.FileHandler(
-                    self.output_manager.output_dir / 'inference.log',
-                    mode='w'
-                )
-            ]
-        )
-    
+        log_file = self.output_manager.output_dir / 'inference.log'
+
+        setup_logging(log_level, log_file)
+            
     def get_model_info(self) -> Dict[str, Any]:
         """Get information about the loaded model."""
         return self.predictor.get_model_info()

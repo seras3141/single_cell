@@ -161,13 +161,6 @@ def test_center_values_false_different_size(blur_heatmap_images):
     )
     assert result.shape == blur_heatmap_images["test_image_2d"].shape
 
-@patch('tifffile.imread')
-def test_file_input_tiff(mock_imread, blur_heatmap_images):
-    mock_imread.return_value = blur_heatmap_images["test_image_2d"]
-    result = measure_blur_heatmap('/fake/path/image.tif', normalize=False)
-    mock_imread.assert_called_once_with('/fake/path/image.tif')
-    assert result.shape == blur_heatmap_images["test_image_2d"].shape
-
 def test_file_input_non_tiff(blur_heatmap_images):
     result = measure_blur_heatmap(blur_heatmap_images["test_image_2d"], normalize=False)
     assert result.shape == blur_heatmap_images["test_image_2d"].shape
@@ -188,19 +181,6 @@ def test_normalization_3d():
     )
     assert result.shape == test_3d.shape
     assert isinstance(result, np.ndarray)
-
-@patch('tifffile.imwrite')
-def test_output_file_saving(mock_imwrite, blur_heatmap_images, temp_dir):
-    output_path = os.path.join(temp_dir, 'test_output.tif')
-    result = measure_blur_heatmap(
-        blur_heatmap_images["test_image_2d"],
-        output_path=output_path,
-        normalize=False
-    )
-    mock_imwrite.assert_called_once()
-    args, kwargs = mock_imwrite.call_args
-    assert args[0] == output_path
-    assert isinstance(args[1], np.ndarray)
 
 def test_different_patch_stride_combinations(blur_heatmap_images):
     test_cases = [

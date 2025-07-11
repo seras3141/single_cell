@@ -15,7 +15,7 @@ def main():
     parser.add_argument("--mask-pattern", default="Cells_*.tif", help="Glob pattern for mask files")
     parser.add_argument("--patch-size", type=int, default=32, help="Patch size for blur detection")
     parser.add_argument("--stride-size", type=int, default=16, help="Stride size for blur detection")
-    parser.add_argument("--combine-pattern", default=r"(.+?)_z(\d+)(?:_(BF|Cells))?\.(tif|tiff)", help="Regex for 2D to 3D grouping")
+    parser.add_argument("--combine-pattern", default=r"(.+?)_z(\d+)(?:_(BF|Cells))?\.(tif)", help="Regex for 2D to 3D grouping")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing files")
     args = parser.parse_args()
 

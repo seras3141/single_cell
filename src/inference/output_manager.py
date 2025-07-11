@@ -309,6 +309,7 @@ class OutputManager:
             plt.tight_layout()
             plt.savefig(output_path, dpi=150, bbox_inches='tight')
             plt.close(fig)
+            plt.close('all')
             
         except Exception as e:
             logging.error(f"Failed to save overlay to {output_path}: {e}")

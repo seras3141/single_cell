@@ -40,7 +40,7 @@ def combine_2d_to_3d(
     # Group files by base name and suffix (_BF or _Cells)
     file_groups = defaultdict(list)
     file_names = []
-    file_extensions = [".tif", ".tiff"]
+    file_extensions = [".tif"]
     for ext in file_extensions:
         ext = f"**/*{ext}" if recursive else f"*{ext}"
         file_names.extend(glob(os.path.join(input_dir, ext), recursive=recursive))

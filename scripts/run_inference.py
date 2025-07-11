@@ -17,6 +17,8 @@ import logging
 import sys
 from pathlib import Path
 
+from src.utils.logging_utils import setup_logging
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -26,8 +28,7 @@ from src.inference.output_manager import OutputManager
 from src.utils.config import load_config
 
 
-def main():
-    """Main inference function."""
+def get_inference_args():
     parser = argparse.ArgumentParser(description="Run inference on cell segmentation test dataset")
     
     # Input/Output arguments
@@ -140,13 +141,104 @@ def main():
         help="Logging level (default: INFO)"
     )
     
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def merge_config_and_args(config: dict, args) -> dict:
+    """
+    Merge config file dictionary and argparse.Namespace, with CLI args taking precedence.
+    Returns a flat dictionary for easy access.
+    """
+    merged = dict(config) if config else {}
+    for key, value in vars(args).items():
+        if value is not None:
+            merged[key] = value
+    return merged
+
+
+def run_inference(
+    input_dir,
+    output_dir,
+    model_name="cyto3",
+    dataset_name="test",
+    file_pattern="*_BF.tif",
+    process_z_stacks=False,
+    no_overlays=False,
+    no_metadata=False,
+    model_path=None,
+    gpu=True,
+    flow_threshold=0.4,
+    cellprob_threshold=0.0,
+    min_size=30,
+    diameter=None,
+    config=None
+):
+    """Run the inference pipeline with the provided parameters."""
+    logging.info(f"Starting inference on {input_dir}")
+    predictor_kwargs = {
+        'model_type': model_name,
+        'gpu': gpu,
+        'flow_threshold': flow_threshold,
+        'cellprob_threshold': cellprob_threshold,
+        'min_size': min_size,
+        'diameter': diameter
+    }
+
+    # Override with config if available
+    if config and 'segmentation' in config and 'cellpose' in config['segmentation']:
+        cellpose_config = config['segmentation']['cellpose']
+        for key, value in cellpose_config.items():
+            if key not in predictor_kwargs or predictor_kwargs[key] is None:
+                predictor_kwargs[key] = value
+    predictor = CellposePredictor(**predictor_kwargs)
+
+    if model_path:
+        predictor.load_model(model_path)
+        logging.info(f"Loaded custom model from {model_path}")
+
+    output_manager = OutputManager(
+        base_output_dir=output_dir,
+        model_name=model_name,
+        dataset_name=dataset_name
+    )
+
+    pipeline = InferencePipeline(predictor, output_manager, config or {})
+    validation = pipeline.validate_setup()
+    if not validation['overall']:
+        logging.error("Pipeline validation failed")
+        sys.exit(1)
+
+    model_info = pipeline.get_model_info()
+    logging.info(f"Model information: {model_info}")
+
+    results = pipeline.run_inference(
+        input_dir=input_dir,
+        file_pattern=file_pattern,
+        process_z_stacks=process_z_stacks,
+        save_overlays=not no_overlays,
+        save_metadata=not no_metadata
+    )
+    print("\n" + "="*50)
+    print("INFERENCE COMPLETED")
+    print("="*50)
+    print(f"Total files processed: {len(results['processed_files'])}")
+    print(f"Total cells detected: {results['total_cells']}")
+    print(f"Failed files: {len(results['failed_files'])}")
+    print(f"Results saved to: {output_manager.output_dir}")
+    print(f"Summary report: {results['summary_path']}")
+    if results['failed_files']:
+        print("\nFailed files:")
+        for failed in results['failed_files']:
+            print(f"  - {failed['file']}: {failed['error']}")
+    logging.info("Inference completed successfully")
+
+
+def main():
+    """Main inference function."""
+    args = get_inference_args()
     
     # Set up logging
-    logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
+    setup_logging(args)
     
     # Concatenate dataset_name to input_dir
     input_dir = str(Path(args.input_dir) / args.dataset_name)
@@ -158,81 +250,26 @@ def main():
             config = load_config(args.config)
             logging.info(f"Loaded configuration from {args.config}")
         
-        # Initialize predictor
-        predictor_kwargs = {
-            'model_type': args.model_name,
-            'gpu': args.gpu,
-            'flow_threshold': args.flow_threshold,
-            'cellprob_threshold': args.cellprob_threshold,
-            'min_size': args.min_size
-        }
+        # Merge config and args, CLI args take precedence
+        merged = merge_config_and_args(config, args)
         
-        if args.diameter:
-            predictor_kwargs['diameter'] = args.diameter
-        
-        # Override with config if available
-        if 'segmentation' in config and 'cellpose' in config['segmentation']:
-            cellpose_config = config['segmentation']['cellpose']
-            for key, value in cellpose_config.items():
-                if key not in predictor_kwargs or predictor_kwargs[key] is None:
-                    predictor_kwargs[key] = value
-        
-        predictor = CellposePredictor(**predictor_kwargs)
-        
-        # Load custom model if specified
-        if args.model_path:
-            predictor.load_model(args.model_path)
-            logging.info(f"Loaded custom model from {args.model_path}")
-        
-        # Initialize output manager
-        output_manager = OutputManager(
-            base_output_dir=args.output_dir,
-            model_name=args.model_name,
-            dataset_name=args.dataset_name
-        )
-        
-        # Initialize pipeline
-        pipeline = InferencePipeline(predictor, output_manager, config)
-        
-        # Validate setup
-        validation = pipeline.validate_setup()
-        if not validation['overall']:
-            logging.error("Pipeline validation failed")
-            sys.exit(1)
-        
-        # Log model information
-        model_info = pipeline.get_model_info()
-        logging.info(f"Model information: {model_info}")
-        
-        # Run inference
-        logging.info(f"Starting inference on {input_dir}")
-        logging.info(f"Output will be saved to: {output_manager.output_dir}")
-        
-        results = pipeline.run_inference(
+        run_inference(
             input_dir=input_dir,
-            file_pattern=args.file_pattern,
-            process_z_stacks=args.process_z_stacks,
-            save_overlays=not args.no_overlays,
-            save_metadata=not args.no_metadata
+            output_dir=merged['output_dir'],
+            model_name=merged.get('model_name', 'cyto3'),
+            dataset_name=merged.get('dataset_name', 'test'),
+            file_pattern=merged.get('file_pattern', '*_BF.tif'),
+            process_z_stacks=merged.get('process_z_stacks', False),
+            no_overlays=merged.get('no_overlays', False),
+            no_metadata=merged.get('no_metadata', False),
+            model_path=merged.get('model_path'),
+            gpu=merged.get('gpu', True),
+            flow_threshold=merged.get('flow_threshold', 0.4),
+            cellprob_threshold=merged.get('cellprob_threshold', 0.0),
+            min_size=merged.get('min_size', 30),
+            diameter=merged.get('diameter'),
+            config=merged
         )
-        
-        # Print summary
-        print("\n" + "="*50)
-        print("INFERENCE COMPLETED")
-        print("="*50)
-        print(f"Total files processed: {len(results['processed_files'])}")
-        print(f"Total cells detected: {results['total_cells']}")
-        print(f"Failed files: {len(results['failed_files'])}")
-        print(f"Results saved to: {output_manager.output_dir}")
-        print(f"Summary report: {results['summary_path']}")
-        
-        if results['failed_files']:
-            print("\nFailed files:")
-            for failed in results['failed_files']:
-                print(f"  - {failed['file']}: {failed['error']}")
-        
-        logging.info("Inference completed successfully")
-        
     except Exception as e:
         logging.error(f"Inference failed: {e}")
         sys.exit(1)

@@ -15,7 +15,7 @@ from .dataset_split import (
     get_image_from_pattern,
     get_mask_from_pattern,
 )
-from .blur_measure import (
+from ..utils.blur_measure import (
     measure_patchwise_blur,
     measure_image_blur,
     measure_blur_heatmap,

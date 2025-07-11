@@ -15,8 +15,6 @@ import pandas as pd
 import tifffile
 from skimage.measure import regionprops
 
-from ..preprocessing.blur_measure import measure_blur_heatmap
-
 logger = logging.getLogger(__name__)
 
 
@@ -113,42 +111,66 @@ class BlurFilter:
         if cache_key in self.blur_cache:
             return self.blur_cache[cache_key]
         
-        # Check disk cache
-        blur_map = None
+        from src.utils.blur_measure import get_or_compute_blur_heatmap
+        from src.utils.file_utils import BlurFileHandler
+
         if blur_cache_dir is not None:
-            blur_cache_dir = Path(blur_cache_dir)
-            blur_filename = (image_path.stem + 
-                           f"{self.config.blur_map_suffix}_{self.config.patch_size}_{self.config.stride_size}.tif")
-            blur_path = blur_cache_dir / blur_filename
+            blur_file_handler = BlurFileHandler()
+            blur_suffix = f"{self.config.blur_map_suffix}_{self.config.patch_size}_{self.config.stride_size}"
+            blur_file_name = blur_file_handler.rename_image(image_path, blur_suffix)
+            blur_path = blur_cache_dir / blur_file_name
+
+        else:
+            blur_path = None
+
             
-            if blur_path.exists():
-                try:
-                    blur_map = tifffile.imread(str(blur_path))
-                    self.logger.debug(f"Loaded blur heatmap from cache: {blur_path}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to load cached blur map {blur_path}: {e}")
+        blur_map = get_or_compute_blur_heatmap(
+            image_path,
+            blur_path=blur_path,
+            patch_size=self.config.patch_size,
+            stride_size=self.config.stride_size,
+            normalize=self.config.normalize_blur
+        )
+
+        print(f"Blur heatmap shape: {blur_map.shape}") # Debugging line to check shape
         
-        # Compute if not cached
-        if blur_map is None:
-            self.logger.info(f"Computing blur heatmap for {image_path}")
-            blur_map = measure_blur_heatmap(
-                str(image_path),
-                patch_size=self.config.patch_size,
-                stride_size=self.config.stride_size,
-                normalize=self.config.normalize_blur
-            )
+        # Check disk cache
+        # blur_map = None
+        # if blur_cache_dir is not None:
+        #     blur_cache_dir = Path(blur_cache_dir)
+        #     blur_filename = (image_path.stem + 
+        #                    f"{self.config.blur_map_suffix}_{self.config.patch_size}_{self.config.stride_size}.tif")
+        #     blur_path = blur_cache_dir / blur_filename
             
-            # Save to disk cache if directory provided
-            if blur_cache_dir is not None:
-                try:
-                    blur_cache_dir.mkdir(parents=True, exist_ok=True)
-                    blur_filename = (image_path.stem + 
-                                   f"{self.config.blur_map_suffix}_{self.config.patch_size}_{self.config.stride_size}.tif")
-                    blur_path = blur_cache_dir / blur_filename
-                    tifffile.imwrite(str(blur_path), blur_map.astype(np.float32))
-                    self.logger.debug(f"Saved blur heatmap to cache: {blur_path}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to save blur map to cache: {e}")
+        #     if blur_path.exists():
+        #         try:
+        #             blur_map = tifffile.imread(str(blur_path))
+        #             self.logger.debug(f"Loaded blur heatmap from cache: {blur_path}")
+        #         except Exception as e:
+        #             self.logger.warning(f"Failed to load cached blur map {blur_path}: {e}")
+        
+        # # Compute if not cached
+        # if blur_map is None:
+        #     self.logger.info(f"Computing blur heatmap for {image_path}")
+        #     blur_map = measure_blur_heatmap(
+        #         str(image_path),
+        #         patch_size=self.config.patch_size,
+        #         stride_size=self.config.stride_size,
+        #         normalize=self.config.normalize_blur
+        #     )
+            
+        #     # Save to disk cache if directory provided
+        #     if blur_cache_dir is not None:
+        #         raise (NotImplementedError("File renaming is not implemented yet."))
+        #         try:
+        #             blur_cache_dir.mkdir(parents=True, exist_ok=True)
+        #             blur_filename = (image_path.stem + 
+        #                            f"{self.config.blur_map_suffix}_{self.config.patch_size}_{self.config.stride_size}.tif")
+        #             blur_path = blur_cache_dir / blur_filename
+        #             tifffile.imwrite(str(blur_path), blur_map.astype(np.float32))
+        #             self.logger.debug(f"Saved blur heatmap to cache: {blur_path}")
+        #         except Exception as e:
+        #             self.logger.warning(f"Failed to save blur map to cache: {e}")
         
         # Store in memory cache
         if self.config.cache_blur_maps:
