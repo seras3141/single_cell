@@ -98,69 +98,6 @@ single_cell/
     └── cellpose/                     # Cellpose repository
 ```
 
-## Project Structure
-
-```
-single_cell/
-├── src/                               # Core modules
-│   ├── core/                          # 🏗️ Core functionality and base classes
-│   ├── preprocessing/                 # 🔄 Data preprocessing pipeline
-│   │   ├── blur_analysis.py          # Blur heatmap generation for quality control
-│   │   ├── dataset_split.py          # Group-aware train/test splitting
-│   │   └── README.md                 # Detailed preprocessing guide
-│   ├── models/                        # 🤖 Model implementations
-│   │   ├── base_trainer.py           # Abstract base classes for training/evaluation
-│   │   ├── cellpose_trainer.py       # Cellpose trainer and evaluator
-│   │   ├── config_presets.py         # Configuration presets (7 training, 6 eval)
-│   │   └── README.md                 # Model training and evaluation guide
-│   ├── inference/                     # � Inference pipeline
-│   │   ├── inference_pipeline.py     # Main inference orchestration
-│   │   ├── cellpose_predictor.py     # Cellpose prediction wrapper
-│   │   ├── output_manager.py         # Organized output handling
-│   │   └── README.md                 # Inference pipeline guide
-│   ├── postprocessing/               # � Post-inference processing
-│   │   ├── cell_tracking.py          # 3D cell tracking across z-stacks
-│   │   ├── blur_filtering.py         # Quality assessment and filtering
-│   │   ├── tracking_processor.py     # Complete postprocessing pipeline
-│   │   └── README.md                 # Postprocessing guide
-│   ├── training/                      # 🎓 Training utilities and workflows
-│   ├── evaluation/                    # 📈 Model evaluation and metrics
-│   ├── data/                          # 📁 Data processing and management
-│   │   ├── analyze_tif_labels.py     # Label analysis and validation
-│   │   ├── make_train_3D.py          # 3D training data preparation  
-│   │   └── reformat_data.py          # Data reformatting utilities
-│   ├── utils/                         # 🔧 Core utilities
-│   │   ├── file_utils.py             # Unified file handling
-│   │   ├── blur_measure.py           # Image blur/sharpness detection
-│   │   ├── conversion.py             # 2D/3D format conversion utilities
-│   │   └── config.py                 # Configuration management
-│   └── visualize/                     # 👁️ Visualization tools
-│       ├── view_3d_tiff.py           # 3D TIFF viewer
-│       ├── view_4d_tiff.py           # 4D TIFF viewer
-│       └── visualize_prediction.py   # Prediction visualization
-├── scripts/                           # �️ Command-line interfaces
-│   ├── run_preprocessing.py          # Data preprocessing script
-│   ├── run_inference.py              # Inference execution script
-│   ├── run_postprocessing.py         # Postprocessing script
-│   ├── run_pipeline.py               # Complete pipeline script
-│   └── launch_gui_safe.py            # GUI launcher with dependency checking
-├── examples/                          # � Usage examples and tutorials
-│   ├── training_examples.py          # Basic training examples
-│   └── complete_usage_examples.py    # Comprehensive usage guide
-├── tests/                            # Test suite
-│   ├── preprocessing/                # Preprocessing module tests
-│   ├── utils/                        # Utility tests
-│   └── test_training_system.py       # Modular system tests
-├── config/                           # Configuration files
-│   ├── config.yaml                   # Main configuration
-│   └── inference_config.yaml         # Inference-specific settings
-├── data/                             # Data directories
-│   ├── sample_plates/                # Raw sample data
-│   └── sample_plates_processed/      # Processed sample data
-└── github/                           # Git submodules
-    └── cellpose/                     # Cellpose repository
-```
-
 ## Installation
 
 ### Prerequisites
