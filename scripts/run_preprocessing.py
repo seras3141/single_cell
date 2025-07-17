@@ -32,7 +32,7 @@ def main():
         file_handler=BF_IF_FileHandler()
     )
 
-    # Step 2: Combine 2D to 3D (for train set only)
+    # Step 2: Combine 2D to 3D
     input_2d_dir = split_dir
     output_3d_dir = os.path.join(args.output_root, "3d_images")
     print(f"Combining 2D images into 3D stacks at {output_3d_dir} ...")

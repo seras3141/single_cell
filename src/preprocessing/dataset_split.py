@@ -223,7 +223,7 @@ def train_test_split_directory(
     random_state: int = 42,
     image_pattern: str = "*_w1_*.tif",
     mask_pattern: str = "Cells_*.tif",
-    file_handler: Optional[AbstractFileHandler] = None,
+    file_handler: AbstractFileHandler = BF_IF_FileHandler(),
 ) -> Dict[str, List[str]]:
     """
     Split data in a directory into train and test sets and organize into subdirectories.
