@@ -11,15 +11,15 @@ tifffile>=2021.7.2
 Pillow>=8.3.0
 imageio>=2.9.0
 
-# Cell segmentation models
-cellpose>=2.0.0
-cellpose-omni>=1.0.0
+# # Cell segmentation models
+# cellpose>=2.0.0
+# cellpose-omni>=1.0.0
 
 # Cell tracking
 trackpy>=0.5.0
 
 # Feature extraction
-pyradiomics>=3.0.0
+# pyradiomics>=3.0.0
 SimpleITK>=2.1.0
 
 # Dimensionality reduction and analysis
@@ -35,6 +35,7 @@ tqdm>=4.62.0
 
 # Configuration management
 PyYAML>=5.4.0
+omegaconf>=2.3.0
 
 # Development tools
 pytest>=6.0.0

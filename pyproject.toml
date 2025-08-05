@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Serena", email = "serena.sritharan@helmholtz-munich.de"},
+    {name = "Serena Sritharan", email = "serena.sritharan@helmholtz-munich.de"},
 ]
 keywords = ["microscopy", "cell-segmentation", "cell-tracking", "cellpose", "brightfield"]
 classifiers = [
@@ -43,6 +43,7 @@ dependencies = [
     "napari[all]>=0.4.15",
     "tqdm>=4.62.0",
     "PyYAML>=5.4.0",
+    "omegaconf>=2.3.0",
 ]
 
 [project.optional-dependencies]
@@ -71,7 +72,6 @@ gpu = [
 "Homepage" = "https://github.com/helmholtz/single-cell-analysis"
 "Bug Reports" = "https://github.com/helmholtz/single-cell-analysis/issues"
 "Source" = "https://github.com/helmholtz/single-cell-analysis"
-"Documentation" = "https://single-cell-analysis.readthedocs.io/"
 
 [project.scripts]
 single-cell-pipeline = "scripts.run_pipeline:main"
