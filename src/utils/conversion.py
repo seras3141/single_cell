@@ -10,14 +10,14 @@ import re
 import numpy as np
 import tifffile as tiff
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Union
 from collections import defaultdict
 from tqdm import tqdm
 from glob import glob
 
 def combine_2d_to_3d(
-    input_dir: str,
-    output_dir: str,
+    input_dir: Union[str, Path],
+    output_dir: Union[str, Path],
     pattern: str = r"(.+?)_z(\d+)(?:_(BF|Cells))?\.(tif|tiff)",
     recursive: bool = False
 ):
@@ -34,8 +34,13 @@ def combine_2d_to_3d(
         Converts files like "sample_z1_BF.tif", "sample_z2_BF.tif", ...
         to a single 3D file "sample_BF_3d.tif"
     """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+
+    input_dir = Path(input_dir)
+    output_dir = Path(output_dir)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    assert input_dir.exists(), f"Input directory {input_dir} does not exist."
 
     # Group files by base name and suffix (_BF or _Cells)
     file_groups = defaultdict(list)

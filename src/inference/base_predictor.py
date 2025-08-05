@@ -58,7 +58,55 @@ class BasePredictor(ABC):
             - metadata: Dictionary containing flows, probabilities, etc.
         """
         pass
-    
+
+    def predict_3d(
+        self,
+        image: np.ndarray,
+        do_2d: bool = False,
+        **kwargs
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """
+        Run prediction on a 3D image.
+        
+        Args:
+            image: 3D numpy array (z, y, x)
+            **kwargs: Additional prediction parameters
+            
+        Returns:
+            Tuple of (masks, metadata) for the 3D image
+        """
+        if image.ndim != 3:
+            raise ValueError("Input must be a 3D array (z, y, x)")
+        
+        if do_2d:
+            # Process each Z-slice independently
+            all_masks = []
+            all_metadata = []
+            
+            for z_idx in range(image.shape[0]):
+                slice_img = image[z_idx]
+                masks, metadata = self.predict(slice_img, **kwargs)
+
+                all_masks.append(masks)
+                all_metadata.append(metadata)
+            
+            # Stack masks
+            stacked_masks = np.stack(all_masks, axis=0)
+            
+            # Combine metadata
+            combined_metadata = {
+                'per_slice_metadata': all_metadata,
+                'total_cells': sum([m['num_cells'] for m in all_metadata]),
+                'stack_shape': image.shape,
+                'processing_mode': '2d_per_slice'
+            }
+            
+            return stacked_masks, combined_metadata
+        
+        # Default to 3D prediction
+        else:
+            return self.predict(image, **kwargs)
+
     def predict_batch(self, images: list, **kwargs) -> Tuple[list, list]:
         """
         Run inference on a batch of images.

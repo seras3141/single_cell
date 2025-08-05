@@ -1,7 +1,7 @@
 import logging
 import sys, os
 
-def setup_logging(level: str = "INFO", log_file: str = None) -> None:
+def setup_logging(level: str = "INFO", log_file = None) -> None:
     """Setup logging configuration."""
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     

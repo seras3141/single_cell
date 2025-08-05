@@ -1,0 +1,39 @@
+# Single Cell Analysis Pipeline Configuration
+
+# Data paths
+paths:
+  input_dir: "data/sample_data"
+  output_dir: "data/sample_data_out"
+
+# File processing parameters
+preprocessing:
+  # Dataset splitting
+  test_size: 0.2
+  random_state: 42
+  split_by_group: true
+  split_folder: "split_data"
+
+  raw_data_patterns:
+    brightfield: "t1_*_w1_*.tif"
+    masks: "Cells_*.tif"
+    nuclei: "Nuclei_*.tif"
+  
+  # File naming patterns
+  output_suffixes:
+    brightfield: "*_BF*.tif"
+    masks: "*_Cells*.tif"
+    nuclei: "*_Nuclei*.tif"
+  
+# Image quality assessment
+quality:
+  blur_detection:
+    patch_size: [32, 32]
+    stride_size: [8, 8]
+
+
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  filename: "logs/preprocessing.log"

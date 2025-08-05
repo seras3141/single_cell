@@ -66,18 +66,14 @@ def test_config(temp_dirs):
                 'cellprob_threshold': 0.0,
                 'min_size': 30,
                 'channels': [0, 0]
+            },
+            'inference': {
+                'save_overlays': True,
+                'save_metadata': True,
+                'process_z_stacks': False,
+                'file_pattern': '*_BF.tif'
             }
         },
-        'inference': {
-            'file_patterns': ['*_BF.tif'],
-            'output': {
-                'save_overlays': True,
-                'save_metadata': True
-            },
-            'processing': {
-                'process_z_stacks': False
-            }
-        }
     }
     config_file = config_dir / "test_config.yaml"
     with open(config_file, 'w') as f:

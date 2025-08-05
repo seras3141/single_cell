@@ -1,11 +1,8 @@
 # Inference Configuration for Single Cell Analysis Pipeline
 
-# Data paths
 paths:
-  data_root: "data/"
-  test_data: "data/sample_plates_split/test"
-  output_root: "results/"
-  models: "models/"
+  input_dir: "data/sample_data_out/split_data"  # Base directory with datasets
+  output_dir: "data/sample_data_out/"  # Where to store the results
 
 # Segmentation model configuration
 segmentation:
@@ -20,69 +17,49 @@ segmentation:
     normalize: true
     invert: false
 
-# Inference settings
-inference:
-  file_patterns:
-    - "*_BF.tif"  # Brightfield images
-    - "*_brightfield.tif"
-    - "*.tif"
-  
-  output:
-    save_overlays: true  # Save visualization overlays
-    save_metadata: true  # Save prediction metadata
-    save_individual_slices: true  # For Z-stacks, save individual slices
-    create_subdirs: true  # Create organized subdirectories
-  
-  processing:
-    process_z_stacks: false  # Process as Z-stacks or individual slices
-    batch_size: 1  # Number of images to process together
-    
-# Output organization
-output:
-  structure: "{output_root}/pred/{model_name}/{dataset_name}"
-  filename_suffixes:
-    masks: "_masks"
-    overlay: "_overlay"
-    metadata: "_metadata"
-  
-  formats:
-    masks: "tiff"  # Options: tiff, png
-    overlays: "png"  # Options: png, jpg, pdf
-    metadata: "json"
+  inference:
+    dataset_name: "test"  # Subfolder within input_dir
+    results_folder: "results"  # Subfolder within output_dir
+    file_pattern: "*_BF.tif"  # Glob pattern for selecting image files
+    process_z_stacks: false  # Whether to process Z-stacks
+    save_overlays: true  # Whether to save overlay images
+    save_metadata: true  # Whether to save JSON metadata for predictions
+#   # save_individual_slices: true  # For Z-stacks, save individual slices
+#   # create_subdirs: true  # Create organized subdirectories
+
 
 # Logging configuration
 logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR
-  save_to_file: true
-  log_filename: "inference.log"
+  filename: "logs/inference.log"
+
+
+# Optional future extensions
+# runtime:
+#   batch_size: 1                   # Placeholder for batching
+#   num_workers: 4                 # For multi-threaded preprocessing
+#   process_z_stacks: false            # Whether to process Z-stacks
+
 
 # Model specific configurations
-models:
-  cyto3:
-    description: "Cellpose cyto3 model for cytoplasm segmentation"
-    recommended_for: ["brightfield", "phase_contrast"]
-    default_params:
-      flow_threshold: 0.4
-      min_size: 30
+# models:
+#   cyto3:
+#     description: "Cellpose cyto3 model for cytoplasm segmentation"
+#     recommended_for: ["brightfield", "phase_contrast"]
+#     default_params:
+#       flow_threshold: 0.4
+#       min_size: 30
   
-  cyto2:
-    description: "Cellpose cyto2 model for cytoplasm segmentation"
-    recommended_for: ["fluorescence"]
-    default_params:
-      flow_threshold: 0.4
-      min_size: 25
+#   cyto2:
+#     description: "Cellpose cyto2 model for cytoplasm segmentation"
+#     recommended_for: ["fluorescence"]
+#     default_params:
+#       flow_threshold: 0.4
+#       min_size: 25
   
-  nuclei:
-    description: "Cellpose nuclei model for nuclear segmentation"
-    recommended_for: ["DAPI", "nuclear_stains"]
-    default_params:
-      flow_threshold: 0.4
-      min_size: 15
-
-# Quality control
-quality_control:
-  enabled: false
-  min_cells_per_image: 1
-  max_cells_per_image: 1000
-  min_cell_area: 100  # pixels
-  max_cell_area: 10000  # pixels
+#   nuclei:
+#     description: "Cellpose nuclei model for nuclear segmentation"
+#     recommended_for: ["DAPI", "nuclear_stains"]
+#     default_params:
+#       flow_threshold: 0.4
+#       min_size: 15

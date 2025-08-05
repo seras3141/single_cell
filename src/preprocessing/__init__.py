@@ -15,13 +15,11 @@ from .dataset_split import (
     get_image_from_pattern,
     get_mask_from_pattern,
 )
-from ..utils.blur_measure import (
-    measure_patchwise_blur,
-    measure_image_blur,
-    measure_blur_heatmap,
-    analyze_dataset_blur,
-    filter_blurry_images
+
+from .blur_analysis import (
+    measure_dataset_blur_heatmaps,
 )
+
 
 __all__ = [
     # Dataset splitting
@@ -32,9 +30,5 @@ __all__ = [
     "get_image_from_pattern",
     "get_mask_from_pattern",
     # Blur analysis
-    "measure_patchwise_blur",
-    "measure_image_blur",
-    "measure_blur_heatmap",
-    "analyze_dataset_blur",
-    "filter_blurry_images",
+    "measure_dataset_blur_heatmaps",
 ]

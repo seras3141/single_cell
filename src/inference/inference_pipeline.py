@@ -12,14 +12,13 @@ from pathlib import Path
 import logging
 import tifffile as tiff
 from tqdm import tqdm
-import yaml
-from ..utils.conversion import combine_2d_to_3d
-
+from omegaconf import OmegaConf
 from .base_predictor import BasePredictor
 from .cellpose_predictor import CellposePredictor
 from .output_manager import OutputManager
-from ..utils.config import load_config
 
+from src.utils.config import ConfigManager
+from src.utils.conversion import combine_2d_to_3d
 
 class InferencePipeline:
     """
@@ -33,7 +32,7 @@ class InferencePipeline:
         self,
         predictor: BasePredictor,
         output_manager: OutputManager,
-        config: Optional[Dict[str, Any]] = None
+        log_config: Optional[Dict[str, Any]] = None
     ):
         """
         Initialize inference pipeline.
@@ -41,11 +40,11 @@ class InferencePipeline:
         Args:
             predictor: Model predictor instance
             output_manager: Output management instance
-            config: Configuration dictionary
+            log_config: Configuration dictionary
         """
         self.predictor = predictor
         self.output_manager = output_manager
-        self.config = config or {}
+        self.log_config = log_config or {}
         
         # Set up logging
         self._setup_logging()
@@ -55,47 +54,82 @@ class InferencePipeline:
     @classmethod
     def from_config(
         cls,
-        config_path: Union[str, Path],
-        model_name: str,
-        output_dir: Union[str, Path],
-        dataset_name: str = "test",
+        config: Optional[Dict[str, Any]] = None,
+        config_path: Optional[Union[str, Path]]=None,
+        model_name: Optional[str]="cyto3",
+        output_dir: Optional[Union[str, Path]]=None,
+        dataset_name: Optional[str] = "test",
         **kwargs
     ) -> "InferencePipeline":
         """
-        Create pipeline from configuration file.
+        Create pipeline from a config dictionary or YAML file path.
+
+        Precedence:
+            1. Explicit keyword overrides
+            2. YAML file (if provided)
+            3. Direct config dict (fallback)
         
         Args:
-            config_path: Path to configuration YAML file
-            model_name: Name of the model to use
-            output_dir: Base output directory
-            dataset_name: Name of the dataset
-            **kwargs: Additional arguments to override config
-            
+            config: A full configuration dict
+            config_path: Path to a YAML config file
+            model_name: Optional model name override
+            output_dir: Optional output dir override
+            dataset_name: Optional dataset override
+            overrides: Additional overrides (dot notation or flat dict)
+        
         Returns:
             Initialized InferencePipeline instance
         """
-        config = load_config(config_path)
+        if (config_path is None and config is None) or (config_path and config):
+            raise ValueError("Provide either `config_path` or `config`, but not both.")
         
-        # Override config with kwargs
-        config.update(kwargs)
-        
-        # Initialize predictor based on model type
-        segmentation_config = config.get('segmentation', {})
-        if 'cellpose' in segmentation_config:
-            cellpose_config = segmentation_config['cellpose']
-            predictor = CellposePredictor(**cellpose_config)
+        if config_path:
+            base_config = ConfigManager(config_path)
+            if kwargs:
+                base_config = base_config.merge_with_overrides(kwargs)
+            resolved_config = base_config.to_dict()
+            
         else:
-            raise ValueError("No supported model configuration found")
+            from omegaconf import OmegaConf
+            base_config = OmegaConf.create(config)
+            if kwargs:
+                base_config = OmegaConf.merge(base_config, OmegaConf.create(kwargs))
+            resolved_config = OmegaConf.to_container(base_config, resolve=True)
+
+        assert isinstance(resolved_config, dict), "Resolved config must be a dictionary"
+
+        # Step 3: Instantiate predictor
+        segmentation_config = resolved_config.get("segmentation", {})
+        if not segmentation_config:
+            raise ValueError("Missing `segmentation` config section.")
+        
+        # Ensure cellpose config exists
+        cellpose_cfg = segmentation_config.get("cellpose", {})
+        if not cellpose_cfg:
+            raise ValueError("Missing `segmentation.cellpose` config.")
+
+        predictor = CellposePredictor(**cellpose_cfg)
+
+        # Step 4: Prepare output manager
+        inference_config = segmentation_config.get("inference", {})
+        paths_config = resolved_config.get("paths", {})
+        results_folder = inference_config.get("results_folder", "results")
+
+        model_name = model_name or cellpose_cfg.get("model_type", "cyto3")
+        output_dir = output_dir or Path(paths_config.get("output_dir", "results")) / results_folder        
+        dataset_name = dataset_name or inference_config.get("dataset_name", "test")
         
         # Initialize output manager
         output_manager = OutputManager(
-            base_output_dir=output_dir,
-            model_name=model_name,
-            dataset_name=dataset_name
+            base_output_dir=output_dir,     # type: ignore
+            model_name=model_name,          # type: ignore
+            dataset_name=dataset_name       # type: ignore
         )
-        
-        return cls(predictor, output_manager, config)
-    
+
+        log_config = resolved_config.get("logging", {})
+
+        return cls(predictor, output_manager, log_config)
+
     def run_inference(
         self,
         input_dir: Union[str, Path],
@@ -213,7 +247,7 @@ class InferencePipeline:
     
     def _process_single_file(
         self,
-        file_path: Path,
+        file_path: Union[str, Path],
         process_z_stacks: bool = False,
         save_overlays: bool = True,
         save_metadata: bool = True,
@@ -236,10 +270,11 @@ class InferencePipeline:
             # Load image
             image = self._load_image(file_path)
             
-            if process_z_stacks and image.ndim == 3:
-                # Process as Z-stack
-                masks, metadata = self.predictor.predict_z_stack(image, **kwargs)
-                
+            if image.ndim == 3:
+                # raise NotImplementedError("Z-stack processing for 3D data not implemented yet")
+                # Process as 3D Z-stack
+                masks, metadata = self.predictor.predict_3d(image, do_2d=process_z_stacks, **kwargs)
+
                 # Save results
                 saved_files = self.output_manager.save_z_stack_prediction(
                     masks,
@@ -251,7 +286,6 @@ class InferencePipeline:
                 )
                 
                 num_cells = metadata.get('total_cells', 0)
-                
             else:
                 # Process as single image (2D or handle 3D as single volume)
                 masks, metadata = self.predictor.predict(image, **kwargs)
@@ -285,8 +319,8 @@ class InferencePipeline:
                 'status': 'failed',
                 'error': str(e)
             }
-    
-    def _load_image(self, file_path: Path) -> np.ndarray:
+
+    def _load_image(self, file_path: Union[str, Path]) -> np.ndarray:
         """
         Load image from file.
         
@@ -296,6 +330,7 @@ class InferencePipeline:
         Returns:
             Loaded image as numpy array
         """
+        file_path = Path(file_path)
         try:
             if file_path.suffix.lower() in ['.tif', '.tiff']:
                 image = tiff.imread(str(file_path))
@@ -313,12 +348,13 @@ class InferencePipeline:
     def _setup_logging(self) -> None:
         """Set up logging configuration."""
 
-        from ..utils.logging_utils import setup_logging
+        from src.utils.logging_utils import setup_logging
 
-        log_level = self.config.get('logging', {}).get('level', 'INFO')
-        log_file = self.output_manager.output_dir / 'inference.log'
+        log_level = self.log_config.get('level', 'INFO')
+        log_file = self.log_config.get('log_filename', 'inference.log')
+        log_file = self.output_manager.output_dir / log_file
 
-        setup_logging(log_level, log_file)
+        setup_logging(log_level, log_file) # type: ignore
             
     def get_model_info(self) -> Dict[str, Any]:
         """Get information about the loaded model."""

@@ -15,6 +15,7 @@ from glob import glob
 import logging
 from typing import Union, Tuple, List, Dict, Optional
 from skimage.transform import resize
+from concurrent.futures import ThreadPoolExecutor
 
 from src.utils.logging_utils import setup_logging
 
@@ -46,6 +47,8 @@ def measure_patchwise_blur(
         patch_size = (patch_size, patch_size)
     if isinstance(stride_size, int):
         stride_size = (stride_size, stride_size)
+    assert len(patch_size) == 2 and len(stride_size) == 2, "patch_size and stride_size must be tuples of (height, width)"
+    assert img.ndim == 2, "Input image must be a 2D array"
 
     patch_height, patch_width = patch_size
     stride_y, stride_x = stride_size
@@ -225,16 +228,18 @@ def measure_blur_heatmap(
         
     # Handle 3D image stacks
     if img.ndim > 2:
-        # Process each slice and stack results
-        slices = []
-        for z in range(img.shape[0]):
-            blur_map = measure_patchwise_blur(
+        # Process each slice and stack results in parallel using ThreadPoolExecutor
+
+        def process_slice(z):
+            return measure_patchwise_blur(
                 img[z], 
                 patch_size=patch_size, 
                 stride_size=stride_size,
                 center_values=center_values
             )
-            slices.append(blur_map)
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            slices = list(executor.map(process_slice, range(img.shape[0])))
         blur_heatmap = np.stack(slices)
     else:
         assert img.ndim == 2 and not normalize, "Only 3D images (z-stacks) can be processed with normalization"
@@ -322,7 +327,7 @@ def get_or_compute_blur_heatmap(
     """
         
     # Check disk cache
-    if blur_path is not None and blur_path.exists():
+    if blur_path is not None and Path(blur_path).exists():
         try:
             blur_map = tiff.imread(blur_path)
         except Exception as e:
@@ -349,7 +354,7 @@ def get_or_compute_blur_heatmap(
             except Exception as e:
                 raise Warning(f"Failed to save blur map to cache: {e}")
             
-    print(f"Blur heatmap for {image_path.name} computed with shape {blur_map.shape}") # Debugging line to check shape
+        print(f"Blur heatmap for {image_path.name} computed with shape {blur_map.shape}") # Debugging line to check shape
 
     return blur_map
 

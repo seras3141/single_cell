@@ -38,10 +38,10 @@ class MockPredictor(BasePredictor):
             'prediction_params': kwargs
         }
         return masks, metadata
-    
-    def predict_z_stack(self, z_stack, process_2d=True, **kwargs):
-        """Mock Z-stack prediction."""
-        if process_2d:
+
+    def predict_3d(self, z_stack, do_2d=True, **kwargs):
+        """Mock 3D prediction."""
+        if do_2d:
             results = []
             for i, slice_img in enumerate(z_stack):
                 masks, metadata = self.predict(slice_img, **kwargs)
@@ -70,7 +70,7 @@ class MockPredictor(BasePredictor):
 def test_abstract_class_cannot_be_instantiated():
     """Test that BasePredictor cannot be instantiated directly."""
     with pytest.raises(TypeError):
-        BasePredictor(model_name="test")
+        BasePredictor(model_name="test") # type: ignore
 
 def test_mock_predictor_initialization():
     """Test that mock predictor initializes correctly."""
@@ -126,25 +126,25 @@ def test_predict_with_parameters():
     assert metadata['prediction_params']['flow_threshold'] == 0.3
     assert metadata['prediction_params']['min_size'] == 20
 
-def test_predict_z_stack_2d_processing():
-    """Test Z-stack prediction with 2D slice processing."""
+def test_predict_3d_2d_processing():
+    """Test 3D prediction with 2D slice processing."""
     predictor = MockPredictor()
     z_stack = np.random.randint(0, 255, (5, 256, 256), dtype=np.uint8)
-    
-    results = predictor.predict_z_stack(z_stack, process_2d=True)
-    
+
+    results = predictor.predict_3d(z_stack, do_2d=True)
+
     assert len(results) == 5  # 5 slices
     for i, (masks, metadata) in enumerate(results):
         assert masks.shape == (256, 256)
         assert metadata['slice_index'] == i
         assert 'num_cells' in metadata
 
-def test_predict_z_stack_3d_processing():
-    """Test Z-stack prediction with 3D processing."""
+def test_predict_3d_3d_processing():
+    """Test 3D prediction with 3D processing."""
     predictor = MockPredictor()
     z_stack = np.random.randint(0, 255, (5, 256, 256), dtype=np.uint8)
-    
-    masks, metadata = predictor.predict_z_stack(z_stack, process_2d=False)
+
+    masks, metadata = predictor.predict_3d(z_stack, do_2d=False)
     
     assert masks.shape == z_stack.shape
     assert metadata['processing_mode'] == '3d'

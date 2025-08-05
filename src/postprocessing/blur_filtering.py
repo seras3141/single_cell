@@ -7,7 +7,6 @@ measurements, improving tracking quality by removing low-quality detections.
 
 import os
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union, Any, Callable
 import numpy as np
@@ -15,40 +14,10 @@ import pandas as pd
 import tifffile
 from skimage.measure import regionprops
 
+# Import the centralized configuration
+from src.utils.config_schemas import FilterConfig
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass 
-class FilterConfig:
-    """Configuration for blur-based filtering."""
-    
-    # Blur measurement parameters
-    patch_size: int = 32
-    """Size of patches for blur measurement"""
-    
-    stride_size: int = 8
-    """Stride size for blur measurement"""
-    
-    normalize_blur: bool = True
-    """Whether to normalize blur values"""
-    
-    # Filtering parameters
-    blur_threshold: float = 0.5
-    """Threshold for blur filtering (lower = sharper)"""
-    
-    invert_threshold: bool = False
-    """If True, keep cells with blur > threshold (for inverted metrics)"""
-    
-    # Quality assessment
-    min_region_overlap: float = 0.5
-    """Minimum overlap with blur measurement region"""
-    
-    # Cache settings
-    cache_blur_maps: bool = True
-    """Whether to cache blur heatmaps"""
-    
-    blur_map_suffix: str = "_blur_heatmap"
-    """Suffix for cached blur map files"""
 
 
 def blur_intensity_metric(regionmask: np.ndarray, intensity_image: np.ndarray) -> float:
@@ -118,7 +87,7 @@ class BlurFilter:
             blur_file_handler = BlurFileHandler()
             blur_suffix = f"{self.config.blur_map_suffix}_{self.config.patch_size}_{self.config.stride_size}"
             blur_file_name = blur_file_handler.rename_image(image_path, blur_suffix)
-            blur_path = blur_cache_dir / blur_file_name
+            blur_path = Path(blur_cache_dir) / blur_file_name
 
         else:
             blur_path = None

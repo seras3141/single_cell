@@ -154,7 +154,7 @@ def test_predict_z_stack_2d(mock_cellpose_model):
     predictor = CellposePredictor()
     z_stack = np.random.randint(0, 255, (3, 128, 128), dtype=np.uint8)
     
-    masks, metadata = predictor.predict_z_stack(z_stack, process_2d=True)
+    masks, metadata = predictor.predict_3d(z_stack, do_2d=True)
     
     # Should return stacked masks and combined metadata
     assert masks.shape == (3, 128, 128)  # 3 slices stacked
