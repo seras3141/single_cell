@@ -57,7 +57,7 @@ train_test_split_directory(
 - Input: `data/raw/t1_*_w1_*.tif`, `data/raw/Cells_*.tif`
 - Output: `data/processed/split/train/images/`, `data/processed/split/test/images/`, etc.
 
-- **CLI Command:**
+**CLI Command:**
 ```sh
 python -m src.preprocessing.dataset_split \
   data/raw \
@@ -149,8 +149,17 @@ combine_2d_to_3d(...)
 # Generate blur heatmaps
 measure_dataset_blur_heatmaps(...)
 ```
+## Config file
 
-### Output Structure
+Run the entire preprocessing pipeline using the config file:
+
+```sh
+python scripts/run_preprocessing.py data/raw data/processed \
+  --conifg config/preprocessing_config.yaml
+```
+
+
+## Output Structure
 
 After preprocessing, your data will be organized as:
 
