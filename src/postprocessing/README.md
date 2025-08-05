@@ -10,15 +10,40 @@ The postprocessing module consists of three main components:
 2. **Blur Filtering** (`blur_filtering.py`) - Quality assessment and filtering based on image sharpness  
 3. **Postprocessing Pipeline** (`tracking_processor.py`) - Complete processing pipeline combining all components
 
+## Quick Start
+
+For a fast start, use the following command line examples:
+
+```bash
+# Quick single file run
+python scripts/run_postprocessing.py \
+    --segmentation-file path/to/segmentation_3d.tif \
+    --image-file path/to/image_BF_3d.tif \
+    --output-dir path/to/output
+
+# Quick batch run
+python scripts/run_postprocessing.py \
+    --image-dir path/to/images \
+    --seg-dir path/to/segmentations \
+    --blur-dir path/to/blurmaps \
+    --output-dir path/to/output
+ 
+# Use config file
+python scripts/run_postprocessing.py \
+    --config config/postprocessing_config.yaml
+```
+
+These commands will process your data using default parameters and save results to the specified output directory.
+
 ## Features
 
-### 🔬 3D Cell Tracking
+### 3D Cell Tracking
 - Robust tracking across z-stacks using trackpy
 - Configurable search parameters and quality filters
 - Support for intensity-based measurements
 - Comprehensive tracking statistics
 
-### 🎯 Blur-Based Filtering
+### Blur-Based Filtering
 - Automatic blur heatmap generation and caching
 - Configurable blur thresholds and metrics
 - Support for 2D and 3D data
@@ -30,7 +55,7 @@ The postprocessing module consists of three main components:
 - Batch processing capabilities
 - Comprehensive result reporting
 
-## Quick Start
+## Detailed Postprocessing Pipeline
 
 ### Single File Processing
 
@@ -170,36 +195,19 @@ The pipeline generates several output files:
 ### Batch Processing
 - `batch_processing_summary.json` - Summary of batch processing results
 
-## Performance Optimization
+## Default Output Folder Structure
 
-### Blur Heatmap Caching
-Enable caching to avoid recomputing blur heatmaps:
+The default output directory contains the following files and structure after processing:
 
-```python
-# Cache blur heatmaps to disk
-config = FilterConfig(cache_blur_maps=True)
-blur_filter = BlurFilter(config)
-
-# Specify cache directory for batch processing
-pipeline = CellTrackingPipeline()
-results = pipeline.process_batch(
-    input_dir="input",
-    output_dir="output", 
-    blur_cache_dir="blur_cache"
-)
 ```
-
-### Memory Management
-For large datasets, process files individually to manage memory:
-
-```python
-import glob
-pipeline = CellTrackingPipeline()
-for seg_file in glob.glob("*.tif"):
-    img_file = seg_file.replace("_3d.tif", "_BF_3d.tif")
-    result = pipeline.process_single_file(
-        seg_file, img_file, "output"
-    )
+output/
+├── blur_filtered/
+├── tracked/
+├── tracked_blur_filtered/
+├── final/
+│   ├── sample1_masks_3d.tif
+│   └── sample2_masks_3d.tif
+└── batch_processing_summary.json
 ```
 
 ## Quality Assessment
@@ -227,100 +235,3 @@ print(f"Average track length: {stats['avg_track_length']:.1f}")
 print(f"Detection efficiency: {stats['n_detections']/stats['n_frames']:.1f} cells/frame")
 ```
 
-## Command Line Options
-
-```bash
-# Core options
---input-dir DIR              # Input directory
---output-dir DIR             # Output directory  
---segmentation-file FILE     # Single segmentation file
---image-file FILE           # Corresponding image file
-
-# Blur filtering
---blur-threshold FLOAT      # Blur threshold (default: 0.5)
---blur-patch-size INT       # Patch size (default: 32)
---blur-cache-dir DIR        # Cache directory
-
-# Tracking  
---search-range FLOAT        # Search range (default: 5.0)
---memory INT               # Memory frames (default: 1)
---min-track-length INT     # Min track length (default: 3)
-
-# Pipeline options
---filter-before-tracking   # Filter then track (default)
---track-before-filtering   # Track then filter
---disable-blur-filtering   # Skip blur filtering
-
-# Analysis
---pixel-size FLOAT         # Pixel size in μm (default: 1.0)
---time-interval FLOAT      # Time interval in min (default: 1.0)
-```
-
-## Testing
-
-Run the test suite to verify functionality:
-
-```bash
-python -m pytest tests/postprocessing/ -v
-```
-
-The tests cover:
-- 3D cell tracking with mock data
-- Blur filtering and quality assessment  
-- Integrated pipeline processing
-- Batch processing workflows
-
-## Best Practices
-
-1. **Use blur filtering** to improve tracking quality
-2. **Cache blur heatmaps** for repeated analysis
-3. **Validate parameters** on a small subset first
-4. **Save intermediate results** for debugging
-5. **Monitor memory usage** with large datasets
-6. **Check tracking statistics** for quality assessment
-
-## Migration from Legacy Code
-
-If migrating from the old `track_cells.py`:
-
-```python
-# Old approach
-from src.utils.track_cells import track_3d_centers
-
-# New approach  
-from src.postprocessing.tracking_processor import CellTrackingPipeline
-
-pipeline = CellTrackingPipeline()
-result = pipeline.process_single_file(
-    segmentation_path="path/to/segmentation_3d.tif",
-    image_path="path/to/image_BF_3d.tif",
-    output_dir="path/to/output"
-)
-```
-
-## Dependencies
-
-- `numpy` - Numerical operations
-- `pandas` - Data manipulation
-- `trackpy` - Particle tracking
-- `tifffile` - TIFF file I/O
-- `scikit-image` - Image processing
-- `tqdm` - Progress bars
-- `scipy` - Scientific computing
-
-## Troubleshooting
-
-### Common Issues
-
-1. **ImportError**: Ensure all dependencies are installed
-2. **Memory errors**: Process files individually or reduce image size
-3. **No cells tracked**: Check segmentation quality and tracking parameters
-4. **Poor tracking**: Adjust search_range and memory parameters
-5. **Blur filtering too aggressive**: Increase blur_threshold or set invert_threshold=True
-
-### Performance Tips
-
-- Use smaller patch sizes for faster blur computation
-- Disable intermediate file saving for batch processing
-- Cache blur heatmaps when processing multiple files with same images
-- Use appropriate tracking parameters for your cell movement patterns

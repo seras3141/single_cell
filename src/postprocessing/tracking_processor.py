@@ -7,7 +7,6 @@ with optional saving of intermediate results and TIFF-only output.
 
 import os
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
 import numpy as np
@@ -16,25 +15,15 @@ import tifffile as tiff
 from tqdm import tqdm
 import json
 
-from .cell_tracking import CellTracker3D, TrackingConfig
-from .blur_filtering import BlurFilter, FilterConfig, blur_intensity_metric
+from .cell_tracking import CellTracker3D
+from .blur_filtering import BlurFilter, blur_intensity_metric
+
 from src.utils.file_utils import BlurFileHandler
 from src.utils.blur_measure import get_or_compute_blur_heatmap
+from src.utils.config_schemas import PostprocessingConfig, TrackingConfig, FilterConfig
 
 logger = logging.getLogger(__name__)
 
-@dataclass
-class PostprocessingConfig:
-    tracking_config: TrackingConfig = field(default_factory=TrackingConfig)
-    filter_config: FilterConfig = field(default_factory=FilterConfig)
-    enable_blur_filtering: bool = True
-    filter_before_tracking: bool = True
-    save_intermediate_results: bool = False
-    mask_pattern: str = "*_masks_3d.tif"
-    image_pattern: str = "*_BF_3d.tif"
-    blur_heatmap_suffix: str = "_blur_heatmap"
-    output_suffix: str = "_tracked"
-    overwrite_existing: bool = False
 
 class CellTrackingPipeline:
     def __init__(self, config: Optional[PostprocessingConfig] = None):
@@ -192,7 +181,7 @@ class CellTrackingPipeline:
 
 class TrackingOutputManager:
     """Handles saving of intermediate and final outputs for cell tracking pipeline."""
-    def __init__(self, output_dir: Path):
+    def __init__(self, output_dir: Union[str, Path]):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.subdirs = {

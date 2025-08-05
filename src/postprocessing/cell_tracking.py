@@ -7,9 +7,8 @@ with configurable parameters and quality assessment.
 
 import os
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, Any
+from typing import Dict, List, Optional, Tuple, Union, Any, Callable
 import numpy as np
 import pandas as pd
 import tifffile
@@ -17,41 +16,10 @@ import trackpy as tp
 from skimage.measure import regionprops
 from tqdm import tqdm
 
+# Import the centralized configuration
+from src.utils.config_schemas import TrackingConfig
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class TrackingConfig:
-    """Configuration for 3D cell tracking."""
-    
-    # Tracking parameters
-    search_range: float = 5.0
-    """Maximum distance features can move between frames"""
-    
-    memory: int = 1
-    """Number of frames to remember a particle"""
-    
-    min_track_length: int = 3
-    """Minimum length of tracks to keep"""
-    
-    # TODO : Why is area based filtering in tracking config?
-    # Region filtering parameters
-    min_area: int = 10
-    """Minimum cell area to consider"""
-    
-    max_area: int = 5000
-    """Maximum cell area to consider"""
-    
-    # Quality assessment
-    area_percentiles: Tuple[float, float] = (0.1, 99.9)
-    """Percentiles for area-based filtering"""
-    
-    # Output options
-    save_intermediate: bool = False
-    """Whether to save intermediate tracking data"""
-    
-    output_dtype: str = "int32"
-    """Data type for output arrays"""
 
 
 class CellTracker3D:
@@ -80,7 +48,7 @@ class CellTracker3D:
         self, 
         segmentation_mask: np.ndarray,
         intensity_image: Optional[np.ndarray] = None,
-        extra_properties: Optional[List[callable]] = None
+        extra_properties: Optional[List[Callable]] = None
     ) -> pd.DataFrame:
         """
         Extract cell properties from a single segmentation mask.
@@ -136,7 +104,7 @@ class CellTracker3D:
         self, 
         segmentation_stack: np.ndarray,
         intensity_stack: Optional[np.ndarray] = None,
-        extra_properties: Optional[List[callable]] = None
+        extra_properties: Optional[List[Callable]] = None
     ) -> List[Tuple[int, pd.DataFrame]]:
         """
         Extract cell centers from a 3D segmentation stack.

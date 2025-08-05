@@ -176,6 +176,9 @@ cython_debug/
 # slurm files
 slurm/
 
+/data/
+/github/
+
 data/
 build/
 dist/
