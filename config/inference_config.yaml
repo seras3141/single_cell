@@ -1,8 +1,8 @@
 # Inference Configuration for Single Cell Analysis Pipeline
 
 paths:
-  input_dir: "data/sample_plates_split"  # Base directory with datasets
-  output_dir: "data/sample_plates_split/results"  # Where to store the results
+  input_dir: "data/sample_data_out/split_data"  # Base directory with datasets
+  output_dir: "data/sample_data_out/results"  # Where to store the results
 
 
 # Segmentation model configuration

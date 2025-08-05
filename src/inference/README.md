@@ -1,21 +1,54 @@
 # Cell Segmentation Inference Pipeline
 
-This module provides a comprehensive inference pipeline for running cell segmentation predictions using Cellpose models on test datasets. The pipeline is designed following machine learning best practices with organized output structure and extensive configuration options.
+This module provides a comprehensive inference pipeline for running cell segmentation predictions using Cellpose models on test datasets.
 
-## Features
-
-- **Modular Design**: Separate components for predictors, output management, and pipeline orchestration
-- **Multiple Model Support**: Currently supports Cellpose with easy extensibility for other models
-- **Organized Output**: Structured output directories following the pattern `{output_dir}/{model_name}/{dataset}`
-- **Z-Stack Support**: Handle both 2D images and 3D Z-stacks
-- **Comprehensive Logging**: Detailed logging and metadata tracking
-- **Configuration-Driven**: YAML-based configuration for reproducible experiments
-- **Visualization**: Automatic generation of segmentation overlays
-- **Batch Processing**: Efficient processing of large datasets
+<!-- TODO Add sample image (Input, GT, Pred) -->
 
 ## Quick Start
 
-### 1. Basic Usage
+Run the entire inference pipeline in one command:
+
+```bash
+# Basic inference using command line arguments
+python scripts/run_inference.py \
+    --input-dir data/sample_plates_split/test \
+    --output-dir outputs/inference_results \
+    --model-name cyto3 \
+    --flow-threshold 0.3 \
+    --min-size 25 \
+    --diameter 30
+
+# Using dedicated inference config (for inference-only pipelines)
+python scripts/run_inference.py \
+    --config config/inference_config.yaml \
+    --input-dir data/sample_plates_split/split \
+    --output-dir outputs/inference_results
+```
+
+For more control over individual steps, see the detailed pipeline below.
+
+## Detailed Inference Pipeline
+
+### 1. API Usage
+
+**Configuration-Based Usage** (Recommended)
+
+```python
+from src.inference import InferencePipeline
+
+# Create pipeline from main config with overrides
+pipeline = InferencePipeline.from_config(
+    config_path="config/config.yaml",
+    model_name="cyto3",
+    output_dir="results",
+    dataset_name="test"
+)
+
+# Run inference
+results = pipeline.run_inference(input_dir="data/test")
+```
+
+**Simple Pipeline:**
 
 ```python
 from src.inference import CellposePredictor, OutputManager, InferencePipeline
@@ -60,7 +93,7 @@ python scripts/run_inference.py \
     --min-size 25 \
     --diameter 30
 
-# Using configuration file (recommended)
+# Using inference-specific configuration file
 python scripts/run_inference.py \
     --config config/inference_config.yaml \
     --input-dir data/sample_plates_split/test \
@@ -81,23 +114,6 @@ python scripts/run_inference.py \
     --no-metadata --no-overlays
 ```
 
-### 3. Configuration-Based Usage
-
-```python
-from src.inference import InferencePipeline
-
-# Create pipeline from config
-pipeline = InferencePipeline.from_config(
-    config_path="config/inference_config.yaml",
-    model_name="cyto3",
-    output_dir="results",
-    dataset_name="test"
-)
-
-# Run inference
-results = pipeline.run_inference(input_dir="data/test")
-```
-
 ## Output Structure
 
 The pipeline creates organized output directories:
@@ -114,41 +130,8 @@ results/
             └── inference.log    # Detailed log file
 ```
 
-### File Naming Convention
 
-- **Masks**: `{original_name}_masks.tif`
-- **Overlays**: `{original_name}_overlay.png`  
-- **Metadata**: `{original_name}_metadata.json`
-- **Z-stacks**: `{original_name}_stack.tif` (full stack), `{original_name}_z{idx:03d}_masks.tif` (individual slices)
-
-## Architecture
-
-### Core Components
-
-1. **BasePredictor**: Abstract base class defining the predictor interface
-2. **CellposePredictor**: Concrete implementation for Cellpose models
-3. **OutputManager**: Handles file organization and saving
-4. **InferencePipeline**: Orchestrates the entire inference process
-
-### Class Hierarchy
-
-```
-BasePredictor (ABC)
-├── CellposePredictor
-└── [Future predictors: OmniposePredictor, CustomPredictor, etc.]
-
-OutputManager
-├── save_prediction()
-├── save_z_stack_prediction()
-└── finalize_run()
-
-InferencePipeline
-├── run_inference()
-├── run_inference_single()
-└── from_config() [class method]
-```
-
-## Configuration
+<!-- ## Configuration
 
 ### Inference Config Example
 
@@ -174,8 +157,9 @@ inference:
 paths:
   test_data: "data/test"
   output_root: "results"
-```
+``` -->
 
+<!-- TODO : Update this part with different models, and training integration
 ## Advanced Usage
 
 ### 1. Custom Model Loading
@@ -203,10 +187,11 @@ results = pipeline.run_inference(
 )
 
 # Process entire volume as 3D
+# TODO : Update this
 predictor = CellposePredictor(model_type="cyto3")
-masks, metadata = predictor.predict_z_stack(
+masks, metadata = predictor.predict_3d(
     z_stack_array,
-    process_2d=False  # True for slice-by-slice, False for 3D
+    do_2d=False  # True for slice-by-slice, False for 3D
 )
 ```
 
@@ -231,9 +216,9 @@ output_manager = OutputManager(
     dataset_name="experiment_1",
     create_subdirs=False  # Flat structure
 )
-```
+``` -->
 
-## Model Parameters
+<!-- ## Model Parameters
 
 ### Cellpose Parameters
 
@@ -254,58 +239,11 @@ output_manager = OutputManager(
 - **cyto3**: Latest cytoplasm model (recommended for brightfield)
 - **cyto2**: Cytoplasm model for fluorescence
 - **cyto**: Original cytoplasm model
-- **nuclei**: Nuclear segmentation model
+- **nuclei**: Nuclear segmentation model -->
 
-## Error Handling and Logging
 
-The pipeline includes comprehensive error handling and logging:
 
-```python
-# Validation before running
-validation = pipeline.validate_setup()
-if not validation['overall']:
-    print(f"Setup issues: {validation}")
-
-# Detailed logging
-import logging
-logging.basicConfig(level=logging.INFO)
-
-# Results include error information
-results = pipeline.run_inference(input_dir="data/test")
-if results['failed_files']:
-    for failed in results['failed_files']:
-        print(f"Failed: {failed['file']} - {failed['error']}")
-```
-
-## Performance Considerations
-
-### GPU Usage
-
-```python
-# Check GPU availability
-import torch
-print(f"CUDA available: {torch.cuda.is_available()}")
-
-# Monitor GPU memory during inference
-predictor = CellposePredictor(gpu=True)
-# Process in batches for large datasets
-```
-
-### Memory Management
-
-```python
-# For large Z-stacks, process slice-by-slice
-results = pipeline.run_inference(
-    input_dir="data/large_stacks",
-    process_z_stacks=True  # Processes each slice individually
-)
-
-# Or process in chunks
-chunk_size = 10  # Process 10 files at a time
-# Implementation would require custom batching logic
-```
-
-## Integration with Training Pipeline
+<!-- ## Integration with Training Pipeline
 
 The inference pipeline is designed to work seamlessly with trained models:
 
@@ -320,9 +258,9 @@ predictor.load_model(trained_model_path)
 # Run inference with trained model
 pipeline = InferencePipeline(predictor, output_manager)
 results = pipeline.run_inference(input_dir="data/test")
-```
+``` -->
 
-## Troubleshooting
+<!-- ## Troubleshooting
 
 ### Common Issues and Solutions
 
@@ -384,59 +322,55 @@ results = pipeline.run_inference(input_dir="data/test")
    python scripts/run_inference.py \
        --input-dir "E:\sera\Helmholtz\single_cell\data\test" \
        --output-dir "E:\sera\Helmholtz\single_cell\outputs"
-   ```
+   ``` -->
 
-### Debugging Steps
-
-1. **Test with a single file first**:
-   ```python
-   from src.inference import CellposePredictor
-   
-   predictor = CellposePredictor(model_type="cyto3", gpu=True)
-   info = predictor.get_model_info()
-   print(f"Model status: {info}")
-   ```
-
-2. **Check the logs**:
-   ```bash
-   # Logs are saved in the output directory
-   cat outputs/test_inference/pred/cyto3/test/inference.log
-   ```
-
-3. **Validate setup**:
-   ```python
-   from src.inference import InferencePipeline
-   
-   pipeline = InferencePipeline.from_config("config/inference_config.yaml")
-   validation = pipeline.validate_setup()
-   print(f"Setup validation: {validation}")
-   ```
 
 ## Examples
 
 See `examples/inference_example.py` for comprehensive usage examples including:
 - Basic inference setup
-- Configuration-based inference  
+- Configuration-based inference with OmegaConf
+- CLI override patterns
 - Single file processing
 - Custom model usage
 - Error handling patterns
 
-## Future Extensions
 
-The modular design allows for easy extension:
+## Configuration
 
-- **New Models**: Implement `BasePredictor` for other segmentation models
-- **Custom Outputs**: Extend `OutputManager` for different file formats
-- **Preprocessing**: Add preprocessing steps to the pipeline
-- **Postprocessing**: Add cell tracking, feature extraction, etc.
-- **Cloud Integration**: Add cloud storage backends
-- **Distributed Processing**: Add support for cluster computing
+You can:
+
+1. **Use the main config**: [`config/config.yaml`](config/config.yaml ) (default)
+2. **Use inference-specific config**: [`config/inference_config.yaml`](config/inference_config.yaml ) (for inference-only)
+3. **Override parameters via CLI**: Use `--override key.subkey=value` syntax
+
+### CLI Override Examples
+
+```bash
+# Override model type
+python scripts/run_inference.py \
+    --input-dir data/test \
+    --override segmentation.cellpose.model_type=cyto2
+
+# Override multiple parameters
+python scripts/run_inference.py \
+    --input-dir data/test \
+    --override segmentation.cellpose.flow_threshold=0.3 \
+    --override segmentation.cellpose.min_size=25
+
+# Multiple overrides in one command
+python scripts/run_inference.py \
+    --input-dir data/test \
+    --override segmentation.cellpose.model_type=cyto2 \
+    --override segmentation.cellpose.gpu=false \
+    --override segmentation.cellpose.diameter=25
+```
 
 ## Performance Benchmarks
 
-### Test Results (Real Data)
+<!-- ### Test Results -->
 
-**Hardware**: NVIDIA GPU (CUDA 12.3), Windows 11  
+<!-- **Hardware**: NVIDIA GPU (CUDA 12.3), Windows 11  
 **Dataset**: 20 brightfield images (1024x1024, 16-bit TIF)  
 **Model**: Cellpose cyto3  
 
@@ -445,9 +379,7 @@ The modular design allows for easy extension:
 | **Total Processing Time** | ~2-3 minutes |
 | **Average per Image** | ~6-9 seconds |
 | **Total Cells Detected** | 10,301 cells |
-| **Average Cells per Image** | ~515 cells |
-| **Success Rate** | 100% (0 failed files) |
-| **Output Files Generated** | 80 files (20 masks + 20 metadata + 20 overlays + summaries) |
+| **Average Cells per Image** | ~515 cells | -->
 
 ### Performance Modes
 

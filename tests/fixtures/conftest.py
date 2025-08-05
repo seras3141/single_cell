@@ -110,21 +110,17 @@ def test_config(temp_directory):
                 'channels': [0, 0],
                 'normalize': True,
                 'invert': False
-            }
-        },
-        'inference': {
-            'file_patterns': ['*_BF.tif'],
-            'output': {
-                'save_overlays': True,
-                'save_metadata': True
             },
-            'processing': {
-                'process_z_stacks': False
+            'inference': {
+                'save_overlays': True,
+                'save_metadata': True,
+                'process_z_stacks': False,
+                'file_pattern': '*_BF.tif'
             }
         },
         'paths': {
-            'test_data': 'data/test',
-            'output_root': 'results'
+            'input_dir': 'data/test',
+            'output_dir': 'data/results'
         }
     }
     

@@ -164,38 +164,39 @@ class CellposePredictor(BasePredictor):
             logging.error(f"Prediction failed: {e}")
             raise
     
-    def predict_z_stack(
+    def predict_3d(
         self,
-        z_stack: np.ndarray,
-        process_2d: bool = True,
+        image: np.ndarray,
+        do_2d: bool = False,
         **kwargs
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
-        Run prediction on a Z-stack of images.
+        Run prediction on a 3D image.
         
         Args:
-            z_stack: 3D array where first dimension is Z
-            process_2d: If True, process each Z-slice independently
+            image: 3D numpy array (z, y, x)
             **kwargs: Additional prediction parameters
             
         Returns:
-            Tuple of (masks, metadata) for the entire stack
+            Tuple of (masks, metadata) for the 3D image
         """
-        if z_stack.ndim != 3:
-            raise ValueError("Z-stack must be 3D array (z, y, x)")
+        if image.ndim != 3:
+            raise ValueError("Input must be a 3D array (z, y, x)")
         
-        if process_2d:
+        if do_2d:
+
             # Process each Z-slice independently
             all_masks = []
             all_metadata = []
+            max_existing = 0
             
-            for z_idx in range(z_stack.shape[0]):
-                slice_img = z_stack[z_idx]
+            for z_idx in range(image.shape[0]):
+                slice_img = image[z_idx]
                 masks, metadata = self.predict(slice_img, **kwargs)
                 
                 # Adjust mask values to avoid conflicts between slices
                 if len(all_masks) > 0:
-                    max_existing = max([np.max(m) for m in all_masks])
+                    max_existing = max(max_existing, np.max(all_masks[-1]))
                     masks[masks > 0] += max_existing
                 
                 all_masks.append(masks)
@@ -208,16 +209,14 @@ class CellposePredictor(BasePredictor):
             combined_metadata = {
                 'per_slice_metadata': all_metadata,
                 'total_cells': sum([m['num_cells'] for m in all_metadata]),
-                'stack_shape': z_stack.shape,
+                'stack_shape': image.shape,
                 'processing_mode': '2d_per_slice'
             }
             
             return stacked_masks, combined_metadata
-        
-        else:
-            # Process entire stack as 3D
-            return self.predict(z_stack, **kwargs)
-    
+
+        return self.predict(image, **kwargs)
+
     def get_model_info(self) -> Dict[str, Any]:
         """
         Get information about the loaded Cellpose model.
@@ -257,7 +256,6 @@ class CellposePredictor(BasePredictor):
         # Convert to appropriate format
         processed_img = transforms.convert_image(
             image, 
-            channels=None, 
             channel_axis=None, 
             z_axis=None
         )
