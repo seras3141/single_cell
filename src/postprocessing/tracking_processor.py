@@ -77,6 +77,18 @@ class CellTrackingPipeline:
             return image_path
         self.logger.warning(f"No corresponding image found for {segmentation_path.name}")
         return None
+    
+    def _check(self):
+        """
+        Check if the pipeline is properly configured.
+        Raises an error if any required configuration is missing.
+        """
+
+        if not self.config.tracking_config:
+            raise ValueError("Tracking configuration is not set.")
+        
+        if self.config.enable_blur_filtering and not self.blur_filter:
+            raise ValueError("Blur filtering is enabled but no filter configuration provided.")
 
     def process_single_file(self, segmentation_path: Union[str, Path], image_path: Union[str, Path],
                            output_dir: Optional[Union[str, Path]] = None, output_manager = None,
@@ -109,6 +121,7 @@ class CellTrackingPipeline:
         results = {'input_segmentation': str(segmentation_path), 'input_image': str(image_path)}
 
         # Processing order
+        self._check()
 
         # 1. If blur filtering is enabled, apply it before (default) or after tracking based on config
         if self.config.enable_blur_filtering and self.config.filter_before_tracking:

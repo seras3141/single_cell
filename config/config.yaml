@@ -2,11 +2,11 @@
 
 # Data paths
 paths:
-  input_dir: "data/input/"
-  output_dir: "data/output/"
-  results: "results/"
-  models: "models/"
-  temp: "temp/"
+  input_dir: "data/sample_data"
+  output_dir: "data/sample_data_output"
+  # results: "results/"
+  # models: "models/"
+  # temp: "temp/"
 
 # File processing parameters
 preprocessing:
@@ -42,6 +42,7 @@ segmentation:
     gpu: true
   inference:
     dataset_name: "test"  # Subfolder within input_dir
+    results_folder: "results" # Subfolder within output_dir
     file_pattern: "*_BF.tif"  # Glob pattern for selecting image files
     process_z_stacks: false  # Whether to process Z-stacks
     save_overlays: true  # Whether to save overlay images

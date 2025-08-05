@@ -82,8 +82,7 @@ class InferencePipeline:
         """
         if (config_path is None and config is None) or (config_path and config):
             raise ValueError("Provide either `config_path` or `config`, but not both.")
-
-        from omegaconf import OmegaConf
+        
         if config_path:
             base_config = ConfigManager(config_path)
             if kwargs:
@@ -91,13 +90,11 @@ class InferencePipeline:
             resolved_config = base_config.to_dict()
             
         else:
+            from omegaconf import OmegaConf
             base_config = OmegaConf.create(config)
             if kwargs:
                 base_config = OmegaConf.merge(base_config, OmegaConf.create(kwargs))
             resolved_config = OmegaConf.to_container(base_config, resolve=True)
-
-        print(f"Resolved config: {resolved_config}")  # Debugging line
-        print("Type of resolved config:", type(resolved_config))  # Debugging line
 
         assert isinstance(resolved_config, dict), "Resolved config must be a dictionary"
 
@@ -115,9 +112,11 @@ class InferencePipeline:
 
         # Step 4: Prepare output manager
         inference_config = segmentation_config.get("inference", {})
+        paths_config = resolved_config.get("paths", {})
+        results_folder = inference_config.get("results_folder", "results")
 
         model_name = model_name or cellpose_cfg.get("model_type", "cyto3")
-        output_dir = output_dir or resolved_config.get("paths", {}).get("output_dir", "results")
+        output_dir = output_dir or Path(paths_config.get("output_dir", "results")) / results_folder        
         dataset_name = dataset_name or inference_config.get("dataset_name", "test")
         
         # Initialize output manager

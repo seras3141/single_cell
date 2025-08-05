@@ -307,6 +307,9 @@ def main():
     args = get_inference_args()
     cli_args = vars(args)
 
+    # Remove None values from cli_args
+    cli_args = {k: v for k, v in cli_args.items() if v is not None}
+
     # Set up logging
     setup_logging(cli_args.get("log_level", "INFO"))
 
@@ -319,8 +322,8 @@ def main():
         logging.info("Using default configuration")
 
     # 2: Apply dotlist overrides from CLI
-    from omegaconf import OmegaConf
     if "override" in cli_args:
+        from omegaconf import OmegaConf
         overrides = OmegaConf.from_dotlist(cli_args["override"])
         override_dict = OmegaConf.to_container(overrides)
         logging.info(f"Applying CLI overrides: {cli_args['override']}")

@@ -1,7 +1,8 @@
 import argparse
 import logging
+from pathlib import Path
 import os, sys
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Union
 from src.preprocessing.dataset_split import train_test_split_directory
 from src.utils.config import ConfigManager
 from src.utils.file_utils import BF_IF_FileHandler
@@ -60,16 +61,28 @@ def get_preprocessing_legacy_args(args):
 
     return legacy_args
 
-def run_preprocessing_from_config(config: Dict[str, Any]):
+def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[Union[str, Path]] = None, output_dir: Optional[Union[str, Path]] = None):
     paths_config = config.get('paths', {})
     preprocessing_config = config.get('preprocessing', {})
-    output_dir = paths_config.get('output_dir', 'data/output/')
+
+    if input_dir is None:
+        input_dir = paths_config.get('input_dir', 'data/input/')
+    if output_dir is None:
+        output_dir = paths_config.get('output_dir', 'data/output/')
+
+    input_dir = Path(input_dir) # type: ignore
+    assert input_dir.exists(), f"Input directory {input_dir} does not exist."
+
+    output_dir = Path(output_dir) # type: ignore
+
+    logger = logging.getLogger(__name__)
+    logger.info("Starting data preparation...")
 
     # Step 1: Split dataset
-    split_dir = os.path.join(output_dir, preprocessing_config.get('split_folder', 'split_data'))
-    print(f"Splitting dataset into train/test at {split_dir} ...")
+    split_dir = output_dir / preprocessing_config.get('split_folder', 'split_data')
+    logger.info(f"Splitting dataset into train/test at {split_dir} ...")
     train_test_split_directory(
-        data_dir=paths_config.get('input_dir', 'data/input/'),
+        data_dir=input_dir,
         output_dir=split_dir,
         test_size=preprocessing_config.get('test_size', 0.2),
         random_state=preprocessing_config.get('random_state', 42),
@@ -80,8 +93,8 @@ def run_preprocessing_from_config(config: Dict[str, Any]):
 
     # Step 2: Combine 2D to 3D
     input_2d_dir = split_dir
-    output_3d_dir = os.path.join(output_dir, "3d_images")
-    print(f"Combining 2D images into 3D stacks at {output_3d_dir} ...")
+    output_3d_dir = output_dir / "3d_images"
+    logger.info(f"Combining 2D images into 3D stacks at {output_3d_dir} ...")
     combine_2d_to_3d(
         input_dir=input_2d_dir,
         output_dir=output_3d_dir,
@@ -91,8 +104,8 @@ def run_preprocessing_from_config(config: Dict[str, Any]):
 
     # Step 3: Generate blur heatmaps
     blur_config = config.get('quality', {}).get('blur_detection', {})
-    blur_dir = os.path.join(output_dir, "blur_heatmaps")
-    print(f"Generating blur heatmaps at {blur_dir} ...")
+    blur_dir = output_dir / "blur_heatmaps"
+    logger.info(f"Generating blur heatmaps at {blur_dir} ...")
     measure_dataset_blur_heatmaps(
         input_dir=output_3d_dir,
         output_dir=blur_dir,
@@ -102,7 +115,7 @@ def run_preprocessing_from_config(config: Dict[str, Any]):
         normalize=True,
         overwrite=True,
     )
-    print("Preprocessing complete.")
+    logger.info("Preprocessing complete.")
 
 def run_preprocessing_pipeline(args):
     """ 

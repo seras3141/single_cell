@@ -80,7 +80,8 @@ class CellposeConfig:
 @dataclass
 class InferenceConfig:
     """Inference configuration for segmentation."""
-    dataset_name: str = "test"
+    dataset_name: str = "test" # Name of the dataset (subfolder) for inference
+    results_folder: str = "results"  # Subfolder to save inference results
     file_pattern: str = "*_BF.tif"  # Glob pattern for selecting image files
     process_z_stacks: bool = False  # Whether to process Z-stacks
     save_overlays: bool = True  # Whether to save overlay images

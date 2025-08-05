@@ -101,15 +101,6 @@ def create_postprocessing_config(config : dict) -> PostprocessingConfig:
     return postprocessing_config
 
 
-def merge_config_and_args(config_dict, args_namespace):
-    """Merge config file dictionary and argparse Namespace, CLI args take priority."""
-    merged = config_dict.copy()
-    for key, value in vars(args_namespace).items():
-        if value is not None:
-            merged[key] = value
-    return argparse.Namespace(**merged)
-
-
 def get_postprocessing_args():
     parser = argparse.ArgumentParser( description="3D Cell Tracking and Analysis Pipeline", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -270,13 +261,13 @@ def run_single_file_postprocessing(pipeline, args):
     logger.info("Processing completed successfully")
     logger.info(f"Results saved to: {result.get('final_output', 'N/A')}")
 
-def run_batch_postprocessing(pipeline, image_dir, seg_dir, blur_dir, output_dir):
+def run_batch_postprocessing(pipeline, image_dir, mask_dir, blur_dir, output_dir):
     """Run postprocessing pipeline on a batch of files."""
     logger = logging.getLogger(__name__)
-    logger.info(f"Processing batch from directory: {seg_dir}")
+    logger.info(f"Processing batch from directory: {mask_dir}")
     results = pipeline.process_batch(
         image_dir=image_dir,
-        mask_dir=seg_dir,
+        mask_dir=mask_dir,
         output_dir=output_dir,
         blur_cache_dir=blur_dir,
     )
@@ -287,6 +278,9 @@ def main():
     """Main CLI function."""
     args, parser = get_postprocessing_args()
     cli_args = vars(args)
+
+    # Remove None values from cli_args
+    cli_args = {k: v for k, v in cli_args.items() if v is not None}
 
     # Set up logging
     setup_logging(cli_args.get("log_level", "INFO"))
