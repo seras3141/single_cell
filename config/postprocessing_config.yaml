@@ -1,0 +1,41 @@
+# Single Cell Analysis Pipeline Configuration
+
+# Data paths
+paths:
+  image_dir: "data/images/"
+  seg_dir: "data/segmentations/"
+  blur_dir: "data/blur/"
+  output_dir: "data/output/"
+  
+# Image quality assessment
+quality:
+  blur_detection:
+    patch_size: [32, 32]
+    stride_size: [8, 8]
+
+filtering:
+  # Cell filtering parameters
+  # min_cell_size: 30
+  # max_cell_size: 1000
+  # min_nucleus_size: 10
+  # max_nucleus_size: 500
+  blur_threshold: 0.5
+
+# Cell tracking parameters
+tracking:
+  min_area: 30
+  max_area: 1000
+  search_range: 5
+  memory: 1
+  min_track_length: 3
+
+postprocessing:
+  enable_blur_filtering: true
+  filter_before_tracking: true
+  save_intermediate_results: false
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  filename: "logs/postprocessing.log"

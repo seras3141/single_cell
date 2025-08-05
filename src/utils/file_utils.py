@@ -50,6 +50,17 @@ class DatasetPaths:
 class AbstractFileHandler(ABC):
     """Abstract base class for file renaming operations."""
 
+    DEFAULT_PATTERNS = {
+    }
+
+    def __init__(self, patterns: Optional[Dict[str, FilePattern]] = None):
+        """Initialize with optional custom patterns.
+
+        Args:
+            patterns: Dictionary of file type to FilePattern mappings
+        """
+        self.patterns = patterns or self.DEFAULT_PATTERNS
+
     @abstractmethod
     def rename_file(self, filename: str, file_type: str) -> str:
         """Rename file according to pattern for given file type.
@@ -64,11 +75,12 @@ class AbstractFileHandler(ABC):
         pass
 
     @abstractmethod
-    def rename_image(self, filename: str) -> str:
+    def rename_image(self, filename: str, suffix: Optional[str] = None) -> str:
         """Rename image file to standardized format.
         
         Args:
             filename: Original filename
+            suffix: Optional suffix to append to the filename
             
         Returns:
             Standardized filename
@@ -126,13 +138,13 @@ class DefaultFileHandler(AbstractFileHandler):
         )
     }
 
-    def __init__(self, patterns: Dict[str, FilePattern] = None):
-        """Initialize with optional custom patterns.
+    # def __init__(self, patterns: Optional[Dict[str, FilePattern]] = None):
+    #     """Initialize with optional custom patterns.
         
-        Args:
-            patterns: Dictionary of file type to FilePattern mappings
-        """
-        self.patterns = patterns or self.DEFAULT_PATTERNS
+    #     Args:
+    #         patterns: Dictionary of file type to FilePattern mappings
+    #     """
+    #     self.patterns = self.DEFAULT_PATTERNS if patterns is None else patterns
 
     def extract_plate_number(self, filepath: str) -> str:
         """Extract plate number from filepath."""
@@ -208,10 +220,6 @@ class BF_IF_FileHandler(DefaultFileHandler):
         )
     }
 
-    def __init__(self, patterns: Dict[str, FilePattern] = None):
-        """Initialize with optional custom patterns."""
-        self.patterns = patterns or self.DEFAULT_PATTERNS
-
     def rename_file(self, filename: str, file_type: str) -> str:
         if file_type not in self.patterns:
             raise ValueError(f"Unknown file type: {file_type}")
@@ -281,10 +289,6 @@ class BF_IF_FileHandler_3D(DefaultFileHandler):
         )
     }
 
-    def __init__(self, patterns: Dict[str, FilePattern] = None):
-        """Initialize with optional custom patterns."""
-        self.patterns = patterns or self.DEFAULT_PATTERNS
-
     def extract_plate_number(self, filepath: str) -> str:
         """Extract plate number from filepath."""
         plate_match = re.search(r'Plate\s*(\d+)', filepath)
@@ -339,10 +343,8 @@ class StandardFileHandler(AbstractFileHandler):
     - z: z-stack number
     - type: file type (e.g., BF for brightfield, Cells for segmentation masks)
     """
-    
-    def __init__(self, patterns: Dict[str, FilePattern] = None):
-        """Initialize with optional custom patterns."""
-        self.patterns = patterns or {
+
+    DEFAULT_PATTERNS = {
             'image': FilePattern(
                 pattern=r't\d+_([A-Z])(\d+)_s\d+_w(\d+)_z(\d+)',
                 groups=['row', 'col', 'well', 'z'],
@@ -353,8 +355,8 @@ class StandardFileHandler(AbstractFileHandler):
                 groups=['row_num', 'col', 'z'],
                 output_format="p{plate}_{row}{col:02d}_z{z}_{mask_type}.tif"
             )
-        }
-    
+        }    
+
     def extract_plate_number(self, filepath: str) -> str:
         """Extract plate number from filepath."""
         plate_match = re.search(r'Plate\s*(\d+)', filepath)
@@ -444,14 +446,6 @@ class BlurFileHandler(AbstractFileHandler):
         ),
     }
 
-    def __init__(self, patterns: Dict[str, FilePattern] = None):
-        """Initialize with optional custom patterns.
-        
-        Args:
-            patterns: Dictionary of file type to FilePattern mappings
-        """
-        self.patterns = patterns or self.DEFAULT_PATTERNS
-
     def extract_plate_number(self, filepath: str) -> str:
         """Extract plate number from filepath."""
         plate_match = re.search(r'Plate\s*(\d+)', filepath)
@@ -460,7 +454,7 @@ class BlurFileHandler(AbstractFileHandler):
             return "unknown"
         return plate_match.group(1)
 
-    def rename_file(self, filename: str, file_type: str, suffix: str) -> str:
+    def rename_file(self, filename: Union[str, Path], file_type: str, suffix: str) -> str:
         if file_type not in self.patterns:
             raise ValueError(f"Unknown file type: {file_type}")
 
@@ -480,10 +474,10 @@ class BlurFileHandler(AbstractFileHandler):
         
         return pattern.output_format.format(**values)
 
-    def rename_image(self, filename: str, suffix: str) -> str:
+    def rename_image(self, filename: Union[str, Path], suffix: str) -> str:
         return self.rename_file(filename, 'image_BF_3d', suffix)
 
-    def rename_mask(self, filename: str) -> str:
+    def rename_mask(self, filename: Union[str, Path]) -> str:
         raise NotImplementedError("BlurFileHandler does not handle mask files.")
         
     def extract_group_id(self, filename: str) -> str:

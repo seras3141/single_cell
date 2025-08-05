@@ -2,20 +2,19 @@
 
 # Data paths
 paths:
-  data_root: "data/"
-  raw_data: "data/raw/"
-  processed_data: "data/processed/"
+  input_dir: "data/input/"
+  output_dir: "data/output/"
   results: "results/"
   models: "models/"
   temp: "temp/"
 
 # File processing parameters
-file_processing:
+preprocessing:
   # Dataset splitting
   test_size: 0.2
   random_state: 42
   split_by_group: true
-  split_folder: "processed_data"
+  split_folder: "split_data"
 
   raw_data_patterns:
     brightfield: "t1_*_w1_*.tif"
@@ -27,13 +26,6 @@ file_processing:
     brightfield: "*_BF*.tif"
     masks: "*_Cells*.tif"
     nuclei: "*_Nuclei*.tif"
-
-# Image quality assessment
-quality:
-  blur_detection:
-    patch_size: [32, 32]
-    stride_size: [8, 8]
-    laplacian_threshold: 100
 
 # Segmentation parameters
 segmentation:
@@ -48,7 +40,18 @@ segmentation:
     normalize: true
     invert: false
     gpu: true
+  inference:
+    dataset_name: "test"  # Subfolder within input_dir
+    file_pattern: "*_BF.tif"  # Glob pattern for selecting image files
+    process_z_stacks: false  # Whether to process Z-stacks
+    save_overlays: true  # Whether to save overlay images
+    save_metadata: true  # Whether to save JSON metadata for predictions
   
+# Image quality assessment
+quality:
+  blur_detection:
+    patch_size: [32, 32]
+    stride_size: [8, 8]
 
 
 # Training parameters
@@ -113,10 +116,6 @@ output:
   save_outlines: true
   save_flows: false
   save_features: true
-  formats:
-    images: "tif"
-    features: "csv"
-    metadata: "json"
 
 # Logging configuration
 logging:
