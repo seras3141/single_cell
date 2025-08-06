@@ -37,7 +37,8 @@ class PreprocessingConfig:
     random_state: int = 42
     split_by_group: bool = True
     split_folder: str = "split_data"
-    
+    out_3d_folder: str = "3d_images"  # Directory for 3D images
+
     raw_data_patterns: Dict[str, str] = field(default_factory=lambda: {
         "brightfield": "t1_*_w1_*.tif",
         "masks": "Cells_*.tif",

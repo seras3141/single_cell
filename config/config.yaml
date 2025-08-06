@@ -15,6 +15,7 @@ preprocessing:
   random_state: 42
   split_by_group: true
   split_folder: "split_data"
+  out_3d_folder: "3d_images"
 
   raw_data_patterns:
     brightfield: "t1_*_w1_*.tif"

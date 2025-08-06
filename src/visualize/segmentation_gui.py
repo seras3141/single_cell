@@ -17,7 +17,7 @@ from .qt_config import configure_qt_backend, create_qt_application
 import sys
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 import logging
 
 from PyQt5.QtWidgets import (
@@ -38,9 +38,42 @@ import napari
 class FileSearcher:
     """Helper class to search for related files based on base image name."""
     
-    def __init__(self, base_dir: Path):
+    def __init__(
+        self,
+        base_dir: Path,
+        processed_folder: str = "sample_plates_processed",
+        custom_paths: Dict[str, Path] = {}
+    ):
         self.base_dir = Path(base_dir)
-        
+        self._processed_folder = processed_folder
+
+        # Allow custom paths for directories
+        self._3d_data_dir = custom_paths.get("3d_data_dir", self.base_dir / self._processed_folder / "split_3d")
+        self._blur_heatmap_dir = custom_paths.get("blur_heatmap_dir", self.base_dir / self._processed_folder / "blur_heatmaps")
+        self._inference_dir = custom_paths.get("inference_dir", self.base_dir / self._processed_folder / "segmentation_2d" / "cyto3" / "test" / "masks_3d")
+        self._postprocessed_dir = custom_paths.get("postprocessed_dir", self.base_dir / self._processed_folder / "segmentation_2d" / "cyto3" / "test" / "tracking" / "final")
+
+    def update_directories(
+        self,
+        base_dir: Optional[Path] = None,
+        processed_folder: Optional[str] = None,
+        custom_paths: Dict[str, Path] = {}
+    ):
+        """Update the base directory and related paths."""
+        if base_dir:
+            self.base_dir = base_dir
+        if processed_folder:
+            self._processed_folder = processed_folder
+
+        # Ensure custom_paths is a dictionary
+        custom_paths = custom_paths or {}
+
+        # Update paths with custom paths if provided
+        self._3d_data_dir = custom_paths.get("3d_data_dir", self.base_dir / self._processed_folder / "split_3d")
+        self._blur_heatmap_dir = custom_paths.get("blur_heatmap_dir", self.base_dir / self._processed_folder / "blur_heatmaps")
+        self._inference_dir = custom_paths.get("inference_dir", self.base_dir / self._processed_folder / "segmentation_2d" / "cyto3" / "test" / "masks_3d")
+        self._postprocessed_dir = custom_paths.get("postprocessed_dir", self.base_dir / self._processed_folder / "segmentation_2d" / "cyto3" / "test" / "tracking" / "final")
+
     def find_related_files(self, base_name: str) -> Dict[str, Optional[Path]]:
         """
         Find all related files for a given base name (e.g., 'p2126_J03').
@@ -49,52 +82,53 @@ class FileSearcher:
             Dictionary with keys: 'brightfield', 'ground_truth', 'blur_map', 
                                 'inference', 'postprocessed'
         """
-        files = {
+        files: Dict[str, Optional[Path]] = {
             'brightfield': None,
             'ground_truth': None,
             'blur_map': None,
             'inference': None,
             'postprocessed': None
         }
-        
+
         # Brightfield image
-        bf_path = self.base_dir / "sample_plates_processed" / "split_3d" / f"{base_name}_BF_3d.tif"
+        bf_path = self._3d_data_dir / f"{base_name}_BF_3d.tif"
         if bf_path.exists():
             files['brightfield'] = bf_path
-            
+
         # Ground truth segmentation
-        gt_path = self.base_dir / "sample_plates_processed" / "split_3d" / f"{base_name}_Cells_3d.tif"
+        gt_path = self._3d_data_dir / f"{base_name}_Cells_3d.tif"
         if gt_path.exists():
             files['ground_truth'] = gt_path
-            
+
         # Blur heatmap
-        blur_path = self.base_dir / "sample_plates_processed" / "blur_heatmaps" / f"{base_name}_BF_3d_blur_heatmap.tif"
+        blur_path = self._blur_heatmap_dir / f"{base_name}_BF_3d_blur_heatmap.tif"
         if blur_path.exists():
             files['blur_map'] = blur_path
-            
+
         # Inference prediction
-        inference_path = self.base_dir / "sample_plates_processed" / "segmentation_2d" / "cyto3" / "test" / "masks_3d" / f"{base_name}_masks_3d.tif"
+        inference_path = self._inference_dir / f"{base_name}_masks_3d.tif"
         if inference_path.exists():
             files['inference'] = inference_path
-            
+
         # Final postprocessed segmentation
-        final_path = self.base_dir / "sample_plates_processed" / "segmentation_2d" / "cyto3" / "test" / "tracking" / "final" / f"{base_name}_masks_3d.tif"
+        final_path = self._postprocessed_dir / f"{base_name}_masks_3d.tif"
         if final_path.exists():
             files['postprocessed'] = final_path
-            
+
         return files
     
     def get_available_base_names(self) -> List[str]:
         """Get list of available base image names."""
         base_names = set()
-        
-        # Look in split_3d for BF images
-        split_3d_dir = self.base_dir / "sample_plates_processed" / "split_3d"
-        if split_3d_dir.exists():
-            for file_path in split_3d_dir.glob("*_BF_3d.tif"):
+
+        # Look in 3d_data_dir for BF images
+        if self._3d_data_dir.exists():
+            for file_path in self._3d_data_dir.glob("*_BF_3d.tif"):
                 base_name = file_path.stem.replace("_BF_3d", "")
                 base_names.add(base_name)
-                
+        else:
+            logging.warning(f"Directory {self._3d_data_dir} does not exist")
+
         return sorted(list(base_names))
 
 
@@ -109,9 +143,9 @@ class NapariLauncher(QObject):
     finished = pyqtSignal()
     error = pyqtSignal(str)
     
-    def __init__(self, files: Dict[str, Path], visualization_config: Dict):
+    def __init__(self, files: Dict[str, Optional[Path]], visualization_config: Dict):
         super().__init__()
-        self.files = files
+        self.files = {k: v for k, v in files.items() if v is not None}  # Filter out None values
         self.config = visualization_config
         
     def launch_napari(self):
@@ -159,8 +193,8 @@ class NapariLauncher(QObject):
 
 class SegmentationVisualizationGUI(QMainWindow):
     """Main GUI window for segmentation visualization."""
-    
-    def __init__(self, data_dir: str = None):
+
+    def __init__(self, data_dir: Optional[str] = None, custom_paths: Dict[str, Path] = {}):
         super().__init__()
         
         # Set data directory
@@ -170,8 +204,8 @@ class SegmentationVisualizationGUI(QMainWindow):
             self.data_dir = current_dir / "data"
         else:
             self.data_dir = Path(data_dir)
-            
-        self.file_searcher = FileSearcher(self.data_dir)
+
+        self.file_searcher = FileSearcher(self.data_dir, custom_paths=custom_paths)
         self.current_files = {}
         
         self.init_ui()
@@ -190,7 +224,7 @@ class SegmentationVisualizationGUI(QMainWindow):
         main_layout = QHBoxLayout(central_widget)
         
         # Create splitter for resizable panels
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         main_layout.addWidget(splitter)
         
         # Left panel - File selection and controls
@@ -220,6 +254,11 @@ class SegmentationVisualizationGUI(QMainWindow):
         change_dir_btn = QPushButton("Change Directory")
         change_dir_btn.clicked.connect(self.change_data_directory)
         dir_layout.addWidget(change_dir_btn)
+        
+        # Add button for custom subdirectory paths
+        custom_paths_btn = QPushButton("Set Subdirectory Paths")
+        custom_paths_btn.clicked.connect(self.open_custom_paths_dialog)
+        dir_layout.addWidget(custom_paths_btn)
         
         layout.addWidget(dir_group)
         
@@ -353,6 +392,60 @@ class SegmentationVisualizationGUI(QMainWindow):
             self.file_searcher = FileSearcher(self.data_dir)
             self.refresh_file_list()
     
+    def open_custom_paths_dialog(self):
+        """Open a dialog to set custom subdirectory paths for FileSearcher."""
+        from PyQt5.QtWidgets import QDialog, QFormLayout, QLineEdit, QPushButton, QDialogButtonBox
+
+        class CustomPathsDialog(QDialog):
+            def __init__(self, parent, current_paths):
+                super().__init__(parent)
+                self.setWindowTitle("Set Custom Subdirectory Paths")
+                self.setModal(True)
+                self.paths = current_paths.copy()
+                layout = QFormLayout(self)
+
+                self.edits = {}
+                for key, label in [
+                    ("3d_data_dir", "3D Data Directory"),
+                    ("blur_heatmap_dir", "Blur Heatmap Directory"),
+                    ("inference_dir", "Inference Directory"),
+                    ("postprocessed_dir", "Postprocessed Directory")
+                ]:
+                    edit = QLineEdit(str(self.paths.get(key, "")))
+                    layout.addRow(label, edit)
+                    self.edits[key] = edit
+
+                buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                buttons.accepted.connect(self.accept)
+                buttons.rejected.connect(self.reject)
+                layout.addWidget(buttons)
+
+            def get_paths(self):
+                for key, edit in self.edits.items():
+                    val = edit.text().strip()
+                    if val:
+                        self.paths[key] = Path(val)
+                    else:
+                        self.paths.pop(key, None)
+                return self.paths
+
+        # Get current custom paths from file_searcher
+        current_paths = {
+            "3d_data_dir": self.file_searcher._3d_data_dir,
+            "blur_heatmap_dir": self.file_searcher._blur_heatmap_dir,
+            "inference_dir": self.file_searcher._inference_dir,
+            "postprocessed_dir": self.file_searcher._postprocessed_dir
+        }
+        dlg = CustomPathsDialog(self, current_paths)
+        if dlg.exec_() == QDialog.Accepted:
+            new_paths = dlg.get_paths()
+            self.file_searcher.update_directories(
+                base_dir=self.data_dir,
+                custom_paths=new_paths
+            )
+            self.log_message("Custom subdirectory paths updated.")
+            self.refresh_file_list()
+
     def refresh_file_list(self):
         """Refresh the list of available base images."""
         self.file_list.clear()

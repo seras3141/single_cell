@@ -56,6 +56,21 @@ def check_dependencies():
     
     return True
 
+import argparse
+from src.utils.config import ConfigManager, get_paths_from_config
+
+def parse_args():
+    """Parse command-line arguments for configuration."""
+    parser = argparse.ArgumentParser(description="2D Segmentation Visualization GUI Launcher")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to a configuration file (optional)"
+    )
+    return parser.parse_args()
+
+
 def main():
     """Main launcher function."""
     print("=== 2D Segmentation Visualization GUI ===")
@@ -84,6 +99,16 @@ def main():
             app = QApplication(sys.argv)
             app.setApplicationName("2D Segmentation Visualizer")
             app.setApplicationVersion("1.0")
+
+        args = parse_args()
+        if args.config:
+            print(f"Using configuration file: {args.config}")
+            # Load configuration logic here if needed
+            config = ConfigManager(args.config)
+            paths = get_paths_from_config(config)
+        else:
+            print("No configuration file provided, using defaults.")
+            paths = {}
         
         # Check data directory
         current_dir = Path(__file__).parent
@@ -96,7 +121,7 @@ def main():
         
         # Create and show GUI
         print("Launching GUI...")
-        window = SegmentationVisualizationGUI(str(data_dir) if data_dir.exists() else None)
+        window = SegmentationVisualizationGUI(str(data_dir) if data_dir.exists() else None, custom_paths=paths)
         window.show()
         
         print("✓ GUI launched successfully!")

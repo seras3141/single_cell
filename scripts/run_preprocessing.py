@@ -93,7 +93,8 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
 
     # Step 2: Combine 2D to 3D
     input_2d_dir = split_dir
-    output_3d_dir = output_dir / "3d_images"
+    out_3d_folder = preprocessing_config.get('out_3d_folder', '3d_images')
+    output_3d_dir = output_dir / out_3d_folder
     logger.info(f"Combining 2D images into 3D stacks at {output_3d_dir} ...")
     combine_2d_to_3d(
         input_dir=input_2d_dir,

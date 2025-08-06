@@ -63,7 +63,7 @@ class ConfigManager:
             merged_config = OmegaConf.merge(schema, config)
             
             # Validate the configuration
-            validate_pipeline_config(OmegaConf.to_object(merged_config))
+            validate_pipeline_config(OmegaConf.to_object(merged_config)) # type: ignore
             
             logger.info(f"Loaded configuration from {self.config_path}")
             return merged_config
@@ -306,6 +306,48 @@ def merge_configs(*config_paths: Union[str, Path]) -> ConfigManager:
     
     manager = ConfigManager.__new__(ConfigManager)
     manager.config_path = Path(config_paths[0])
-    manager._config = merged
+    manager._config = merged # type: ignore
     
     return manager
+
+def get_paths_from_config(config: ConfigManager) -> Dict[str, Path]:
+    """
+    Get paths configuration from a config dictionary.
+    
+    Args:
+        config: Configuration dictionary. If None, uses global config.
+        
+    Returns:
+        Dictionary of paths
+    """
+    config_dict = config.to_dict() 
+
+    paths_config = config_dict.get('paths', {})
+    output_dir = paths_config.get('output_dir', 'output')
+
+    # split_folder = config_dict.get("preprocessing", {}).get("split_folder", "split_data")
+    # split_dir = os.path.join(output_dir, split_folder)
+
+    out_3d_folder = config_dict.get("preprocessing", {}).get("out_3d_folder", "3d_images")
+
+    results_folder = config_dict["segmentation"]["inference"]["results_folder"]
+    model_type = config_dict["segmentation"]["cellpose"]["model_type"]
+    dataset_name = config_dict["segmentation"]["inference"]["dataset_name"]
+
+    image_dir = os.path.join(output_dir, out_3d_folder)
+    blur_dir = os.path.join(output_dir, "blur_heatmaps")
+
+    seg_dir = os.path.join(output_dir, results_folder, model_type, dataset_name)
+    mask_dir = os.path.join(seg_dir, "masks_3d")
+    track_dir = os.path.join(seg_dir, "tracking")
+    final_dir = os.path.join(track_dir, "final")
+
+    config_out = {
+        "output_dir": Path(output_dir),
+        "3d_data_dir": Path(image_dir),
+        "blur_heatmap_dir": Path(blur_dir),
+        "inference_dir": Path(mask_dir),
+        "postprocessed_dir": Path(final_dir)
+    }
+
+    return config_out
