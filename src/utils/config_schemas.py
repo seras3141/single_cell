@@ -200,6 +200,37 @@ class FeaturesConfig:
     radiomics: RadiomicsConfig = field(default_factory=RadiomicsConfig)
     morphology: MorphologyConfig = field(default_factory=MorphologyConfig)
 
+@dataclass
+class FeatureExtractionConfig:
+    """Feature extraction configuration."""
+    n_jobs: int = -1  # Use all available cores
+    batch_size: int = 25  # Batch size for parallel processing
+    
+    features: Dict[str, bool] = field(default_factory=lambda: {
+        "morphology": True,
+        "intensity": True,
+        "spatial": True,
+        "texture": True
+    })
+    
+    file_patterns: Dict[str, List[str]] = field(default_factory=lambda: {
+        "images": ["*_BF.tif"],
+        "masks": ["*_Cells.tif"]
+    })
+    
+    preprocessing: Dict[str, Any] = field(default_factory=lambda: {
+        "normalize_intensity": True,
+        "clip_percentiles": [1, 99]
+    })
+    output: Dict[str, Any] = field(default_factory=lambda: {
+        "save_individual_files": True,
+        "save_combined_file": True,
+        "include_metadata": True,
+        "individual_format": "{image_name}_features.csv",
+        "combined_filename": "all_features.csv",
+        "create_subdirs": True,
+    })
+
 
 # =============================================================================
 # Visualization Configuration
@@ -261,7 +292,7 @@ class PipelineConfig:
     filtering: FilterConfig = field(default_factory=FilterConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     postprocessing: PostprocessingConfig = field(default_factory=PostprocessingConfig)
-    features: FeaturesConfig = field(default_factory=FeaturesConfig)
+    feature_extraction: FeatureExtractionConfig = field(default_factory=FeatureExtractionConfig)
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)

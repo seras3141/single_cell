@@ -42,11 +42,11 @@ def check_dependencies():
     except ImportError:
         missing.append("napari[all]")
     
-    try:
-        import tifffile
-        print(f"✓ tifffile {tifffile.__version__} found")
-    except ImportError:
-        missing.append("tifffile")
+    # try:
+    #     import tifffile
+    #     print(f"✓ tifffile {tifffile.__version__} found")
+    # except ImportError:
+    #     missing.append("tifffile")
     
     if missing:
         print(f"\n❌ Missing dependencies: {', '.join(missing)}")

@@ -1,0 +1,47 @@
+Image Analysis Measurements
+
+Morphology
+    Volume	The Volume of a 3D object using the area attribute of the region object in µm³.
+	Diameter	Maximum distance between any two points on the surface of the object in µm.
+	Gyration Radius	Indicates the spatial distribution of the shape. The gyration radius gives a measure of how spread out the shape is around its centroid in µm.
+	Elongation	The ratio of the longest axis to the shortest axis of an object. A value closer to 1 indicates that the object is more spherical, while a value closer to 0 indicates that the object is more elongated.
+	Flatness	The ratio of the second-longest axis to the shortest axis of an object. A value closer to 1 indicates that the object is more spherical, while a value closer to 0 indicates that the object is flatter.
+	Surface Area	The surface area of a 3D object, using the marching cubes algorithm in µm².
+	Surface Area By Volume	The ratio of the surface area to volume for a 3D object in µm⁻¹.
+	Mesh Volume	The volume of 3D object mesh in µm³.
+	Compactness	Measure of how sphere-like an object is, with greater emphasis on the volume of the object.
+	Sphericity	Measure of how sphere-like an object is, with greater emphasis on the surface area of the object.
+	First Principal Axis Length	Length of the longest axis of an object, represented by the first element of the principal_axis_lengths array.
+	Second Principal Axis Length	Length of the second-longest axis of an object, represented by the second element of the principal_axis_lengths array.
+	Third Principal Axis Length	Length of the third-longest axis of an object, represented by the third element of the principal_axis_lengths array.
+	Projection Area XY	The area of the XY projection of a 3D object in µm².
+	Projection Roundness XY	Measure of how close the shape of an object is to a perfect circle, based on the XY projection of a 3D object.
+	Projection Perimeter XY	The perimeter of the XY projection of a 3D object in µm.
+	Projection Area XZ	The area of the XZ projection of a 3D object in µm².
+	Projection Roundness XZ	Measure of how close the shape of an object is to a perfect circle, based on the XZ projection of a 3D object.
+	Projection Perimeter XZ	The perimeter XZ projection of a 3D object in µm.
+	Projection Area YZ	Area of the YZ projection of a 3D object in µm².
+	Projection Roundness YZ	Measure how close the shape of an object is to a perfect circle, based on the YZ projection of a 3D object.
+	Projection Perimeter YZ	The perimeter is the YZ projection of a 3D object in µm.
+
+Intensity
+    Mean Intensity	The mean voxel intensity value of a 3D object.
+	Intensity SD	Standard deviation (SD) of pixel intensity values within a 3D object.
+	Intensity CV	Coefficient of variation (CV) of pixel intensity values within a 3D object.
+	Total Intensity	Computes the total grayscale intensity of a specific 3D region.
+
+Spatial
+    Centroid X	X-coordinate of the centroid of a 3D object in µm.
+	Centroid Y	Y-coordinate of the centroid of a 3D object in µm.
+	Centroid Z	Z-coordinate of the centroid of a 3D object in µm.
+	Center of Mass X	X-coordinate of the weighted centroid of a 3D object, weighted based on voxel intensity values in the segmentation channel in µm.
+	Center of Mass Y	Y-coordinate of the weighted centroid of a 3D object, weighted based on voxel intensity values in the segmentation channel in µm.
+	Center of Mass Z	Z-coordinate of the weighted centroid of a 3D object, weighted based on voxel intensity values in the segmentation channel in µm.
+	Mass Displacement	Euclidean distance between the centroid and the center of mass of a 3D object in µm.
+
+Texture
+    Gabor Mean Intensity	The mean value of voxel intensities of a 3D object after applying a Gabor filter for texture analysis.
+	Gabor Mean Intensity SD	Standard deviation value of pixel intensities of a 3D object after applying a Gabor filter for texture analysis.
+	Skewness	Measure of the asymmetry of the probability distribution of a real-valued random variable about its mean.
+	Kurtosis	Measure of the "tailedness" of the probability distribution of a real-valued random variable.
+	Entropy	The entropy of the pixel intensities values of a Gabor-filtered 3D object. High entropy values indicate complex textures, while low entropy values indicate uniform or homogeneous regions.

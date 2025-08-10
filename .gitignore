@@ -178,8 +178,8 @@ slurm/
 
 /data/
 /github/
+.vscode/
 
-data/
 build/
 dist/
 logs/
@@ -189,3 +189,5 @@ tmp*
 tmp/
 tmp1/
 src/**/*.md
+
+.DS_Store

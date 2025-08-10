@@ -351,7 +351,7 @@ class InferencePipeline:
         from src.utils.logging_utils import setup_logging
 
         log_level = self.log_config.get('level', 'INFO')
-        log_file = self.log_config.get('log_filename', 'inference.log')
+        log_file = self.log_config.get('filename', 'inference.log')
         log_file = self.output_manager.output_dir / log_file
 
         setup_logging(log_level, log_file) # type: ignore

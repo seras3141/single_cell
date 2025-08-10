@@ -16,7 +16,10 @@ python scripts/run_inference.py --input-dir data/test --output-dir results
 # 3. Postprocess results
 python scripts/run_postprocessing.py results/segmentation results/tracked
 
-# 4. Launch GUI for visualization
+# 4. Extract features from segmented cells
+python scripts/run_feature_extraction.py --config config/feature_extraction_config.yaml
+
+# 5. Launch GUI for visualization
 python scripts/launch_gui_safe.py
 ```
 
@@ -42,7 +45,7 @@ results = pipeline.run_inference(input_dir="data/test")
 This project provides a complete, modular workflow for:
 - **2D/3D Cell Segmentation**: Using Cellpose models with preset configurations
 - **Cell Tracking**: Tracking cells across z-stacks using trackpy
-- **Feature Extraction**: PyRadiomics-based feature extraction for cell analysis
+- **Feature Extraction**: Comprehensive morphological, intensity, spatial, and texture feature extraction from segmented cells
 - **Data Management**: Standardized file naming and dataset organization
 - **Quality Control**: Blur detection and filtering for improved segmentation
 - **Visualization**: 3D/4D visualization tools using Napari
@@ -54,48 +57,29 @@ single_cell/
 ├── src/                               # Core modules
 │   ├── core/                          # Core functionality and base classes
 │   ├── preprocessing/                 # Data preprocessing pipeline
-│   │   ├── blur_analysis.py          # Blur heatmap generation for quality control
-│   │   ├── dataset_split.py          # Group-aware train/test splitting
-│   │   └── README.md                 # Detailed preprocessing guide
 │   ├── inference/                     # Inference pipeline
-│   │   ├── inference_pipeline.py     # Main inference orchestration
-│   │   ├── cellpose_predictor.py     # Cellpose prediction wrapper
-│   │   ├── output_manager.py         # Organized output handling
-│   │   └── README.md                 # Inference pipeline guide
+│   ├── features/                      # Feature extraction
 │   ├── postprocessing/               # Post-inference processing
-│   │   ├── cell_tracking.py          # 3D cell tracking across z-stacks
-│   │   ├── blur_filtering.py         # Quality assessment and filtering
-│   │   ├── tracking_processor.py     # Complete postprocessing pipeline
-│   │   └── README.md                 # Postprocessing guide
 │   ├── utils/                         # Core utilities
 │   │   ├── file_utils.py             # Unified file handling
 │   │   ├── blur_measure.py           # Image blur/sharpness detection
 │   │   ├── conversion.py             # 2D/3D format conversion utilities
 │   │   └── config.py                 # Configuration management
 │   └── visualize/                     # Visualization tools
-│       ├── view_3d_tiff.py           # 3D TIFF viewer
-│       ├── view_4d_tiff.py           # 4D TIFF viewer
-│       └── visualize_prediction.py   # Prediction visualization
 ├── scripts/                           # Command-line interfaces
 │   ├── run_preprocessing.py          # Data preprocessing script
 │   ├── run_inference.py              # Inference execution script
 │   ├── run_postprocessing.py         # Postprocessing script
+│   ├── run_feature_extraction.py     # Feature extraction script
 │   ├── run_pipeline.py               # Complete pipeline script
 │   └── launch_gui_safe.py            # GUI launcher with dependency checking
 ├── examples/                          # Usage examples and tutorials
 │   └── complete_usage_examples.py    # Comprehensive usage guide
 ├── tests/                            # Test suite
-│   ├── preprocessing/                # Preprocessing module tests
-│   ├── utils/                        # Utility tests
-│   └── inference/                    # Inference tests
 ├── config/                           # Configuration files
-│   ├── config.yaml                   # Main configuration
-│   └── inference_config.yaml         # Inference-specific settings
 ├── data/                             # Data directories
-│   ├── sample_plates/                # Raw sample data
-│   └── sample_plates_processed/      # Processed sample data
-└── github/                           # Git submodules
-    └── cellpose/                     # Cellpose repository
+    ├── sample_plates/                # Raw sample data
+    └── sample_plates_processed/      # Processed sample data
 ```
 
 ## Installation
@@ -199,7 +183,26 @@ python scripts/run_postprocessing.py \
     --image-file data/test/sample_BF_3d.tif
 ```
 
-#### 4. Complete Pipeline
+#### 4. Feature Extraction
+```bash
+# Extract features from segmented cells
+python scripts/run_feature_extraction.py \
+    --config config/feature_extraction_config.yaml
+
+# Custom patterns and options
+python scripts/run_feature_extraction.py \
+    --input-dir data/segmented \
+    --output-dir results/features \
+    --image-pattern "*_BF.tif" \
+    --mask-pattern "Cells_*.tif" \
+    --n-jobs 8
+
+# Process multiple datasets
+python scripts/run_feature_extraction.py \
+    --config config/multi_dataset_config.yaml
+```
+
+#### 5. Complete Pipeline
 ```bash
 # Run entire pipeline from raw data to results
 python scripts/run_pipeline.py \
@@ -211,7 +214,7 @@ python scripts/run_pipeline.py \
     --postprocess
 ```
 
-#### 5. Visualization GUI
+#### 6. Visualization GUI
 ```bash
 # Launch safe GUI with dependency checking
 python scripts/launch_gui_safe.py
@@ -255,6 +258,22 @@ Organized inference pipeline for running predictions on test datasets.
 
 **Usage:** `python scripts/run_inference.py`  
 **Details:** See `src/inference/README.md`
+
+### Features (`src/features/`)
+Comprehensive feature extraction from 2D instance segmentations.
+
+**Key Features:**
+- 23 morphological, intensity, spatial, and texture features per cell
+- Parallel processing with configurable batch sizes
+
+**Extracted Features:**
+- **Morphology**: Area, perimeter, elongation, compactness, circularity, Feret diameter, etc.
+- **Intensity**: Mean, std, CV, total intensity
+- **Spatial**: Centroids, center of mass, mass displacement
+- **Texture**: Gabor filters, skewness, kurtosis, entropy
+
+**Usage:** `python scripts/run_feature_extraction.py`  
+**Details:** See `docs/FEATURE_EXTRACTION.md`
 
 ### 📊 Postprocessing (`src/postprocessing/`)
 3D cell tracking and quality filtering pipeline.
@@ -327,6 +346,25 @@ output:
   save_metadata: true
 ```
 
+### Feature Extraction Configuration (`config/feature_extraction_config.yaml`)
+```yaml
+paths:
+  input_dir: "data/segmented"
+  output_dir: "data/features_output"
+
+feature_extraction:
+  n_jobs: -1
+  batch_size: 50
+  features:
+    morphology: true
+    intensity: true
+    spatial: true
+    texture: true
+    file_patterns:
+    images: ["*.tif", "*_BF*.tif"]
+    masks: ["Cells_*.tif", "*_mask*.tif"]
+```
+
 ## Supported File Formats
 
 - **Input**: Multi-well plate TIFF files with standardized naming
@@ -338,7 +376,8 @@ output:
 
 ### Complete Examples Available
 - **`examples/complete_usage_examples.py`**: Comprehensive usage demonstrations
-- **`examples/inference_example.py`**: Basic inference workflow examples
+- **`examples/inference_example.py`**: Basic inference workflow examples  
+- **`examples/feature_extraction_examples.py`**: Feature extraction workflows and analysis
 
 ### Quick Command Line Examples
 
