@@ -146,6 +146,12 @@ class CellTrackingPipeline:
         # 4. Save final result
         final_output_path = output_manager.save_final(tracked_stack, filename_prefix)
         results['final_output'] = final_output_path
+
+        # Optional : Convert final output to 2D if required
+        if self.config.convert_to_2d:
+            from src.utils.conversion import split_3d_to_2d
+            split_3d_to_2d(final_output_path, output_manager.subdirs['final_2d'])
+
         return results
 
     def process_batch(
@@ -202,6 +208,7 @@ class TrackingOutputManager:
             'tracked': self.output_dir / 'tracked',
             'tracked_blur_filtered': self.output_dir / 'tracked_blur_filtered',
             'final': self.output_dir / 'final',
+            'final_2d': self.output_dir / 'final_2d',
         }
         for subdir in self.subdirs.values():
             subdir.mkdir(parents=True, exist_ok=True)

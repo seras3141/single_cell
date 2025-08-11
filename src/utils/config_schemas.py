@@ -21,7 +21,7 @@ class PathsConfig:
     input_dir: str = "data/input"  # Base directory with datasets
     output_dir: str = "data/output"  # Where to store the results
     # Paths for postprocessing
-    seg_dir: str = "data/segmentation"  # Directory for segmentation results
+    mask_dir: str = "data/segmentation"  # Directory for segmentation results
     blur_dir: str = "data/blur_heatmaps"  # Directory for blur heatmaps
     image_dir: str = "data/images"  # Directory for input images    
     # Additional paths (For entire pipeline)
@@ -169,6 +169,7 @@ class PostprocessingConfig:
     blur_heatmap_suffix: str = "_blur_heatmap"
     output_suffix: str = "_tracked"
     overwrite_existing: bool = False
+    convert_to_2d: bool = True  # Convert final output to 2D if required
 
 
 # =============================================================================
@@ -223,6 +224,7 @@ class FeatureExtractionConfig:
         "clip_percentiles": [1, 99]
     })
     output: Dict[str, Any] = field(default_factory=lambda: {
+        "folder_name": "features",  # Subdirectory for features
         "save_individual_files": True,
         "save_combined_file": True,
         "include_metadata": True,
