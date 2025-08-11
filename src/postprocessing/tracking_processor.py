@@ -125,21 +125,21 @@ class CellTrackingPipeline:
 
         # 1. If blur filtering is enabled, apply it before (default) or after tracking based on config
         if self.config.enable_blur_filtering and self.config.filter_before_tracking:
-            current_stack, quality_stats = self.blur_filter.filter_3d_stack(current_stack, blur_heatmap)
-            results['blur_filtering'] = {'output_shape': current_stack.shape}
+            current_stack, quality_stats = self.blur_filter.filter_3d_stack(current_stack, blur_heatmap) # type: ignore
+            results['blur_filtering'] = {'output_shape': current_stack.shape} # type: ignore
             if self.config.save_intermediate_results:
                 results['blur_filtered_path'] = output_manager.save_blur_filtered(current_stack, filename_prefix)
 
         # 2. Track cells in the current stack
         tracked_stack = self.tracker.track_cells(current_stack)
-        results['tracking'] = {'output_shape': tracked_stack.shape}
+        results['tracking'] = {'output_shape': tracked_stack.shape} # type: ignore
         if self.config.save_intermediate_results:
             results['tracked_path'] = output_manager.save_tracked(tracked_stack, filename_prefix)
 
         # 3. Optionally filter after tracking
         if self.config.enable_blur_filtering and not self.config.filter_before_tracking:
-            tracked_stack, quality_stats = self.blur_filter.filter_3d_stack(tracked_stack, blur_heatmap)
-            results['blur_filtering'] = {'output_shape': tracked_stack.shape}
+            tracked_stack, quality_stats = self.blur_filter.filter_3d_stack(tracked_stack, blur_heatmap) # type: ignore
+            results['blur_filtering'] = {'output_shape': tracked_stack.shape} # type: ignore
             if self.config.save_intermediate_results:
                 results['tracked_blur_filtered_path'] = output_manager.save_tracked_blur_filtered(tracked_stack, filename_prefix)
 
@@ -150,7 +150,7 @@ class CellTrackingPipeline:
         # Optional : Convert final output to 2D if required
         if self.config.convert_to_2d:
             from src.utils.conversion import split_3d_to_2d
-            split_3d_to_2d(final_output_path, output_manager.subdirs['final_2d'])
+            split_3d_to_2d(final_output_path, output_manager.subdirs['final_2d'], suffix="masks")
 
         return results
 

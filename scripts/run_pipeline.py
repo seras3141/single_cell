@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 import os
 from glob import glob
+from typing import Optional
 import tifffile
 
 # Add src to Python path
@@ -89,44 +90,34 @@ def run_cell_tracking(image_dir: str, segmentation_dir: str, blur_dir : str, out
     
 
 
-def run_feature_extraction(image_dir: str, mask_dir: str, output_dir: str, config) -> None:
-    """Run feature extraction using PyRadiomics."""
-    raise NotImplementedError("Feature extraction is not implemented in this script. Will be included in a future update.")
-    from src.utils.feature_extractor import extract_features
-    from glob import glob
-    import pandas as pd
+def run_feature_extraction(image_dir: str, ground_truth_dir: Optional[str] = None, inference_dir : Optional[str] = None, output_folder : Optional[str] = None, config : dict = {}) -> None:
+    """Run feature extraction pipeline."""
+    from run_feature_extraction import run_feature_extraction_pipeline
     
     logger = logging.getLogger(__name__)
     logger.info("Starting feature extraction...")
-    
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Find matching image-mask pairs
-    image_files = glob(f"{image_dir}/**/*.tif", recursive=True)
-    
-    all_features = []
-    
-    for image_file in image_files:
-        # Find corresponding mask file
-        mask_file = image_file.replace(image_dir, mask_dir).replace('_BF.tif', '_Cells.tif')
+
+    logger.info(f"Image directory: {image_dir}")
+
+    if output_folder:
+        config["feature_extraction"]["output"]["folder"] = output_folder
+
+    if ground_truth_dir:
+        # Use ground truth directory to extract features
+        logger.info(f"Using ground truth directory: {ground_truth_dir}")
+        config["paths"]["image_dir"] = image_dir
+        config["paths"]["mask_dir"] = ground_truth_dir
+        config["paths"]["output_dir"] = ground_truth_dir
+        run_feature_extraction_pipeline(config)
         
-        if os.path.exists(mask_file):
-            logger.info(f"Extracting features from {os.path.basename(image_file)}")
-            
-            try:
-                features = extract_features(image_file, mask_file)
-                features['image_file'] = os.path.basename(image_file)
-                all_features.append(features)
-            except Exception as e:
-                logger.warning(f"Failed to extract features from {image_file}: {e}")
-    
-    # Save combined features
-    if all_features:
-        df = pd.concat(all_features, ignore_index=True)
-        output_file = os.path.join(output_dir, "extracted_features.csv")
-        df.to_csv(output_file, index=False)
-        logger.info(f"Features saved to {output_file}")
-    
+    if inference_dir:
+        # Use inference directory to extract features
+        logger.info(f"Using inference directory: {inference_dir}")
+        config["paths"]["image_dir"] = image_dir
+        config["paths"]["mask_dir"] = inference_dir
+        config["paths"]["output_dir"] = inference_dir
+        run_feature_extraction_pipeline(config)
+        
     logger.info("Feature extraction completed")
 
 def get_pipeline_legacy_args(args):
@@ -137,6 +128,9 @@ def get_pipeline_legacy_args(args):
         legacy_overrides["paths.input_dir"] = args["input_dir"]
     if args.get("output_dir"):
         legacy_overrides["paths.output_dir"] = args["output_dir"]
+
+    if args.get("log_level"):
+        legacy_overrides["logging.level"] = args["log_level"]
     
     return legacy_overrides
 
@@ -153,6 +147,8 @@ def get_pipeline_args():
     return parser.parse_args()
 
 def parse_config_and_args():
+
+    logger = logging.getLogger(__name__)
     args = get_pipeline_args()
     cli_args = vars(args)
 
@@ -162,24 +158,24 @@ def parse_config_and_args():
     # 1: Load base config (from YAML or default)
     if "config" in cli_args:
         config_manager = ConfigManager(cli_args["config"])
-        logging.info(f"Loaded configuration from {args.config}")
+        logger.info(f"Loaded configuration from {args.config}")
     else:
         config_manager = ConfigManager()  # Use defaults
-        logging.info("Using default configuration")
+        logger.info("Using default configuration")
 
     # 2: Apply dotlist overrides from CLI
     if "override" in cli_args:
         from omegaconf import OmegaConf
         overrides = OmegaConf.from_dotlist(cli_args["override"])
         override_dict = OmegaConf.to_container(overrides)
-        logging.info(f"Applying CLI overrides: {cli_args['override']}")
+        logger.info(f"Applying CLI overrides: {cli_args['override']}")
         config_manager = config_manager.merge_with_overrides(override_dict) #type: ignore
 
     # 3: Apply legacy overrides and Merge config and CLI args
     legacy_overrides = get_pipeline_legacy_args(cli_args)
     if legacy_overrides:
         config_manager = config_manager.merge_with_overrides(legacy_overrides)
-        logging.info(f"Applied legacy CLI overrides: {list(legacy_overrides.keys())}")
+        logger.info(f"Applied legacy CLI overrides: {list(legacy_overrides.keys())}")
 
     config_dict = config_manager.to_dict()
 
@@ -192,15 +188,17 @@ def main():
     config = parse_config_and_args()
 
     paths_config = config.get("paths", {})
+    log_config = config.get("logging", {})
 
     input_dir = paths_config.get("input_dir", "")
     output_dir = paths_config.get("output_dir", "")
 
     steps = config.get("steps", ["prepare", "segment-2d", "track"])
 
-    log_level = config.get("log_level", "INFO")
-    log_file = os.path.join(output_dir, "logs", "pipeline.log")
-    setup_logging(log_level, log_file)
+    print(log_config)   # debugging line to check log_config
+    print(steps)  # debugging line to check steps
+
+    setup_logging(log_config=log_config)
     logger = logging.getLogger(__name__)
 
     logger.info("Starting single cell analysis pipeline")
@@ -219,8 +217,8 @@ def main():
         if "segment-2d" in steps:
             split_folder = config.get("preprocessing", {}).get("split_folder", "split_data")
             split_dir = os.path.join(output_dir, split_folder)
-            seg_dir = output_dir
-            run_2d_segmentation(split_dir, seg_dir, config)
+            mask_dir = output_dir
+            run_2d_segmentation(split_dir, mask_dir, config)
 
         # Step 3: 3D Segmentation
         if "segment-3d" in steps:
@@ -240,19 +238,26 @@ def main():
             image_dir = os.path.join(output_dir, "3d_images")
             blur_dir = os.path.join(output_dir, "blur_heatmaps")
 
-            seg_dir = os.path.join(output_dir, results_folder, model_type, dataset_name)
-            mask_dir = os.path.join(seg_dir, "masks_3d")
-            track_dir = os.path.join(seg_dir, "tracking")
+            mask_base_dir = os.path.join(output_dir, results_folder, model_type, dataset_name)
+            mask_dir = os.path.join(mask_base_dir, "masks_3d")
+            track_dir = os.path.join(mask_base_dir, "tracking")
 
             # Use new postprocessing pipeline
             run_cell_tracking(image_dir, mask_dir, blur_dir, track_dir, config)
 
         # Step 5: Feature extraction
         if "extract" in steps:
-            image_dir = os.path.join(output_dir, "2d_dataset", "test")
-            mask_dir = os.path.join(output_dir, "segmentation")
-            feature_output = os.path.join(output_dir, "features")
-            run_feature_extraction(image_dir, mask_dir, feature_output, config)
+            split_folder = config.get("preprocessing", {}).get("split_folder", "split_data")
+
+            image_dir = os.path.join(output_dir, split_folder)
+            ground_truth_dir = os.path.join(output_dir, split_folder)
+
+            results_folder = config["segmentation"]["inference"]["results_folder"]
+            model_type = config["segmentation"]["cellpose"]["model_type"]
+            dataset_name = config["segmentation"]["inference"]["dataset_name"]
+            inference_dir = os.path.join(output_dir, results_folder, model_type, dataset_name, "tracking", "final_2d")
+
+            run_feature_extraction(image_dir, ground_truth_dir, inference_dir, config=config)
 
         logger.info("Pipeline completed successfully!")
 

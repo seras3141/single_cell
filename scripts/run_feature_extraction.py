@@ -8,8 +8,8 @@ features to CSV files with configurable options.
 
 Usage:
     python scripts/run_feature_extraction.py --config config/feature_extraction_config.yaml
-    python scripts/run_feature_extraction.py --input-dir data/sample_data --output-dir data/features_output
-    python scripts/run_feature_extraction.py --input-dir data/sample_data --mask-pattern "Cells_*.tif" --image-pattern "t1_*_w1_*.tif"
+    python scripts/run_feature_extraction.py --image-dir data/sample_data --mask-dir data/sample_data --output-dir data/features_output
+    python scripts/run_feature_extraction.py --image-dir data/sample_data --mask-dir data/sample_data/mask --mask-pattern "Cells_*.tif" --image-pattern "t1_*_w1_*.tif"
 """
 
 import argparse
@@ -26,16 +26,10 @@ from datetime import datetime
 import glob
 import re
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 from src.features.feature_extractor_2d import extract_all_instance_features
 from src.utils.logging_utils import setup_logging
 from src.utils.config import ConfigManager
 from src.utils.file_utils import DatasetPaths
-
-logger = logging.getLogger(__name__)
-
 
 class FeatureExtractionPipeline:
     """Pipeline for extracting features from datasets of segmented cells."""
@@ -58,10 +52,15 @@ class FeatureExtractionPipeline:
         
         # Setup output directory first
         self.output_dir = Path(self.paths_config.get('output_dir', 'data/features_output'))
+
+        if self.output_config.get('folder_name'):
+            self.output_dir = self.output_dir / self.output_config['folder_name']
+
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         # Now setup logging (which needs output_dir)
         self.setup_logging()
+
         
         # Initialize counters and results
         self.processed_files = 0
@@ -80,17 +79,21 @@ class FeatureExtractionPipeline:
         log_file = self.output_dir / log_config.get('filename', 'feature_extraction.log')
 
         setup_logging(log_level, log_file=log_file)
+        self.logger = logging.getLogger(__name__)
 
-        
-    def find_image_mask_pairs(self, input_dir: Path) -> List[Tuple[Path, Path]]:
+
+    def find_image_mask_pairs(self, image_dir: Path, mask_dir: Path) -> List[Tuple[Path, Path]]:
         """Find matching image and mask file pairs.
         
         Args:
-            input_dir: Directory to search for files
-            
+            image_dir: Directory containing images
+            mask_dir: Directory containing masks
+
         Returns:
             List of (image_path, mask_path) tuples
         """
+        logger = self.logger
+
         pairs = []
         
         # Get file patterns
@@ -111,11 +114,11 @@ class FeatureExtractionPipeline:
         mask_files = []
         
         for pattern in image_patterns:
-            image_files.extend(input_dir.rglob(pattern))
-        
+            image_files.extend(image_dir.rglob(pattern))
+
         for pattern in mask_patterns:
-            mask_files.extend(input_dir.rglob(pattern))
-            
+            mask_files.extend(mask_dir.rglob(pattern))
+
         logger.info(f"Found {len(image_files)} potential image files and {len(mask_files)} mask files")
 
         # Match files based on configuration
@@ -123,6 +126,39 @@ class FeatureExtractionPipeline:
 
         logger.info(f"Successfully paired {len(pairs)} image-mask pairs")
         return pairs
+    
+    def find_image_given_mask(self, mask_path: Path, image_files: List[Path]) -> Optional[Path]:
+        """Find corresponding image file for a given mask.
+        
+        Args:
+            mask_path: Path to the mask file
+            image_files: List of available image files
+            
+        Returns:
+            Path to the matching image file, or None if not found
+        """
+        logger = self.logger
+
+        import re
+        # Convert mask path to str
+        mask_name = mask_path.name
+        mask_patterns = self.pattern_config.get('masks', ['*_Cells.tif'])
+
+        for mask_pattern in mask_patterns:
+            mask_pattern = mask_pattern.replace('*', '(.*)')
+            match = re.match(mask_pattern, mask_name)
+            if match:
+                mask_prefix = match.group(1)
+                logger.debug(f"Mask prefix extracted: {mask_prefix}")
+
+                for image in image_files:
+                    image_stem = image.stem
+                    if image_stem.startswith(mask_prefix):
+                        logger.debug(f"Matched {image.name} with {mask_path.name} based on prefix {mask_prefix}")
+                        return image
+
+        logger.warning(f"No matching image found for mask: {mask_path.name}")
+        return None
 
     def match_files(self, image_files: List[Path], mask_files: List[Path]) -> List[Tuple[Path, Path]]:
         """Match image files with corresponding mask files based on patterns.
@@ -135,50 +171,13 @@ class FeatureExtractionPipeline:
             List of matched (image_path, mask_path) tuples
         """
         pairs = []
-        
-        for img in image_files:
-            img_stem = img.stem
-            logger.debug(f"Trying to match image: {img_stem}")
 
-            # Simple pattern-based matching
-            # Replace common image patterns with mask patterns
-            potential_mask_names = []
-            
-            # Pattern: *_BF.tif -> *_Cells.tif
-            if "_BF" in img_stem:
-                potential_mask_names.append(img_stem.replace("_BF", "_Cells"))
-            
-            # Pattern: *_image.tif -> *_mask.tif  
-            if "_image" in img_stem:
-                potential_mask_names.append(img_stem.replace("_image", "_mask"))
-                
-            # Pattern: image_*.tif -> Cells_*.tif
-            if img_stem.startswith("image_"):
-                potential_mask_names.append(img_stem.replace("image_", "Cells_"))
-                
-            # If no specific patterns match, try direct name matching
-            if not potential_mask_names:
-                potential_mask_names.append(f"Cells_{img_stem}")
-                potential_mask_names.append(f"{img_stem}_Cells")
-                potential_mask_names.append(f"{img_stem}_mask")
+        for mask in mask_files:
+            # Find corresponding image for each mask
+            image = self.find_image_given_mask(mask, image_files)
 
-            # Find matching mask files
-            matching_masks = []
-            for mask in mask_files:
-                mask_stem = mask.stem
-                for potential_name in potential_mask_names:
-                    if potential_name == mask_stem or potential_name in mask_stem:
-                        matching_masks.append(mask)
-                        break
-
-            if len(matching_masks) == 1:
-                pairs.append((img, matching_masks[0]))
-                logger.debug(f"Matched {img.name} -> {matching_masks[0].name}")
-            elif len(matching_masks) > 1:
-                logger.warning(f"Multiple masks found for {img.name}: {[m.name for m in matching_masks]}, using first one")
-                pairs.append((img, matching_masks[0]))
-            else:
-                logger.warning(f"No matching mask found for {img.name}")
+            if image:
+                pairs.append((image, mask))
         
         return pairs
 
@@ -192,6 +191,8 @@ class FeatureExtractionPipeline:
         Returns:
             Tuple of (image, mask) arrays, or (None, None) if loading fails
         """
+        logger = self.logger
+
         try:
             # Load image
             image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
@@ -275,6 +276,8 @@ class FeatureExtractionPipeline:
         Returns:
             DataFrame with extracted features, or None if extraction fails
         """
+        logger = self.logger
+
         try:
             # Load image and mask
             image, mask = self.load_image_and_mask(image_path, mask_path)
@@ -286,7 +289,7 @@ class FeatureExtractionPipeline:
             features_df = extract_all_instance_features(mask, image, n_jobs=n_jobs)
             
             if features_df.empty:
-                logger.warning(f"No features extracted from {image_path.name}")
+                logger.warning(f"No features extracted from {mask_path.name}")
                 return None
             
             # Add metadata if configured
@@ -294,7 +297,7 @@ class FeatureExtractionPipeline:
                 features_df['image_filename'] = image_path.name
                 features_df['mask_filename'] = mask_path.name
                 features_df['processing_timestamp'] = datetime.now().isoformat()
-                features_df['feature_extraction_version'] = '1.0'
+                # features_df['feature_extraction_version'] = '1.0'
                 features_df['dataset_name'] = image_path.parent.name
             
             logger.debug(f"Extracted {len(features_df)} instances from {image_path.name}")
@@ -314,6 +317,7 @@ class FeatureExtractionPipeline:
             features_df: Features DataFrame
             image_path: Original image path (for naming output file)
         """
+        logger = self.logger
         if not self.output_config.get('save_individual_files', True):
             return
         
@@ -332,25 +336,28 @@ class FeatureExtractionPipeline:
         output_file = output_path / output_name
         features_df.to_csv(output_file, index=False)
         logger.debug(f"Saved individual features to {output_file}")
-    
-    def process_dataset(self, input_dir: Optional[Path] = None) -> pd.DataFrame:
+
+    def process_dataset(self, image_dir: Optional[Path] = None, mask_dir: Optional[Path] = None) -> pd.DataFrame:
         """Process entire dataset and extract features.
         
         Args:
-            input_dir: Input directory (if None, uses config)
+            image_dir: Directory containing images (if None, uses config)
+            mask_dir: Directory containing masks (if None, uses config)
             
         Returns:
             Combined DataFrame with all features
         """
-        if input_dir is None:
-            input_dir = Path(self.paths_config.get('input_dir', 'data/sample_data'))
-        
-        logger.info(f"Processing dataset: {input_dir}")
-        
+        logger = self.logger
+
+        image_dir = image_dir or Path(self.paths_config.get('image_dir', 'data/sample_data'))
+        mask_dir = mask_dir or Path(self.paths_config.get('mask_dir', 'data/sample_data'))
+
+        logger.info(f"Processing dataset: {mask_dir} with images from {image_dir}")
+
         # Find image-mask pairs
-        pairs = self.find_image_mask_pairs(input_dir)
+        pairs = self.find_image_mask_pairs(image_dir, mask_dir)
         if not pairs:
-            logger.error(f"No valid image-mask pairs found in {input_dir}")
+            logger.error(f"No valid image-mask pairs found in {image_dir}")
             return pd.DataFrame()
         
         # Process pairs
@@ -396,7 +403,7 @@ class FeatureExtractionPipeline:
             return
         
         if features_df.empty:
-            logger.warning("No features to save")
+            self.logger.warning("No features to save")
             return
         
         # Save combined file
@@ -404,8 +411,8 @@ class FeatureExtractionPipeline:
         output_file = self.output_dir / combined_filename
         
         features_df.to_csv(output_file, index=False)
-        logger.info(f"Saved combined features to {output_file}")
-        
+        self.logger.info(f"Saved combined features to {output_file}")
+
         # Save summary statistics
         summary_file = self.output_dir / 'feature_extraction_summary.txt'
         with open(summary_file, 'w') as f:
@@ -426,37 +433,38 @@ class FeatureExtractionPipeline:
             f.write(f"\nFeature Columns:\n")
             for col in features_df.columns:
                 f.write(f"  {col}\n")
-        
-        logger.info(f"Saved processing summary to {summary_file}")
-    
-    def run(self, input_dirs: Optional[List[Path]] = None) -> pd.DataFrame:
+
+        self.logger.info(f"Saved processing summary to {summary_file}")
+
+    def run(self, image_dirs: List[Path] = [], mask_dirs: List[Path] = []) -> pd.DataFrame:
         """Run the complete feature extraction pipeline.
         
         Args:
-            input_dirs: List of input directories (if None, uses config)
-            
+            image_dirs: List of image directories (if None, uses config)
+            mask_dirs: List of mask directories (if None, uses config)
+
         Returns:
             Combined features DataFrame
         """
         start_time = time.time()
-        logger.info("Starting feature extraction pipeline")
-        
+        self.logger.info("Starting feature extraction pipeline")
+
         all_datasets_features = []
-        
-        # Handle multiple input directories
-        if input_dirs is None:
+
+
+        # Handle multiple image directories
+        if image_dirs is None and mask_dirs is None:
             # Check if multiple dataset paths are specified in config
-            dataset_paths = self.paths_config.get('dataset_paths', [])
-            if dataset_paths:
-                input_dirs = [Path(dp['input_dir']) for dp in dataset_paths]
-            else:
-                input_dirs = [Path(self.paths_config.get('input_dir', 'data/sample_data'))]
-        
+            image_dirs = [Path(self.paths_config.get('image_dir', 'data/sample_data'))]
+            mask_dirs = [Path(self.paths_config.get('mask_dir', 'data/sample_data'))]
+        else:
+            assert len(image_dirs) == len(mask_dirs), "Image and mask directories must have the same length"
+
         # Process each directory
-        for input_dir in input_dirs:
-            logger.info(f"Processing directory: {input_dir}")
-            features_df = self.process_dataset(input_dir)
-            
+        for image_dir, mask_dir in zip(image_dirs, mask_dirs):
+            self.logger.info(f"Processing directory: {image_dir}")
+            features_df = self.process_dataset(image_dir, mask_dir)
+
             if not features_df.empty:
                 all_datasets_features.append(features_df)
         
@@ -471,9 +479,9 @@ class FeatureExtractionPipeline:
         
         # Log completion
         elapsed_time = time.time() - start_time
-        logger.info(f"Feature extraction completed in {elapsed_time:.2f} seconds")
-        logger.info(f"Final results: {len(final_features)} instances from {self.processed_files} images")
-        
+        self.logger.info(f"Feature extraction completed in {elapsed_time:.2f} seconds")
+        self.logger.info(f"Final results: {len(final_features)} instances from {self.processed_files} images")
+
         return final_features
 
 
@@ -486,8 +494,10 @@ def get_args():
                        help="Path to configuration file")
     
     # Direct options (override config)
-    parser.add_argument("--input-dir", "-i", type=str,
-                       help="Input directory containing images and masks")
+    parser.add_argument("--image-dir", "-i", type=str,
+                       help="Directory containing images")
+    parser.add_argument("--mask-dir", "-m", type=str,
+                       help="Directory containing masks")
     parser.add_argument("--output-dir", "-o", type=str,
                        help="Output directory for feature files")
     parser.add_argument("--image-pattern", type=str,
@@ -514,6 +524,7 @@ def load_config(args) -> Dict[str, Any]:
     Returns:
         Configuration dictionary
     """
+    logger = logging.getLogger(__name__)
     if args.config:
         # Load from config file
         config_manager = ConfigManager(args.config)
@@ -531,8 +542,10 @@ def load_config(args) -> Dict[str, Any]:
         }
     
     # Override with command line arguments
-    if args.input_dir:
-        config['paths']['input_dir'] = args.input_dir
+    if args.image_dir:
+        config['paths']['image_dir'] = args.image_dir
+    if args.mask_dir:
+        config['paths']['mask_dir'] = args.mask_dir
     if args.output_dir:
         config['paths']['output_dir'] = args.output_dir
     if args.image_pattern:
@@ -548,6 +561,21 @@ def load_config(args) -> Dict[str, Any]:
     
     return config
 
+def run_feature_extraction_pipeline(config: Dict[str, Any]) -> pd.DataFrame:
+    """Run the feature extraction pipeline with the given configuration.
+    
+    Args:
+        config: Configuration dictionary
+        
+    Returns:
+        Combined features DataFrame
+    """
+    print(config)  # Debugging line to check config
+    pipeline = FeatureExtractionPipeline(config)
+    features_df = pipeline.process_dataset()
+
+    return features_df
+
 
 def main():
     """Main function."""
@@ -555,17 +583,16 @@ def main():
     config = load_config(args)
     
     # Initialize and run pipeline
-    pipeline = FeatureExtractionPipeline(config)
-    features_df = pipeline.run()
-    
+    features_df = run_feature_extraction_pipeline(config)
+
     if not features_df.empty:
-        print(f"✅ Feature extraction completed successfully!")
-        print(f"   Extracted features from {pipeline.processed_files} images")
-        print(f"   Total instances: {len(features_df)}")
-        print(f"   Features per instance: {len([col for col in features_df.columns if col not in ['instance_id', 'image_filename', 'mask_filename', 'processing_timestamp', 'feature_extraction_version', 'dataset_name']])}")
-        print(f"   Output directory: {pipeline.output_dir}")
+        print(f"Feature extraction completed successfully!")
+        # print(f"Extracted features from {pipeline.processed_files} images")
+        print(f"Total instances: {len(features_df)}")
+        print(f"Features per instance: {len([col for col in features_df.columns if col not in ['instance_id', 'image_filename', 'mask_filename', 'processing_timestamp', 'feature_extraction_version', 'dataset_name']])}")
+        # print(f"Output directory: {pipeline.output_dir}")
     else:
-        print("❌ No features were extracted. Check logs for errors.")
+        print("No features were extracted. Check logs for errors.")
         sys.exit(1)
 
 
