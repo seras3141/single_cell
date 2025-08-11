@@ -92,7 +92,6 @@ class FeatureExtractionPipeline:
         Returns:
             List of (image_path, mask_path) tuples
         """
-        logger = self.logger
 
         pairs = []
         
@@ -106,9 +105,9 @@ class FeatureExtractionPipeline:
         if isinstance(mask_patterns, str):
             mask_patterns = [mask_patterns]
 
-        logger.debug(f"Searching for image patterns: {image_patterns}")
-        logger.debug(f"Searching for mask patterns: {mask_patterns}")
-        
+        self.logger.debug(f"Searching for image patterns: {image_patterns}")
+        self.logger.debug(f"Searching for mask patterns: {mask_patterns}")
+
         # Find all image and mask files
         image_files = []
         mask_files = []
@@ -119,12 +118,12 @@ class FeatureExtractionPipeline:
         for pattern in mask_patterns:
             mask_files.extend(mask_dir.rglob(pattern))
 
-        logger.info(f"Found {len(image_files)} potential image files and {len(mask_files)} mask files")
+        self.logger.info(f"Found {len(image_files)} potential image files and {len(mask_files)} mask files")
 
         # Match files based on configuration
         pairs = self.match_files(image_files, mask_files)
 
-        logger.info(f"Successfully paired {len(pairs)} image-mask pairs")
+        self.logger.info(f"Successfully paired {len(pairs)} image-mask pairs")
         return pairs
     
     def find_image_given_mask(self, mask_path: Path, image_files: List[Path]) -> Optional[Path]:
@@ -137,7 +136,6 @@ class FeatureExtractionPipeline:
         Returns:
             Path to the matching image file, or None if not found
         """
-        logger = self.logger
 
         import re
         # Convert mask path to str
@@ -149,15 +147,15 @@ class FeatureExtractionPipeline:
             match = re.match(mask_pattern, mask_name)
             if match:
                 mask_prefix = match.group(1)
-                logger.debug(f"Mask prefix extracted: {mask_prefix}")
+                self.logger.debug(f"Mask prefix extracted: {mask_prefix}")
 
                 for image in image_files:
                     image_stem = image.stem
                     if image_stem.startswith(mask_prefix):
-                        logger.debug(f"Matched {image.name} with {mask_path.name} based on prefix {mask_prefix}")
+                        self.logger.debug(f"Matched {image.name} with {mask_path.name} based on prefix {mask_prefix}")
                         return image
 
-        logger.warning(f"No matching image found for mask: {mask_path.name}")
+        self.logger.warning(f"No matching image found for mask: {mask_path.name}")
         return None
 
     def match_files(self, image_files: List[Path], mask_files: List[Path]) -> List[Tuple[Path, Path]]:
@@ -191,19 +189,18 @@ class FeatureExtractionPipeline:
         Returns:
             Tuple of (image, mask) arrays, or (None, None) if loading fails
         """
-        logger = self.logger
 
         try:
             # Load image
             image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
             if image is None:
-                logger.error(f"Failed to load image: {image_path}")
+                self.logger.error(f"Failed to load image: {image_path}")
                 return None, None
             
             # Load mask
             mask = cv2.imread(str(mask_path), cv2.IMREAD_UNCHANGED)
             if mask is None:
-                logger.error(f"Failed to load mask: {mask_path}")
+                self.logger.error(f"Failed to load mask: {mask_path}")
                 return None, None
             
             # Convert to grayscale if needed
@@ -215,7 +212,7 @@ class FeatureExtractionPipeline:
             
             # Validate dimensions match
             if image.shape != mask.shape:
-                logger.error(f"Image and mask dimensions don't match: {image.shape} vs {mask.shape}")
+                self.logger.error(f"Image and mask dimensions don't match: {image.shape} vs {mask.shape}")
                 return None, None
             
             # Apply preprocessing if configured
@@ -232,7 +229,7 @@ class FeatureExtractionPipeline:
             return image, mask
             
         except Exception as e:
-            logger.error(f"Error loading {image_path} and {mask_path}: {str(e)}")
+            self.logger.error(f"Error loading {image_path} and {mask_path}: {str(e)}")
             return None, None
     
     '''
@@ -276,7 +273,6 @@ class FeatureExtractionPipeline:
         Returns:
             DataFrame with extracted features, or None if extraction fails
         """
-        logger = self.logger
 
         try:
             # Load image and mask
@@ -289,7 +285,7 @@ class FeatureExtractionPipeline:
             features_df = extract_all_instance_features(mask, image, n_jobs=n_jobs)
             
             if features_df.empty:
-                logger.warning(f"No features extracted from {mask_path.name}")
+                self.logger.warning(f"No features extracted from {mask_path.name}")
                 return None
             
             # Add metadata if configured
@@ -299,14 +295,14 @@ class FeatureExtractionPipeline:
                 features_df['processing_timestamp'] = datetime.now().isoformat()
                 # features_df['feature_extraction_version'] = '1.0'
                 features_df['dataset_name'] = image_path.parent.name
-            
-            logger.debug(f"Extracted {len(features_df)} instances from {image_path.name}")
+
+            self.logger.debug(f"Extracted {len(features_df)} instances from {image_path.name}")
             self.processed_files += 1
             
             return features_df
             
         except Exception as e:
-            logger.error(f"Error extracting features from {image_path}: {str(e)}")
+            self.logger.error(f"Error extracting features from {image_path}: {str(e)}")
             self.error_files.append((str(image_path), str(e)))
             return None
     
@@ -317,7 +313,6 @@ class FeatureExtractionPipeline:
             features_df: Features DataFrame
             image_path: Original image path (for naming output file)
         """
-        logger = self.logger
         if not self.output_config.get('save_individual_files', True):
             return
         
@@ -335,7 +330,7 @@ class FeatureExtractionPipeline:
         # Save file
         output_file = output_path / output_name
         features_df.to_csv(output_file, index=False)
-        logger.debug(f"Saved individual features to {output_file}")
+        self.logger.debug(f"Saved individual features to {output_file}")
 
     def process_dataset(self, image_dir: Optional[Path] = None, mask_dir: Optional[Path] = None) -> pd.DataFrame:
         """Process entire dataset and extract features.
@@ -347,17 +342,16 @@ class FeatureExtractionPipeline:
         Returns:
             Combined DataFrame with all features
         """
-        logger = self.logger
 
         image_dir = image_dir or Path(self.paths_config.get('image_dir', 'data/sample_data'))
         mask_dir = mask_dir or Path(self.paths_config.get('mask_dir', 'data/sample_data'))
 
-        logger.info(f"Processing dataset: {mask_dir} with images from {image_dir}")
+        self.logger.info(f"Processing dataset: {mask_dir} with images from {image_dir}")
 
         # Find image-mask pairs
         pairs = self.find_image_mask_pairs(image_dir, mask_dir)
         if not pairs:
-            logger.error(f"No valid image-mask pairs found in {image_dir}")
+            self.logger.error(f"No valid image-mask pairs found in {image_dir}")
             return pd.DataFrame()
         
         # Process pairs
@@ -381,21 +375,21 @@ class FeatureExtractionPipeline:
             if batch_features:
                 batch_combined = pd.concat(batch_features, ignore_index=True)
                 all_features.append(batch_combined)
-                logger.info(f"Completed batch {i//batch_size + 1}: {len(batch_combined)} total instances")
-        
+                self.logger.info(f"Completed batch {i//batch_size + 1}: {len(batch_combined)} total instances")
+
         # Combine all features
         if all_features:
             combined_df = pd.concat(all_features, ignore_index=True)
-            logger.info(f"Total features extracted: {len(combined_df)} instances from {self.processed_files} images")
+            self.logger.info(f"Total features extracted: {len(combined_df)} instances from {self.processed_files} images")
         else:
             combined_df = pd.DataFrame()
-            logger.warning("No features extracted from any files")
-        
+            self.logger.warning("No features extracted from any files")
+
         return combined_df
     
     def save_combined_features(self, features_df: pd.DataFrame):
         """Save combined features to CSV file.
-        
+
         Args:
             features_df: Combined features DataFrame
         """
@@ -570,7 +564,6 @@ def run_feature_extraction_pipeline(config: Dict[str, Any]) -> pd.DataFrame:
     Returns:
         Combined features DataFrame
     """
-    print(config)  # Debugging line to check config
     pipeline = FeatureExtractionPipeline(config)
     features_df = pipeline.process_dataset()
 
