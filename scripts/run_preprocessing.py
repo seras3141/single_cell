@@ -118,6 +118,21 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
     )
     logger.info("Preprocessing complete.")
 
+    # Step 4 : Optional - Create symlinks for images from input directory to output_dir
+    if preprocessing_config.get('create_symlinks', False):
+        symlink_dir = output_dir / "input_data_symlinks"
+        logger.info("Creating symlinks for images in output directory...")
+        for image_path in input_2d_dir.glob("**/*.tif"):
+            image_name = image_path.name
+            relative_path = image_path.relative_to(input_2d_dir)
+            symlink_path = symlink_dir / image_name
+            print(f"Creating symlink: {symlink_path} -> {relative_path}")
+            # symlink_path.parent.mkdir(parents=True, exist_ok=True)
+            # if not symlink_path.exists():
+            #     symlink_path.symlink_to(image_path)
+            #     logger.info(f"Created symlink: {symlink_path} -> {image_path}")
+    
+
 def run_preprocessing_pipeline(args):
     """ 
     Legacy function to run the preprocessing pipeline from args.

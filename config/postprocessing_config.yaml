@@ -3,7 +3,7 @@
 # Data paths
 paths:
   image_dir: "data/sample_data_out/3d_images"
-  seg_dir: "data/sample_data_out/results/cyto3/test/masks_3d"
+  mask_dir: "data/sample_data_out/results/cyto3/test/masks_3d"
   blur_dir: "data/sample_data_out/blur_heatmaps"
   output_dir: "data/sample_data_out/results/cyto3/test/output/"
   

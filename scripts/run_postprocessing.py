@@ -112,7 +112,7 @@ def get_postprocessing_args():
     # Input/Output arguments
     # Batch mode
     optional_arg("-i", "--image-dir", type=str, help="Input directory containing image files")
-    optional_arg("-s", "--seg-dir", type=str, help="Input directory containing segmentation files")
+    optional_arg("-s", "--mask-dir", type=str, help="Input directory containing segmentation files")
     optional_arg("-o", "--output-dir", type=str, help="Output directory for results")
     # Single file mode
     optional_arg("--segmentation-file", type=str, help="Single segmentation file to process")
@@ -150,8 +150,8 @@ def get_legacy_args(args: dict):
     # Input and Output directories
     if "image_dir" in args:
         legacy_args["paths.image_dir"] = args["image_dir"]
-    if "seg_dir" in args:
-        legacy_args["paths.seg_dir"] = args["seg_dir"]
+    if "mask_dir" in args:
+        legacy_args["paths.mask_dir"] = args["mask_dir"]
     if "output_dir" in args:
         legacy_args["paths.output_dir"] = args["output_dir"]
     if "blur_dir" in args:
@@ -202,22 +202,22 @@ def check_input(config, cli_args):
         if 'image_file' not in cli_args:
             raise ValueError("Image directory is required. Please specify --image-dir or set 'paths.image_dir' in the config. Alternatively, you can use --image-file for single file processing.")
 
-    if 'seg_dir' not in paths_config or not paths_config['seg_dir']:
+    if 'mask_dir' not in paths_config or not paths_config['mask_dir']:
         if 'segmentation_file' not in cli_args:
-            raise ValueError("Segmentation directory is required. Please specify --seg-dir or set 'paths.seg_dir' in the config. Alternatively, you can use --segmentation-file for single file processing.")
+            raise ValueError("Segmentation directory is required. Please specify --mask-dir or set 'paths.mask_dir' in the config. Alternatively, you can use --segmentation-file for single file processing.")
         
     if 'segmentation_file' in cli_args and 'image_file' not in cli_args:
         raise ValueError("When using --segmentation-file, you must also specify --image-file to provide the corresponding image.")
     
-    if 'seg_dir' in paths_config and 'image_dir' not in paths_config:
+    if 'mask_dir' in paths_config and 'image_dir' not in paths_config:
         raise ValueError("When using a segmentation directory, you must also specify an image directory. Please set 'paths.image_dir' in the config or use --image-dir.")
     
     if 'segmentation_file' in cli_args and 'image_file' in cli_args:
         config['batch_mode'] = False
-    elif 'seg_dir' in paths_config and 'image_dir' in paths_config:
+    elif 'mask_dir' in paths_config and 'image_dir' in paths_config:
         config['batch_mode'] = True
     else:
-        raise ValueError("Either --segmentation-file or --seg-dir must be specified for batch processing. If using single file mode, both --segmentation-file and --image-file are required.")
+        raise ValueError("Either --segmentation-file or --mask-dir must be specified for batch processing. If using single file mode, both --segmentation-file and --image-file are required.")
     
     return config
     
@@ -231,14 +231,14 @@ def validate_and_prepare_args(config : dict, args: dict):
 
 def validate_and_prepare_args_legacy(args, parser):
     """Validate and prepare command line arguments."""
-    if not "segmentation_file" in args and not "seg_dir" in args:
-        parser.error("Either --segmentation-file or --seg-dir must be specified")
+    if not "segmentation_file" in args and not "mask_dir" in args:
+        parser.error("Either --segmentation-file or --mask-dir must be specified")
     # If using single file mode, image file is required
     if "segmentation_file" in args and not "image_file" in args:
         parser.error("--image-file is required when using --segmentation-file")
     # If using batch mode, both directories are required
-    if "seg_dir" in args and not "image_dir" in args:
-        parser.error("--image-dir is required when using --seg-dir")
+    if "mask_dir" in args and not "image_dir" in args:
+        parser.error("--image-dir is required when using --mask-dir")
 
     # Handle boolean flags
     if args.get("disable_blur_filtering"):
@@ -322,11 +322,11 @@ def main():
             paths_config = config_dict.get("paths", {})
             # Use paths from config or CLI args
             image_dir = Path(paths_config.get("image_dir", "."))
-            seg_dir = Path(paths_config.get("seg_dir", "."))
+            mask_dir = Path(paths_config.get("mask_dir", "."))
             blur_dir = Path(paths_config.get("blur_dir", "."))
             output_dir = Path(paths_config.get("output_dir", "."))
             # TODO : Add checks for directories
-            run_batch_postprocessing(pipeline, image_dir, seg_dir, blur_dir, output_dir)
+            run_batch_postprocessing(pipeline, image_dir, mask_dir, blur_dir, output_dir)
         else:
             run_single_file_postprocessing(pipeline, config_dict)
     except Exception as e:

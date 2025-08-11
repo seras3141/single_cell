@@ -2,7 +2,10 @@
 
 # Input/Output paths
 paths:
-  input_dir: "data/sample_data_out/split_data/test"
+  image_dir: "data/sample_data_out/split_data/test"
+  mask_dir: "data/sample_data_out/split_data/test"
+  # mask_dir: "data/sample_data_out/results/cyto3/test/masks_3d"
+  # input_dir: "data/sample_data_out/split_data/test"
   output_dir: "data/sample_data_out/features_output/split_data/test/"
   # Alternative: specify exact dataset paths
   # dataset_paths:
@@ -44,11 +47,12 @@ feature_extraction:
 
   # File organization
   output:
+    folder_name: "features"  # Subdirectory for features
 
     # Output options
     save_individual_files: true   # Save features for each image separately
-    save_combined_file: true      # Save all features in one CSV
-    include_metadata: true        # Include filename and processing info
+    save_combined_file: false      # Save all features in one CSV
+    include_metadata: false        # Include filename and processing info
 
     # Output file naming
     individual_format: "{image_name}_features.csv"

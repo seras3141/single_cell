@@ -88,20 +88,46 @@ postprocessing:
   filter_before_tracking: true
   save_intermediate_results: false
 
-# Feature extraction parameters
-features:
-  radiomics:
-    binWidth: 25
-    interpolator: "sitkLinear"
-    resampledPixelSpacing: null
-    padDistance: 10
+feature_extraction:
+  # Processing options
+  n_jobs: -1  # Number of parallel jobs (-1 uses all cores)
+  batch_size: 50  # Process files in batches to manage memory
+  
+  # Feature types to compute
+  features:
+    morphology: true      # Area, perimeter, elongation, etc.
+    intensity: true       # Mean, std, CV, total intensity
+    spatial: true         # Centroids, center of mass
+    texture: true         # Gabor, skewness, kurtosis, entropy
     
-  morphology:
-    extract_shape: true
-    extract_firstorder: true
-    extract_glcm: true
-    extract_glrlm: false
-    extract_glszm: false
+  # File patterns for matching images and masks
+  file_patterns:
+    # Brightfield images
+    images:
+      - "*_BF.tif"
+    # Cell masks/labels
+    masks:
+      - "*_Cells.tif"
+      - "*_masks.tif"
+    # Additional patterns for different data types
+    nuclei:
+      - "*_Nuclei.tif"
+
+
+  # # Feature extraction parameters
+  # features:
+  #   radiomics:
+  #     binWidth: 25
+  #     interpolator: "sitkLinear"
+  #     resampledPixelSpacing: null
+  #     padDistance: 10
+      
+  #   morphology:
+  #     extract_shape: true
+  #     extract_firstorder: true
+  #     extract_glcm: true
+  #     extract_glrlm: false
+  #     extract_glszm: false
 
 # Visualization parameters
 visualization:
