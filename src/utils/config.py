@@ -337,9 +337,9 @@ def get_paths_from_config(config: ConfigManager) -> Dict[str, Path]:
     image_dir = os.path.join(output_dir, out_3d_folder)
     blur_dir = os.path.join(output_dir, "blur_heatmaps")
 
-    seg_dir = os.path.join(output_dir, results_folder, model_type, dataset_name)
-    mask_dir = os.path.join(seg_dir, "masks_3d")
-    track_dir = os.path.join(seg_dir, "tracking")
+    mask_dir = os.path.join(output_dir, results_folder, model_type, dataset_name)
+    mask_dir = os.path.join(mask_dir, "masks_3d")
+    track_dir = os.path.join(mask_dir, "tracking")
     final_dir = os.path.join(track_dir, "final")
 
     config_out = {

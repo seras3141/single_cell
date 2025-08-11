@@ -96,22 +96,22 @@ def combine_2d_to_3d(
     print(f"Successfully combined {len(file_groups)} 2D image sets into 3D volumes in {output_dir}")
 
 
-def split_3d_to_2d(input_path: str, output_dir: str, suffix: Optional[str] = None):
+def split_3d_to_2d(input_path: str, output_dir: Union[str, Path], suffix: Optional[str] = None):
     """
     Split a 3D TIFF file into separate 2D TIFF slices.
     
     Args:
         input_path: Path to 3D TIFF file
         output_dir: Directory to save 2D TIFF slices
-        suffix: Optional suffix to add to output files (e.g., "BF", "Cells")
+        suffix: Optional suffix to remove from input_file and/or add to output files (e.g., "BF", "Cells")
         
     Example:
         Converts "sample_3d.tif" to "sample_z1.tif", "sample_z2.tif", ...
         or with suffix to "sample_z1_BF.tif", "sample_z2_BF.tif", ...
     """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     # Load 3D TIFF
     volume = tiff.imread(input_path)
     
@@ -119,6 +119,8 @@ def split_3d_to_2d(input_path: str, output_dir: str, suffix: Optional[str] = Non
     base_name = Path(input_path).stem
     if base_name.endswith('_3d'):
         base_name = base_name[:-3]
+    if suffix:
+        base_name = base_name.rstrip('_' + suffix)
     
     # Save each z-slice as a separate 2D TIFF
     for z in tqdm(range(volume.shape[0]), desc=f"Splitting {base_name}"):

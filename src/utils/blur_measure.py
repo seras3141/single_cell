@@ -13,9 +13,9 @@ from pathlib import Path
 from tqdm import tqdm
 from glob import glob
 import logging
-from typing import Union, Tuple, List, Dict, Optional
+from typing import Union, Tuple, List, Dict, Optional, Any
 from skimage.transform import resize
-from concurrent.futures import ThreadPoolExecutor
+from joblib import Parallel, delayed
 
 from src.utils.logging_utils import setup_logging
 
@@ -210,6 +210,7 @@ def measure_blur_heatmap(
     stride_size: int = 8,
     normalize: bool = True,
     center_values: bool = True,
+    **kwargs: Any
 ) -> np.ndarray:
     """
     Generate a blur heatmap for an image or stack of images.
@@ -228,18 +229,21 @@ def measure_blur_heatmap(
         
     # Handle 3D image stacks
     if img.ndim > 2:
-        # Process each slice and stack results in parallel using ThreadPoolExecutor
+        # Process each slice and stack results in parallel using joblib.Parallel
+        n_jobs = kwargs.get('n_jobs', -1)  # Use all available cores by default
 
         def process_slice(z):
             return measure_patchwise_blur(
-                img[z], 
-                patch_size=patch_size, 
-                stride_size=stride_size,
-                center_values=center_values
+            img[z], 
+            patch_size=patch_size, 
+            stride_size=stride_size,
+            center_values=center_values
             )
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            slices = list(executor.map(process_slice, range(img.shape[0])))
+        slices = Parallel(n_jobs=n_jobs)(
+            delayed(process_slice)(z) for z in range(img.shape[0])
+        )
+        # Stack results to create a 3D blur heatmap
         blur_heatmap = np.stack(slices)
     else:
         assert img.ndim == 2 and not normalize, "Only 3D images (z-stacks) can be processed with normalization"
