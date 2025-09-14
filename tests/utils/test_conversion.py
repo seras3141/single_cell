@@ -378,7 +378,7 @@ class TestConversionIntegration:
         
         # Verify round-trip integrity
         for z in range(3):
-            final_slice_path = Path(final_2d_dir) / f"test_BF_z{z+1}_BF.tif"
+            final_slice_path = Path(final_2d_dir) / f"test_z{z+1}_BF.tif"
             final_slice = tiff.imread(str(final_slice_path))
             
             np.testing.assert_array_equal(final_slice, original_slices[z])

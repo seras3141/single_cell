@@ -212,22 +212,6 @@ class ConfigManager:
             return cls.from_dict(args_dict)
 
 
-# Maintain backward compatibility with old Config class
-class Config(ConfigManager):
-    """Backward compatibility wrapper for ConfigManager."""
-    
-    def __init__(self, config_path: Optional[str] = None):
-        super().__init__(config_path)
-        # Store config as dict for backward compatibility
-        self._config_dict = self.to_dict()
-    
-    def _load_config(self) -> Dict[str, Any]:
-        """Legacy method for backward compatibility."""
-        # Call parent method and convert to dict
-        super()._load_config()
-        return self.to_dict()
-
-
 # Global configuration instance
 _config_manager: Optional[ConfigManager] = None
 
@@ -351,3 +335,55 @@ def get_paths_from_config(config: ConfigManager) -> Dict[str, Path]:
     }
 
     return config_out
+
+
+def get_config_manager(cli_args : dict, legacy_args_function : Optional[callable] = None) -> ConfigManager: # type: ignore
+    """
+    Get a ConfigManager instance with the specified configuration file and legacy overrides.
+    """
+
+    def parse_logging_config(cli_args: dict) -> Dict[str, Any]:
+        """Parse logging configuration from CLI arguments."""
+        legacy_args = {}
+
+        # Logging options
+        if "log_level" in cli_args:
+            legacy_args["logging.level"] = cli_args["log_level"].upper()
+        if "log_file" in cli_args:
+            legacy_args["logging.filename"] = cli_args["log_file"]
+        if 'logging_level' in cli_args:
+            legacy_args['logging.level'] = cli_args['logging_level'].upper()
+        if 'logging_file' in cli_args:
+            legacy_args['logging.filename'] = cli_args['logging_file']
+
+        return legacy_args
+
+    logger = logging.getLogger(__name__)
+    # Remove None values from cli_args
+    cli_args = {k: v for k, v in cli_args.items() if v is not None}
+
+    # 1: Load base config (from YAML or default)
+    if "config" in cli_args:
+        config_manager = ConfigManager(cli_args["config"])
+        logger.info(f"Loaded configuration from {cli_args['config']}")
+    else:
+        config_manager = ConfigManager()  # Use defaults
+        logger.info("Using default configuration")
+
+    # 2: Apply dotlist overrides from CLI
+    if "override" in cli_args:
+        overrides = OmegaConf.from_dotlist(cli_args["override"])
+        override_dict = OmegaConf.to_container(overrides)
+        logger.info(f"Applying CLI overrides: {cli_args['override']}")
+        config_manager = config_manager.merge_with_overrides(override_dict) #type: ignore
+
+    # 3: Apply legacy overrides and Merge config and CLI args
+    if legacy_args_function is None or not callable(legacy_args_function):
+        legacy_args_function = parse_logging_config
+
+    legacy_overrides = legacy_args_function(cli_args)
+    if legacy_overrides:
+        config_manager = config_manager.merge_with_overrides(legacy_overrides)
+        logger.info(f"Applied legacy CLI overrides: {list(legacy_overrides.keys())}")
+
+    return config_manager

@@ -248,10 +248,167 @@ class NapariConfig:
 @dataclass
 class VisualizationConfig:
     """Visualization configuration."""
+    output_dir: str = "feature_visualizations_temp"
+    save_plots: bool = True
+    show_plots: bool = False
+
+    # Plot styling
+    style: str = "whitegrid"  # Seaborn style
+    font_size: int = 12
     figure_size: List[int] = field(default_factory=lambda: [12, 8])
     dpi: int = 300
     colormap: str = "viridis"
+    color_palette: str = "tab10"  # for sample colors
     napari: NapariConfig = field(default_factory=NapariConfig)
+
+    # Dimensionality reduction settings
+    reduction_methods: Dict[str, Any] = field(default_factory=lambda: {
+        "pca": {
+            "n_components": 2,
+            "random_state": 42
+        },
+        "tsne": {
+            "n_components": 2,
+            "random_state": 42,
+            "perplexity": 30,
+            "n_iter": 1000
+        },
+        "umap": {
+            "n_components": 2,
+            "random_state": 42,
+            "n_neighbors": 15,
+            "min_dist": 0.1
+        }
+    })
+
+    # Visualization levels
+    levels: Dict[str, Any] = field(default_factory=lambda: {
+        "z_stack": {
+            "enabled": True,
+            "max_features_violin": 5,  # Max features for violin plots
+            "min_cells_per_stack": 3   # Min cells required for z-stack analysis
+        },
+        "sample": {
+            "enabled": True,
+            "max_features_heatmap": 8  # Max features for correlation heatmap
+        },
+        "dataset": {
+            "enabled": True,
+            "max_features_boxplot": 6,   # Max features for boxplot
+            "max_features_correlation": 10  # Max features for correlation matrix
+        }
+    })
+
+    # Interactive plotting
+    interactive: Dict[str, Any] = field(default_factory=lambda: {
+        "enabled": False,
+        "hover_data": ["instance_id", "z_stack", "sample_id"],
+        "plot_width": 800,
+        "plot_height": 600
+    })
+
+    # TensorBoard logging
+    tensorboard: Dict[str, Any] = field(default_factory=lambda: {
+        "enabled": False,
+        "log_dir": "tensorboard_logs"
+    })
+
+    # Feature selection for visualization
+    features: Dict[str, Any] = field(default_factory=lambda: {
+        # Features to always include in analysis
+        "priority_features": [
+            "area", "elongation", "circularity", "mean_intensity", "entropy"
+        ],
+        # Features to exclude from dimensionality reduction
+        "exclude_from_reduction": [
+            "instance_id", "filename", "image_path", "sample_id",
+            "z_stack", "sample_z_id", "centroid_x", "centroid_y",
+            "center_of_mass_x", "center_of_mass_y",
+        ]
+    })
+
+    '''
+
+
+# =============================================================================
+# Dimensionality Reduction Settings
+# =============================================================================
+
+@dataclass
+class DimensionalityReductionConfig:
+    """Dimensionality reduction configuration."""
+    methods: Dict[str, Any] = field(default_factory=lambda: {
+        "pca": {
+            "n_components": 2,
+            "random_state": 42
+        },
+        "tsne": {
+            "n_components": 2,
+            "random_state": 42,
+            "perplexity": 30,
+            "n_iter": 1000
+        },
+        "umap": {
+            "n_components": 2,
+            "random_state": 42,
+            "n_neighbors": 15,
+            "min_dist": 0.1
+        }
+    })
+
+  # Visualization levels
+  levels:
+    z_stack:
+      enabled: true
+      max_features_violin: 5  # Max features for violin plots
+      min_cells_per_stack: 3   # Min cells required for z-stack analysis
+      
+    sample:
+      enabled: true
+      max_features_heatmap: 8  # Max features for correlation heatmap
+      
+    dataset:
+      enabled: true
+      max_features_boxplot: 6   # Max features for boxplot
+      max_features_correlation: 10  # Max features for correlation matrix
+      
+  # Interactive plotting
+  interactive:
+    enabled: false
+    hover_data: ["instance_id", "z_stack", "sample_id"]
+    plot_width: 800
+    plot_height: 600
+
+  # TensorBoard logging
+  tensorboard:
+    enabled: false
+    log_dir: "tensorboard_logs"
+    
+  # Feature selection for visualization
+  features:
+    # Features to always include in analysis
+    priority_features:
+      - "area"
+      - "elongation"
+      - "circularity"
+      - "mean_intensity"
+      - "entropy"
+    
+    # Features to exclude from dimensionality reduction
+    exclude_from_reduction:
+      - "instance_id"
+      - "filename"
+      - "image_path"
+      - "sample_id"
+      - "z_stack"
+      - "sample_z_id"
+      - "centroid_x"
+      - "centroid_y"
+      - "center_of_mass_x"
+      - "center_of_mass_y"
+  
+
+    '''
 
 
 # =============================================================================

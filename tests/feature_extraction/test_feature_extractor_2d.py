@@ -9,10 +9,7 @@ from pathlib import Path
 import sys
 from unittest.mock import patch, MagicMock
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-
-from src.features.feature_extractor_2d import (
+from src.feature_extraction.feature_extractor_2d import (
     compute_morphology_features,
     compute_intensity_features,
     compute_spatial_features,
