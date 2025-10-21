@@ -5,49 +5,37 @@ This module provides functions to split image and mask datasets into training an
 ensuring that images from the same group (well, position, timepoint) stay together.
 """
 
-import os
 import json
-import re
-from glob import glob
 from pathlib import Path
 import random
 import logging
 import shutil
 from collections import defaultdict
-from typing import List, Tuple, Dict, Optional, Union, NamedTuple, Set
+from typing import List, Tuple, Dict, Optional, Union
 from src.utils.file_utils import AbstractFileHandler, DefaultFileHandler, BF_IF_FileHandler
 from src.utils.logging_utils import setup_logging
 
 logger = logging.getLogger(__name__)
 
 
-class DatasetSplit(NamedTuple):
-    """Container for dataset split results."""
-    train_images: List[str]
-    train_masks: List[str]
-    test_images: List[str]
-    test_masks: List[str]
-
-
-def get_groups_from_filenames(file_map, file_handler: AbstractFileHandler) -> Dict[str, List[str]]:
+def get_groups_from_filenames(renamed_tuples, file_handler: AbstractFileHandler) -> Dict[str, List[str]]:
     """
     Group files based on a pattern in their filenames.
     
     Args:
-        file_map: Dictionary mapping original file names to output names
+        renamed_tuples: List of tuples (original_file, renamed_file)
         file_handler: File renamer/handler for extracting group info
         
     Returns:
-        Dictionary mapping group identifiers to lists of file paths
+        Dictionary mapping group identifiers to lists of tuples (original_file, renamed_file)
     """
     groups = defaultdict(list)
-    
-    for filepath, out_path in file_map.items():
-        group_id = file_handler.extract_group_id(out_path)
 
-        # Use filename without extension as fallback
-        groups[group_id].append(filepath)
-            
+    for src, dst in renamed_tuples:
+        group_id = file_handler.extract_group_id(dst)
+
+        groups[group_id].append((src, dst))
+                
     return dict(groups)
 
 def copy_file(
@@ -74,10 +62,6 @@ def copy_file(
     if dst.exists() or dst.is_symlink():
         dst.unlink()  # Remove existing file
 
-    # print(src, dst)
-    # return
-
-
     try:
         dst.symlink_to(src, target_is_directory=False)
     except (OSError, NotImplementedError):
@@ -85,13 +69,74 @@ def copy_file(
         # This works on all platforms without admin privileges
         shutil.copy2(src, dst)
 
+def copy_without_split(
+        image_tuple : List[Tuple[str, str]],
+        mask_tuple : List[Tuple[str, str]],
+        output_dir: Union[str, Path],
+):
+    """
+    Copy image and mask files without splitting into train/test sets.
+
+    Args:
+        image_tuple: List of tuples (src_path, dest_path) for image files
+        mask_tuple: List of tuples (src_path, dest_path) for mask files
+        output_dir: Directory to copy the files to
+    """
+    if isinstance(output_dir, str):
+        output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for src, dst in image_tuple:
+        copy_file(src, output_dir / dst)
+
+    for src, dst in mask_tuple:
+        copy_file(src, output_dir / dst)
+
+def copy_with_split(
+        train_image_tuple : List[Tuple[str, str]],
+        train_mask_tuple : List[Tuple[str, str]],
+        test_image_tuple : List[Tuple[str, str]],
+        test_mask_tuple : List[Tuple[str, str]],
+        output_dir: Union[str, Path],
+):
+    """
+    Copy image and mask files into train and test subdirectories.
+
+    Args:
+        train_image_tuple: List of tuples (src_path, dest_path) for training image files
+        train_mask_tuple: List of tuples (src_path, dest_path) for training mask files
+        test_image_tuple: List of tuples (src_path, dest_path) for test image files
+        test_mask_tuple: List of tuples (src_path, dest_path) for test mask files
+        output_dir: Directory to copy the files to
+    """
+    if isinstance(output_dir, str):
+        output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    train_dir = output_dir / 'train'
+    test_dir = output_dir / 'test'
+    train_dir.mkdir(parents=True, exist_ok=True)
+    test_dir.mkdir(parents=True, exist_ok=True)
+
+    # TODO : Handle masks separately into mask subdirs
+    for src, dst in train_image_tuple:
+        copy_file(src, train_dir / dst)
+
+    for src, dst in train_mask_tuple:
+        copy_file(src, train_dir / dst)
+
+    for src, dst in test_image_tuple:
+        copy_file(src, test_dir / dst)
+
+    for src, dst in test_mask_tuple:
+        copy_file(src, test_dir / dst)
 
 def split_dataset(
     images: List[str],
-    masks: List[str],
+    masks: Optional[List[str]] = [],
     test_size: float = 0.2,
     random_state: int = 42,
-    file_handler: AbstractFileHandler = DefaultFileHandler(),
+    file_handler: DefaultFileHandler = DefaultFileHandler(),
     output_dir: Optional[Union[str, Path]] = None,
 ) -> Tuple[List[str], List[str], List[str], List[str]]:
     """
@@ -107,123 +152,97 @@ def split_dataset(
     Returns:
         Tuple containing (train_images, train_masks, test_images, test_masks)
     """
+
+    if file_handler is None:
+        raise ValueError("No file handler provided, images may not be grouped correctly")
+
+    if masks and len(images) != len(masks):
+        raise ValueError("Number of images and masks must be the same", f"Images: {len(images)} != Masks: {len(masks)}")
+
     # Set random seed for reproducibility
     random.seed(random_state)
 
-    assert file_handler is not None, "File handler must be provided"
+    if test_size <= 0 or test_size >= 1:
+        logger.info("Test size is 0 or >=1, no splitting will be performed.")
 
-    # Map images and masks to desired output names using the file handler
-    images_map = {image_name : file_handler.rename_image(image_name) for image_name in images}
-    masks_map = {mask_name : file_handler.rename_mask(mask_name) for mask_name in masks}
-    
-    # Group images by position/group_id
-    image_groups = get_groups_from_filenames(images_map, file_handler)
-    mask_groups = get_groups_from_filenames(masks_map, file_handler)
-    
-    # Get common groups
-    common_groups = set(image_groups.keys()) & set(mask_groups.keys())
-    
-    if not common_groups:
-        raise ValueError("No matching image-mask groups found")
-    
-    # Split groups into train/test
-    groups = list(common_groups)
-    n_test = max(1, int(len(groups) * test_size))
-    test_groups = set(random.sample(groups, n_test))
-    
-    # Separate images and masks
-    train_images, train_masks = [], []
-    test_images, test_masks = [], []
-    
-    for group in common_groups:
-        if group in test_groups:
-            test_images.extend(image_groups[group])
-            test_masks.extend(mask_groups[group])
+        # Copy files to output directory without splitting
+        image_tuples = [(src, file_handler.rename_image(src)) for src in images]
+        mask_tuples = [(src, file_handler.rename_mask(src)) for src in masks] if masks else []
+        if output_dir:
+            copy_without_split(image_tuples, mask_tuples, output_dir)
+
+        image_files = [dst for src, dst in image_tuples]
+        mask_files = [dst for src, dst in mask_tuples]
+
+        if test_size <= 0:
+            logger.info("All data assigned to training set.")
+            return image_files, mask_files, [], []
         else:
-            train_images.extend(image_groups[group])
-            train_masks.extend(mask_groups[group])
-    
-    logger.info(f"Split dataset: {len(train_images)} training images, {len(test_images)} test images")
-    logger.info(f"Train groups: {sorted(common_groups - test_groups)}")
-    logger.info(f"Test groups: {sorted(test_groups)}")
+            logger.info("All data assigned to test set.")
+            return [], [], image_files, mask_files
 
-    if output_dir:
-        # Create output directories
-        if isinstance(output_dir, str):
-            output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        logger.info(f"Splitting dataset with test size = {test_size}")
 
-        train_dir = output_dir / 'train'
-        test_dir = output_dir / 'test'
-        train_dir.mkdir(parents=True, exist_ok=True)
-        test_dir.mkdir(parents=True, exist_ok=True)
+        # Rename files and create tuples : src, dst (base name only)
+        image_tuples = [(src, file_handler.rename_image(src)) for src in images]
+        mask_tuples = [(src, file_handler.rename_mask(src)) for src in masks] if masks else []
+
+        # Group files based on extracted group IDs
+        grouped_image_tuples = get_groups_from_filenames(image_tuples, file_handler)
+        grouped_mask_tuples = get_groups_from_filenames(mask_tuples, file_handler) if masks else {}
+
+        # Check if both images and masks have the same groups
+        image_group_keys = set(grouped_image_tuples.keys())
+        mask_group_keys = set(grouped_mask_tuples.keys())
+        if masks and image_group_keys != mask_group_keys:
+            raise ValueError(f"Image and mask groups do not match: {image_group_keys ^ mask_group_keys}")
         
-        # Copy files to their respective directories
-        for img, mask in zip(train_images, train_masks):
-            copy_file(img, train_dir/images_map[img])
-            copy_file(mask, train_dir/masks_map[mask])
-            
-        for img, mask in zip(test_images, test_masks):
-            copy_file(img, test_dir/images_map[img])
-            copy_file(mask, test_dir/masks_map[mask])
+        # split based on image_group_keys
+        groups = list(image_group_keys)
+        n_test = max(1, int(len(groups) * test_size))
+        test_groups = set(random.sample(groups, n_test))
 
-        # Log the copied files            
-        logger.info(f"Files copied to {train_dir} and {test_dir}")
+        # Separate images and masks
+        train_images, train_masks = [], []
+        test_images, test_masks = [], []        
 
-    return train_images, train_masks, test_images, test_masks
+        for group in image_group_keys:
+            if group in test_groups:
+                test_images.extend(grouped_image_tuples[group])
+                if masks:
+                    test_masks.extend(grouped_mask_tuples[group])
+            else:
+                train_images.extend(grouped_image_tuples[group])
+                if masks:
+                    train_masks.extend(grouped_mask_tuples[group])
 
-def get_image_from_pattern(
-    data_dir: Union[str, Path],
-    pattern: str = "*_w1_*.tif",
-) -> List[str]:
-    """
-    Get a list of image files matching a glob pattern in a directory.
-    
-    Args:
-        data_dir: Directory to search for images
-        pattern: Glob pattern to match image files
-        
-    Returns:
-        List of image file paths matching the pattern
-    """
-    data_dir = Path(data_dir)
-    images = sorted(glob(str(data_dir / "**" / pattern), recursive=True))
-    
-    if not images:
-        raise ValueError(f"No images found matching pattern '{pattern}' in {data_dir}")
-    
-    return images
+        if output_dir:
+            copy_with_split(
+                train_images, train_masks,
+                test_images, test_masks,
+                output_dir
+            )
 
-def get_mask_from_pattern(
-    data_dir: Union[str, Path], 
-    pattern: str = "Cells_*.tif",
-) -> List[str]:
-    """
-    Get a list of mask files matching a glob pattern in a directory.
-    
-    Args:
-        data_dir: Directory to search for masks
-        pattern: Glob pattern to match mask files
-        
-    Returns:
-        List of mask file paths matching the pattern
-    """
-    data_dir = Path(data_dir)
-    masks = sorted(glob(str(data_dir / "**" / pattern), recursive=True))
-    
-    if not masks:
-        raise ValueError(f"No masks found matching pattern '{pattern}' in {data_dir}")
-    
-    return masks
+        train_images = [dst for src, dst in train_images]
+        test_images = [dst for src, dst in test_images]
+        train_masks = [dst for src, dst in train_masks] if masks else []
+        test_masks = [dst for src, dst in test_masks] if masks else []
+
+        logger.info(f"Split dataset: {len(train_images)} training images, {len(test_images)} test images")
+        logger.info(f"Train groups: {sorted(image_group_keys - test_groups)}")
+        logger.info(f"Test groups: {sorted(test_groups)}")
+
+        return train_images, train_masks, test_images, test_masks
 
 def train_test_split_directory(
     data_dir: Union[str, Path],
     output_dir: Union[str, Path],
     test_size: float = 0.2,
     random_state: int = 42,
-    image_pattern: str = "*_w1_*.tif",
-    mask_pattern: str = "Cells_*.tif",
-    file_handler: AbstractFileHandler = BF_IF_FileHandler(),
+    image_pattern: Optional[str] = None,
+    mask_pattern: Optional[str] = None,
+    file_handler: DefaultFileHandler = BF_IF_FileHandler(),
 ) -> Dict[str, List[str]]:
     """
     Split data in a directory into train and test sets and organize into subdirectories.
@@ -244,13 +263,16 @@ def train_test_split_directory(
     output_dir = Path(output_dir)
 
     # Find all images and masks
-    images = get_image_from_pattern(data_dir, image_pattern)
-    
-    # Check if masks are in a subdirectory
-    masks = get_mask_from_pattern(data_dir, mask_pattern)
-    
+    images = file_handler.get_files(str(data_dir), 'image')
+    masks = file_handler.get_files(str(data_dir), 'mask')
+
+    if not images:
+        raise ValueError(f"No images found in {data_dir} with pattern {file_handler.image_pattern}")
+    if not masks:
+        raise Warning(f"No masks found in {data_dir} with pattern {file_handler.mask_pattern}")
+
     logger.info(f"Found {len(images)} images and {len(masks)} masks in {data_dir}")
-    
+
     # TODO : Check if random seed works
     # Split the dataset
     train_images, train_masks, test_images, test_masks = split_dataset(
@@ -281,8 +303,9 @@ if __name__ == "__main__":
     parser.add_argument("output_dir", help="Directory to save the split dataset")
     parser.add_argument("--test-size", type=float, default=0.2, help="Fraction of data to use for testing")
     parser.add_argument("--random-seed", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--image-pattern", default="*_w1_*.tif", help="Glob pattern for image files")
-    parser.add_argument("--mask-pattern", default="Cells_*.tif", help="Glob pattern for mask files")
+    # Image and mask patterns can be set via the file handler
+    # parser.add_argument("--image-pattern", default="*_w1_*.tif", help="Glob pattern for image files")
+    # parser.add_argument("--mask-pattern", default="Cells_*.tif", help="Glob pattern for mask files")
     
     args = parser.parse_args()
     
@@ -295,8 +318,8 @@ if __name__ == "__main__":
         args.output_dir,
         args.test_size,
         args.random_seed,
-        args.image_pattern,
-        args.mask_pattern,
+        # args.image_pattern,
+        # args.mask_pattern,
         file_handler=BF_IF_FileHandler()  # Default for command-line usage
     )
     
