@@ -1,5 +1,90 @@
 import pytest
-from src.utils.file_utils import BF_IF_FileHandler, BlurFileHandler
+from src.utils.file_utils import BF_IF_FileHandler, BlurFileHandler, DefaultFileHandler
+import tempfile, shutil
+from pathlib import Path
+
+@pytest.fixture(scope="module")
+def mock_data_dirs():
+    mock_data_dir = tempfile.mkdtemp()
+    data_dir = Path(mock_data_dir) / "Plate 2126 Test Data"
+    image_dir = data_dir
+    mask_dir = data_dir / "masks"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    mask_dir.mkdir(parents=True, exist_ok=True)
+    mock_image_files = [
+        "t1_J03_s1_w1_z1.tif",
+        "t1_J03_s1_w1_z2.tif",
+        "t1_J03_s1_w1_z3.tif",
+        "t1_J03_s1_w2_z1.tif",
+        "t1_J03_s1_w2_z2.tif",
+        "t1_J04_s1_w1_z1.tif",
+        "t1_J04_s1_w1_z2.tif",
+        "t1_J04_s1_w1_z3.tif",
+        "t1_J04_s1_w2_z1.tif",
+        "t1_J04_s1_w2_z2.tif",
+        "t1_L11_s1_w1_z1.tif",
+        "t1_L11_s1_w1_z2.tif",
+        "t1_L11_s1_w2_z1.tif",
+    ]
+    mock_mask_files = [
+        "Cells_R10-C3-F0-Z0-T0.tif",
+        "Cells_R10-C3-F0-Z1-T0.tif",
+        "Cells_R10-C3-F0-Z2-T0.tif",
+        "Cells_R10-C4-F0-Z0-T0.tif",
+        "Cells_R10-C4-F0-Z1-T0.tif",
+        "Cells_R10-C4-F0-Z2-T0.tif",
+        "Cells_R12-C11-F0-Z0-T0.tif",
+        "Cells_R12-C11-F0-Z1-T0.tif",
+    ]
+
+    for filename in mock_image_files:
+        (image_dir / filename).touch()
+    for filename in mock_mask_files:
+        (mask_dir / filename).touch()
+    yield {
+        "mock_data_dir": mock_data_dir,
+        "data_dir": data_dir,
+        "image_dir": image_dir,
+        "mask_dir": mask_dir,
+        "mock_image_files": mock_image_files,
+        "mock_mask_files": mock_mask_files
+    }
+    shutil.rmtree(mock_data_dir, ignore_errors=True)
+
+
+class TestDefaultFileHandler:
+    def setup_method(self):
+        self.handler = DefaultFileHandler()
+
+    def test_rename_image(self):
+        input_path = 'some/path/image.tif'
+        expected = 'image.tif'
+        assert self.handler.rename_image(input_path) == expected
+
+    def test_rename_mask(self):
+        input_path = 'some/path/image_mask.tif'
+        expected = 'image_mask.tif'
+        assert self.handler.rename_mask(input_path) == expected
+
+    def test_extract_group_id(self):
+        filename = 'image.tif'
+        assert self.handler.extract_group_id(filename) == 'image'
+
+    def test_file_handler(self, mock_data_dirs):
+        file_handler = self.handler
+
+        image_dir = mock_data_dirs["image_dir"]
+        mask_dir = mock_data_dirs["mask_dir"]
+        sample_image = str(image_dir / "t1_J03_s1_w1_z1.tif")
+        renamed_image = file_handler.rename_image(sample_image)
+        assert "J03" in renamed_image
+        sample_mask = str(mask_dir / "Cells_R10-C3-F0-Z0-T0.tif")
+        renamed_mask = file_handler.rename_mask(sample_mask)
+        assert "J03" in renamed_mask
+        group_id = file_handler.extract_group_id(renamed_image)
+        assert group_id == "J03"
+        mask_group_id = file_handler.extract_group_id(renamed_mask)
+        assert mask_group_id == "J03"
 
 class TestBFIFFileHandler:
     def setup_method(self):

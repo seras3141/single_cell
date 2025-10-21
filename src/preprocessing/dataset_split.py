@@ -12,7 +12,7 @@ import logging
 import shutil
 from collections import defaultdict
 from typing import List, Tuple, Dict, Optional, Union
-from src.utils.file_utils import AbstractFileHandler, DefaultFileHandler, BF_IF_FileHandler
+from src.utils.file_utils import AbstractFileHandler, DefaultFileHandler, BF_IF_FileHandler, BF_FileHandler
 from src.utils.logging_utils import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -136,7 +136,7 @@ def split_dataset(
     masks: Optional[List[str]] = [],
     test_size: float = 0.2,
     random_state: int = 42,
-    file_handler: DefaultFileHandler = DefaultFileHandler(),
+    file_handler: DefaultFileHandler = BF_FileHandler(),
     output_dir: Optional[Union[str, Path]] = None,
 ) -> Tuple[List[str], List[str], List[str], List[str]]:
     """
@@ -242,7 +242,7 @@ def train_test_split_directory(
     random_state: int = 42,
     image_pattern: Optional[str] = None,
     mask_pattern: Optional[str] = None,
-    file_handler: DefaultFileHandler = BF_IF_FileHandler(),
+    file_handler: DefaultFileHandler = BF_FileHandler(),
 ) -> Dict[str, List[str]]:
     """
     Split data in a directory into train and test sets and organize into subdirectories.

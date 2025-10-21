@@ -75,31 +75,6 @@ class AbstractFileHandler(ABC):
         pass
 
     @abstractmethod
-    def rename_image(self, filename: str, suffix: Optional[str] = None) -> str:
-        """Rename image file to standardized format.
-        
-        Args:
-            filename: Original filename
-            suffix: Optional suffix to append to the filename
-            
-        Returns:
-            Standardized filename
-        """
-        pass
-
-    @abstractmethod
-    def rename_mask(self, filename: str) -> str:
-        """Rename mask file to standardized format.
-        
-        Args:
-            filename: Original filename
-            
-        Returns:
-            Standardized filename
-        """
-        pass
-
-    @abstractmethod
     def extract_group_id(self, filename: str) -> str:
         """Extract position grouping from output format.
         
@@ -108,6 +83,19 @@ class AbstractFileHandler(ABC):
             
         Returns:
             Group identifier extracted from filename
+        """
+        pass
+
+    @abstractmethod
+    def get_files(self, directory: str, file_type: str) -> List[str]:
+        """Get list of files of given type from directory.
+        
+        Args:
+            directory: Directory to search for files
+            file_type: Type of file (from patterns)
+            
+        Returns:
+            List of file paths
         """
         pass
 
@@ -138,21 +126,23 @@ class DefaultFileHandler(AbstractFileHandler):
         )
     }
 
-    # def __init__(self, patterns: Optional[Dict[str, FilePattern]] = None):
-    #     """Initialize with optional custom patterns.
-        
-    #     Args:
-    #         patterns: Dictionary of file type to FilePattern mappings
-    #     """
-    #     self.patterns = self.DEFAULT_PATTERNS if patterns is None else patterns
+    def __init__(self, patterns: Dict[str, FilePattern] | None = None):
+        super().__init__(patterns)
+        self.image_pattern = self.patterns['image'].pattern
+        self.mask_pattern = self.patterns['mask'].pattern
 
-    def extract_plate_number(self, filepath: str) -> str:
-        """Extract plate number from filepath."""
-        plate_match = re.search(r'Plate\s*(\d+)', filepath)
-        if not plate_match:
-            # Default to empty plate identifier if not found
-            return "unknown"
-        return plate_match.group(1)
+    def get_files(self, directory: str, file_type: str) -> List[str]:
+        if file_type == 'image':
+            regex = re.compile(self.image_pattern)
+        elif file_type == 'mask':
+            regex = re.compile(self.mask_pattern)
+        else:
+            return []
+
+        files = sorted(glob.glob(f"{directory}/**/*.tif", recursive=True))
+        files = [f for f in files if regex.search(Path(f).name)]
+
+        return files
 
     def rename_file(self, filename: str, file_type: str) -> str:
         if file_type not in self.patterns:
@@ -169,7 +159,7 @@ class DefaultFileHandler(AbstractFileHandler):
         
         if file_type == 'mask':
             values['row'] = chr(ord('A') + int(values['row_num']) - 1)
-            # Add z_adjusted for backward compatibility
+            values['col'] = f"{int(values['col']):02d}"
             values['z_adjusted'] = str(int(values['z']) + 1)
         
         return pattern.output_format.format(**values)
@@ -220,25 +210,20 @@ class BF_IF_FileHandler(DefaultFileHandler):
         )
     }
 
-    def rename_file(self, filename: str, file_type: str) -> str:
+    def rename_file(self, filepath: str, file_type: str) -> str:
         if file_type not in self.patterns:
             raise ValueError(f"Unknown file type: {file_type}")
+                
+        values = self.extract_values(filepath, file_type)
 
-        # Extract plate number from filepath using regex
-        plate_match = re.search(r'Plate\s*(\d+)', filename)
-        if not plate_match:
-            raise ValueError(f"Could not extract plate number from filepath: {filename}")
-        plate_number = plate_match.group(1)
-
-        filename = Path(filename).name
-        pattern = self.patterns[file_type]
-        match = re.search(pattern.pattern, filename)
+        if not values:
+            raise ValueError(f"Could not extract values from filepath: {filepath}")
         
-        if not match:
-            return filename
-
-        values = dict(zip(pattern.groups, match.groups()))
-        values['plate'] = plate_number
+        plate_number = self.extract_plate_number(filepath)
+        if not plate_number or plate_number == "unknown":
+            raise ValueError(f"Could not extract plate number from filepath: {filepath}")
+        else:
+            values['plate'] = plate_number
 
         
         if file_type == 'mask':
@@ -246,12 +231,15 @@ class BF_IF_FileHandler(DefaultFileHandler):
             values['col'] = f"{int(values['col']):02d}"
             values['z'] = str(int(values['z']) + 1)
         else:
-            # Support multiple wells
+            # TODO: Support multiple wells (not needed for BF FileHandler)
             pass  # We still use well number in filename, but don't assert it equals '1'
+
+        pattern = self.patterns[file_type]
         
         return pattern.output_format.format(**values)
 
     def rename_image(self, filename: str) -> str:
+        print(self.image_pattern)
         return self.rename_file(filename, 'image')
 
     def rename_mask(self, filename: str) -> str:
@@ -261,6 +249,59 @@ class BF_IF_FileHandler(DefaultFileHandler):
         """Extract position grouping from output format."""
         parts = filename.split('_')
         return parts[0] + "_" + parts[1]
+
+    def extract_plate_number(self, filepath: str) -> str:
+        """Extract plate number from filepath."""
+        plate_match = re.search(r'Plate\s*(\d+)', filepath)
+        if not plate_match:
+            # Default to empty plate identifier if not found
+            return "unknown"
+        return plate_match.group(1)
+
+    def extract_values(self, filepath: str, file_type: str) -> Dict[str, str]:
+        """Extract values from filename based on pattern."""
+
+        if file_type not in self.patterns:
+            raise ValueError(f"Unknown file type: {file_type}")
+
+        filename = Path(filepath).name
+        pattern = self.patterns[file_type]
+        match = re.search(pattern.pattern, filename)
+        
+        if not match:
+            return {}
+
+        values = dict(zip(pattern.groups, match.groups()))
+        return values
+
+class BF_FileHandler(BF_IF_FileHandler):
+    """
+    File renamer for BF only experiments that includes plate number from filepath and well number == 1.
+    Input path contains the plate number, time point, position, well number, and z-stack.
+    
+    Example input/output:
+        Image:
+            Input:  Plate 2126/t1_A01_s1_w1_z1.tif
+            Output: p2126_A01_z1_BF.tif
+        
+        Mask:
+            Input:  Plate 2126/Cells_R1-C1-F1-Z1-T1.tif
+            Output: p2126_A01_z2_Cells.tif
+    """
+
+    DEFAULT_PATTERNS = {
+        # Brightfield images have a well no. of 1
+        'image': FilePattern(
+            pattern=r't\d+_([A-Z])(\d+)_s\d+_w(1)_z(\d+)',
+            groups=['row', 'col', 'well', 'z'],
+            output_format="p{plate}_{row}{col}_z{z}_BF.tif"
+        ),
+        'mask': FilePattern(
+            pattern=r'Cells_R(\d+)-C(\d+)-F\d+-Z(\d+)-T\d+\.tif',
+            groups=['row_num', 'col', 'z'],
+            output_format="p{plate}_{row}{col}_z{z}_Cells.tif"
+        )
+    }
 
 
 class BF_IF_FileHandler_3D(DefaultFileHandler):
@@ -331,105 +372,105 @@ class BF_IF_FileHandler_3D(DefaultFileHandler):
         return parts[0] + "_" + parts[1]
 
 
-class StandardFileHandler(AbstractFileHandler):
-    """Standard implementation of file renaming for cell segmentation datasets.
+# class StandardFileHandler(AbstractFileHandler):
+#     """Standard implementation of file renaming for cell segmentation datasets.
     
-    This class converts various file naming conventions to a standardized format:
-    {plate}_{well}_z{z}_{type}.tif
+#     This class converts various file naming conventions to a standardized format:
+#     {plate}_{well}_z{z}_{type}.tif
     
-    Where:
-    - plate: plate identifier (e.g., p2126)
-    - well: well identifier (e.g., A01)
-    - z: z-stack number
-    - type: file type (e.g., BF for brightfield, Cells for segmentation masks)
-    """
+#     Where:
+#     - plate: plate identifier (e.g., p2126)
+#     - well: well identifier (e.g., A01)
+#     - z: z-stack number
+#     - type: file type (e.g., BF for brightfield, Cells for segmentation masks)
+#     """
 
-    DEFAULT_PATTERNS = {
-            'image': FilePattern(
-                pattern=r't\d+_([A-Z])(\d+)_s\d+_w(\d+)_z(\d+)',
-                groups=['row', 'col', 'well', 'z'],
-                output_format="p{plate}_{row}{col:02d}_z{z}_{image_type}.tif"
-            ),
-            'mask': FilePattern(
-                pattern=r'Cells_R(\d+)-C(\d+)-F\d+-Z(\d+)-T\d+\.tif',
-                groups=['row_num', 'col', 'z'],
-                output_format="p{plate}_{row}{col:02d}_z{z}_{mask_type}.tif"
-            )
-        }    
+#     DEFAULT_PATTERNS = {
+#             'image': FilePattern(
+#                 pattern=r't\d+_([A-Z])(\d+)_s\d+_w(\d+)_z(\d+)',
+#                 groups=['row', 'col', 'well', 'z'],
+#                 output_format="p{plate}_{row}{col:02d}_z{z}_{image_type}.tif"
+#             ),
+#             'mask': FilePattern(
+#                 pattern=r'Cells_R(\d+)-C(\d+)-F\d+-Z(\d+)-T\d+\.tif',
+#                 groups=['row_num', 'col', 'z'],
+#                 output_format="p{plate}_{row}{col:02d}_z{z}_{mask_type}.tif"
+#             )
+#         }    
 
-    def extract_plate_number(self, filepath: str) -> str:
-        """Extract plate number from filepath."""
-        plate_match = re.search(r'Plate\s*(\d+)', filepath)
-        if not plate_match:
-            # Default to empty plate identifier if not found
-            return "unknown"
-        return plate_match.group(1)
+#     def extract_plate_number(self, filepath: str) -> str:
+#         """Extract plate number from filepath."""
+#         plate_match = re.search(r'Plate\s*(\d+)', filepath)
+#         if not plate_match:
+#             # Default to empty plate identifier if not found
+#             return "unknown"
+#         return plate_match.group(1)
     
-    def rename_file(self, filepath: str, file_type: str) -> str:
-        """Rename file according to pattern for given file type."""
-        if file_type not in self.patterns:
-            raise ValueError(f"Unknown file type: {file_type}")
+#     def rename_file(self, filepath: str, file_type: str) -> str:
+#         """Rename file according to pattern for given file type."""
+#         if file_type not in self.patterns:
+#             raise ValueError(f"Unknown file type: {file_type}")
         
-        # Extract plate number
-        plate_number = self.extract_plate_number(filepath)
+#         # Extract plate number
+#         plate_number = self.extract_plate_number(filepath)
         
-        # Extract filename from path
-        filename = Path(filepath).name
-        pattern = self.patterns[file_type]
-        match = re.search(pattern.pattern, filename)
+#         # Extract filename from path
+#         filename = Path(filepath).name
+#         pattern = self.patterns[file_type]
+#         match = re.search(pattern.pattern, filename)
         
-        if not match:
-            return filename
+#         if not match:
+#             return filename
         
-        # Map matched groups to values
-        values = dict(zip(pattern.groups, match.groups()))
-        values['plate'] = plate_number
+#         # Map matched groups to values
+#         values = dict(zip(pattern.groups, match.groups()))
+#         values['plate'] = plate_number
         
-        # Apply file type specific transformations
-        if file_type == 'mask':
-            # Convert 1-based row number to letter (1 -> A, 2 -> B, etc.)
-            values['row'] = chr(ord('A') + int(values['row_num']) - 1)
-            values['col'] = int(values['col'])
-            values['z'] = str(int(values['z']) + 1)  # Adjust z-index if needed
-            values['mask_type'] = 'Cells'
-        else:
-            values['col'] = int(values['col'])
-            values['image_type'] = 'BF'
+#         # Apply file type specific transformations
+#         if file_type == 'mask':
+#             # Convert 1-based row number to letter (1 -> A, 2 -> B, etc.)
+#             values['row'] = chr(ord('A') + int(values['row_num']) - 1)
+#             values['col'] = int(values['col'])
+#             values['z'] = str(int(values['z']) + 1)  # Adjust z-index if needed
+#             values['mask_type'] = 'Cells'
+#         else:
+#             values['col'] = int(values['col'])
+#             values['image_type'] = 'BF'
         
-        return pattern.output_format.format(**values)
+#         return pattern.output_format.format(**values)
     
-    def rename_image(self, filepath: str) -> str:
-        """Rename image file to standardized format."""
-        return self.rename_file(filepath, 'image')
+#     def rename_image(self, filepath: str) -> str:
+#         """Rename image file to standardized format."""
+#         return self.rename_file(filepath, 'image')
     
-    def rename_mask(self, filepath: str) -> str:
-        """Rename mask file to standardized format."""
-        return self.rename_file(filepath, 'mask')
+#     def rename_mask(self, filepath: str) -> str:
+#         """Rename mask file to standardized format."""
+#         return self.rename_file(filepath, 'mask')
         
-    def extract_group_id(self, filepath: str) -> str:
-        """
-        Extract position grouping from filename.
+#     def extract_group_id(self, filepath: str) -> str:
+#         """
+#         Extract position grouping from filename.
         
-        Args:
-            filepath: Path to the file
+#         Args:
+#             filepath: Path to the file
             
-        Returns:
-            Group identifier (e.g., 'p2126_A01')
-        """
-        filename = Path(filepath).name
-        # Try to match standard pattern like "p2126_A01_z1_BF.tif"
-        match = re.search(r'(p\d+_[A-Z]\d+)', filename)
-        if match:
-            return match.group(1)
+#         Returns:
+#             Group identifier (e.g., 'p2126_A01')
+#         """
+#         filename = Path(filepath).name
+#         # Try to match standard pattern like "p2126_A01_z1_BF.tif"
+#         match = re.search(r'(p\d+_[A-Z]\d+)', filename)
+#         if match:
+#             return match.group(1)
         
-        # Try alternative pattern (plate_row-col)
-        match = re.search(r'([A-Z]\d+)', filename)
-        if match:
-            plate = self.extract_plate_number(filepath)
-            return f"p{plate}_{match.group(1)}"
+#         # Try alternative pattern (plate_row-col)
+#         match = re.search(r'([A-Z]\d+)', filename)
+#         if match:
+#             plate = self.extract_plate_number(filepath)
+#             return f"p{plate}_{match.group(1)}"
             
-        # Fallback to filename without extension
-        return Path(filepath).stem.split('_')[0]
+#         # Fallback to filename without extension
+#         return Path(filepath).stem.split('_')[0]
 
 
 
@@ -446,13 +487,9 @@ class BlurFileHandler(AbstractFileHandler):
         ),
     }
 
-    def extract_plate_number(self, filepath: str) -> str:
-        """Extract plate number from filepath."""
-        plate_match = re.search(r'Plate\s*(\d+)', filepath)
-        if not plate_match:
-            # Default to empty plate identifier if not found
-            return "unknown"
-        return plate_match.group(1)
+    def __init__(self, patterns: Dict[str, FilePattern] | None = None):
+        super().__init__(patterns)
+        self.blur_pattern = self.patterns['image_BF_3d'].pattern
 
     def rename_file(self, filename: Union[str, Path], file_type: str, suffix: str) -> str:
         if file_type not in self.patterns:
@@ -476,9 +513,6 @@ class BlurFileHandler(AbstractFileHandler):
 
     def rename_image(self, filename: Union[str, Path], suffix: str) -> str:
         return self.rename_file(filename, 'image_BF_3d', suffix)
-
-    def rename_mask(self, filename: Union[str, Path]) -> str:
-        raise NotImplementedError("BlurFileHandler does not handle mask files.")
         
     def extract_group_id(self, filename: str) -> str:
         """Extract position grouping from filename."""
@@ -490,53 +524,10 @@ class BlurFileHandler(AbstractFileHandler):
         # Fallback to filename without extension
         return Path(filename).stem.split('_')[0]
 
-
-# Enhanced functionality from file_naming.py
-def standardize_dataset(image_dir: str, mask_dir: str, output_dir: str, 
-                       file_handler: Optional[AbstractFileHandler] = None):
-    """
-    Standardize a dataset by renaming and copying files to a common format.
-    
-    Args:
-        image_dir: Directory containing image files
-        mask_dir: Directory containing mask files
-        output_dir: Directory to save standardized files
-        file_handler: FileHandler instance to use (defaults to DefaultFileHandler)
-    """
-    # Create output directories
-    image_output = os.path.join(output_dir, 'images')
-    mask_output = os.path.join(output_dir, 'masks')
-    os.makedirs(image_output, exist_ok=True)
-    os.makedirs(mask_output, exist_ok=True)
-    
-    # Use default handler if none provided
-    if file_handler is None:
-        file_handler = DefaultFileHandler()
-    
-    # Find all image and mask files
-    image_files = glob.glob(os.path.join(image_dir, '**', '*.tif'), recursive=True)
-    mask_files = glob.glob(os.path.join(mask_dir, '**', '*.tif'), recursive=True)
-    
-    # Process image files
-    for src_path in tqdm(image_files, desc="Processing images"):
-        try:
-            new_name = file_handler.rename_image(src_path)
-            dst_path = os.path.join(image_output, new_name)
-            shutil.copy2(src_path, dst_path)
-        except Exception as e:
-            print(f"Error processing {src_path}: {e}")
-    
-    # Process mask files
-    for src_path in tqdm(mask_files, desc="Processing masks"):
-        try:
-            new_name = file_handler.rename_mask(src_path)
-            dst_path = os.path.join(mask_output, new_name)
-            shutil.copy2(src_path, dst_path)
-        except Exception as e:
-            print(f"Error processing {src_path}: {e}")
-    
-    print(f"Dataset standardization complete. Files saved to {output_dir}")
-
+    def get_files(self, directory: str, file_type: str) -> List[str]:
+        if file_type == 'image' or file_type == 'image_BF_3d':
+            return sorted(glob.glob(f"{directory}/**/{self.blur_pattern}.tif", recursive=True))
+        return []
 
 def get_groups_from_filenames(file_map: Dict[str, str], file_handler: AbstractFileHandler) -> Dict[str, List[str]]:
     """
@@ -578,7 +569,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.command == "standardize":
-        standardize_dataset(args.image_dir, args.mask_dir, args.output_dir)
+        raise NotImplementedError("Standardize dataset functionality not implemented yet.")
     elif args.command == "example":
         handler = BF_IF_FileHandler()
         if args.type == "image":
