@@ -5,9 +5,8 @@ This module provides a concrete implementation of the BasePredictor
 for Cellpose models, handling both 2D and 3D segmentation tasks.
 """
 
-import os
 import numpy as np
-from typing import Dict, Any, Optional, Tuple, Union, List
+from typing import Dict, Any, Optional, Tuple
 from pathlib import Path
 import logging
 
@@ -57,9 +56,15 @@ class CellposePredictor(BasePredictor):
         self.min_size = kwargs.get('min_size', 30)
         self.normalize = kwargs.get('normalize', True)
         self.invert = kwargs.get('invert', False)
+
+        self.model = None
+
+        model_path = kwargs.get('model_path', None)
+        if model_path is None and self.model_type is None:
+            raise ValueError("Either model_type or model_path must be specified.")
         
         # Load model immediately
-        self.load_model()
+        self.load_model(model_path=model_path)
     
     def load_model(self, model_path: Optional[str] = None, **kwargs) -> bool:
         """
@@ -77,24 +82,28 @@ class CellposePredictor(BasePredictor):
                 # Load custom trained model
                 self.model = models.CellposeModel(
                     model_type=None,
-                    pretrained_model=model_path,
+                    pretrained_model=model_path, # type: ignore
                     gpu=self.gpu
                 )
                 self.model_name = f"cellpose_custom_{Path(model_path).stem}"
+
+                logging.info(f"Loaded custom model from {model_path}")
+
             else:
                 # Load pretrained model
                 self.model = models.CellposeModel(
                     model_type=self.model_type,
                     gpu=self.gpu
                 )
+                self.model_name = f"cellpose_{self.model_type}"
+    
+                logging.info(f"Loaded Cellpose model: {self.model_type}")
             
-            self._is_loaded = True
-            logging.info(f"Loaded Cellpose model: {self.model_name}")
             return True
             
         except Exception as e:
             logging.error(f"Failed to load Cellpose model: {e}")
-            self._is_loaded = False
+            self.model = None
             return False
     
     def predict(
@@ -114,7 +123,7 @@ class CellposePredictor(BasePredictor):
             - masks: Segmentation masks as numpy array
             - metadata: Dictionary containing flows, styles, and parameters
         """
-        if not self.is_loaded():
+        if self.model is None or not self.is_loaded():
             raise RuntimeError("Model not loaded. Call load_model() first.")
         
         self.validate_input(image)
@@ -253,6 +262,8 @@ class CellposePredictor(BasePredictor):
         Returns:
             Preprocessed image
         """
+        raise NotImplementedError("Preprocessing is handled internally by Cellpose from v4.")
+
         # Convert to appropriate format
         processed_img = transforms.convert_image(
             image, 

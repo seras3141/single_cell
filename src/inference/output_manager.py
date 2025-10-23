@@ -5,7 +5,6 @@ This module provides utilities for organizing and saving prediction outputs
 with proper directory structure and file naming conventions.
 """
 
-import os
 import numpy as np
 from typing import Dict, Any, Optional, Union, List
 from pathlib import Path
@@ -36,7 +35,7 @@ class OutputManager:
     def __init__(
         self,
         base_output_dir: Union[str, Path],
-        model_name: str,
+        model_name: str = "",
         dataset_name: str = "test",
         create_subdirs: bool = True
     ):
@@ -365,4 +364,4 @@ class OutputManager:
             else:
                 return value
         
-        return convert_value(metadata)
+        return convert_value(metadata) # type: ignore

@@ -30,7 +30,6 @@ class BasePredictor(ABC):
         """
         self.model_name = model_name
         self.model = None
-        self._is_loaded = False
         
     @abstractmethod
     def load_model(self, model_path: Optional[str] = None, **kwargs) -> None:
@@ -140,8 +139,8 @@ class BasePredictor(ABC):
     
     def is_loaded(self) -> bool:
         """Check if model is loaded."""
-        return self._is_loaded
-    
+        return self.model is not None
+
     def validate_input(self, image: np.ndarray) -> None:
         """
         Validate input image format.

@@ -327,7 +327,7 @@ results = pipeline.run_inference(input_dir="data/test")
 
 ## Examples
 
-See `examples/inference_example.py` for comprehensive usage examples including:
+See `notebooks/02_cellpose_inference.ipynb` for comprehensive usage examples including:
 - Basic inference setup
 - Configuration-based inference with OmegaConf
 - CLI override patterns

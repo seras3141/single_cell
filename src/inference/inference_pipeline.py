@@ -12,7 +12,7 @@ from pathlib import Path
 import logging
 import tifffile as tiff
 from tqdm import tqdm
-from omegaconf import OmegaConf
+
 from .base_predictor import BasePredictor
 from .cellpose_predictor import CellposePredictor
 from .output_manager import OutputManager
@@ -140,8 +140,8 @@ class InferencePipeline:
         progress_callback: Optional[Callable] = None
     ) -> Dict[str, Any]:
         """
-        Run inference on all files in the input directory.
-        
+        Run inference on all files in the input directory and generates segmentation masks.
+
         Args:
             input_dir: Directory containing input images
             file_pattern: Glob pattern for input files
