@@ -185,9 +185,20 @@ dist/
 logs/
 models/
 Untitled/
+src/**/*.md
+
+#test outputs
+test_*
 tmp*
 tmp/
 tmp1/
-src/**/*.md
 
 .DS_Store
+
+# Temporary image files
+*.png
+*.tif
+
+# Event files from TensorBoard
+events.out.tfevents.*
+*.tsv

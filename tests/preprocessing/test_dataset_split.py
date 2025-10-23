@@ -21,7 +21,6 @@ from src.preprocessing.dataset_split import (
 )
 from src.utils.file_utils import BF_IF_FileHandler, BF_FileHandler
 
-
 @pytest.fixture(scope="module")
 def mock_data_dirs():
     mock_data_dir = tempfile.mkdtemp()

@@ -1,6 +1,7 @@
 import pytest
 from src.utils.file_utils import BF_IF_FileHandler, BlurFileHandler, DefaultFileHandler
-import tempfile, shutil
+import tempfile
+import shutil
 from pathlib import Path
 
 @pytest.fixture(scope="module")

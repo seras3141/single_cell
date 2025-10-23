@@ -12,12 +12,10 @@ This module provides utilities for:
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Dict, Optional, Union
 import re
 import os
 import glob
-from tqdm import tqdm
-import shutil
 from collections import defaultdict
 
 
@@ -27,25 +25,6 @@ class FilePattern:
     pattern: str
     groups: List[str]
     output_format: str
-
-
-@dataclass
-class DatasetPaths:
-    """Container for dataset file paths."""
-    image_path: str
-    mask_path: str
-    output_dir: str
-
-    def __init__(self, image_path: str, mask_path: str, output_dir: str):
-        self.image_path = image_path
-        self.mask_path = mask_path
-        self.output_dir = output_dir
-        self.get_files()
-
-    def get_files(self):
-        self.image_files = sorted(glob.glob(self.image_path, recursive=True))
-        self.mask_files = sorted(glob.glob(self.mask_path, recursive=True))
-
 
 class AbstractFileHandler(ABC):
     """Abstract base class for file renaming operations."""
@@ -132,6 +111,9 @@ class DefaultFileHandler(AbstractFileHandler):
         self.mask_pattern = self.patterns['mask'].pattern
 
     def get_files(self, directory: str, file_type: str) -> List[str]:
+        if not os.path.exists(directory):
+            raise FileNotFoundError(f"Error: Directory {directory} does not exist!")
+        
         if file_type == 'image':
             regex = re.compile(self.image_pattern)
         elif file_type == 'mask':
@@ -239,7 +221,6 @@ class BF_IF_FileHandler(DefaultFileHandler):
         return pattern.output_format.format(**values)
 
     def rename_image(self, filename: str) -> str:
-        print(self.image_pattern)
         return self.rename_file(filename, 'image')
 
     def rename_mask(self, filename: str) -> str:
@@ -273,6 +254,7 @@ class BF_IF_FileHandler(DefaultFileHandler):
 
         values = dict(zip(pattern.groups, match.groups()))
         return values
+
 
 class BF_FileHandler(BF_IF_FileHandler):
     """
@@ -473,7 +455,6 @@ class BF_IF_FileHandler_3D(DefaultFileHandler):
 #         return Path(filepath).stem.split('_')[0]
 
 
-
 class BlurFileHandler(AbstractFileHandler):
     """Implementation of file renaming for blur maps with configurable patterns.
     
@@ -528,6 +509,7 @@ class BlurFileHandler(AbstractFileHandler):
         if file_type == 'image' or file_type == 'image_BF_3d':
             return sorted(glob.glob(f"{directory}/**/{self.blur_pattern}.tif", recursive=True))
         return []
+
 
 def get_groups_from_filenames(file_map: Dict[str, str], file_handler: AbstractFileHandler) -> Dict[str, List[str]]:
     """

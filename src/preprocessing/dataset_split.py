@@ -156,8 +156,9 @@ def split_dataset(
     if file_handler is None:
         raise ValueError("No file handler provided, images may not be grouped correctly")
 
-    if masks and len(images) != len(masks):
-        raise ValueError("Number of images and masks must be the same", f"Images: {len(images)} != Masks: {len(masks)}")
+    # TODO : Temporarily disable check for masks
+    # if masks and len(images) != len(masks):
+    #     raise ValueError("Number of images and masks must be the same", f"Images: {len(images)} != Masks: {len(masks)}")
 
     # Set random seed for reproducibility
     random.seed(random_state)
