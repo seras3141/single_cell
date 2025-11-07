@@ -202,3 +202,13 @@ tmp1/
 # Event files from TensorBoard
 events.out.tfevents.*
 *.tsv
+
+# Ignore feature files for now
+src/feature*
+tests/feature*
+
+# Ignore notebook checkpoints
+notebooks/.ipynb_checkpoints
+
+# Ignore examples
+examples/

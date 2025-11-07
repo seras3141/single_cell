@@ -8,7 +8,7 @@ from src.preprocessing.dataset_split import train_test_split_directory
 from src.utils.config import get_config_manager
 from src.utils.file_utils import BF_IF_FileHandler
 from src.utils.conversion import combine_2d_to_3d
-from src.preprocessing.blur_analysis import measure_dataset_blur_heatmaps
+from src.preprocessing.blur_analysis import generate_blur_heatmap_batch
 from src.utils.logging_utils import setup_logging
 
 def get_preprocessing_args():
@@ -53,12 +53,6 @@ def get_preprocessing_legacy_args(args):
         legacy_args['quality.blur_detection.stride_size'] = args.stride_size
     if args.combine_pattern:
         legacy_args['preprocessing.combine_pattern'] = args.combine_pattern
-    if args.image_pattern:
-        legacy_args['preprocessing.raw_data_patterns.brightfield'] = args.image_pattern
-    if args.mask_pattern:
-        legacy_args['preprocessing.raw_data_patterns.masks'] = args.mask_pattern
-    # if args.nuclei_pattern:
-    #     legacy_args['preprocessing.raw_data_patterns.nuclei'] = args.nuclei_pattern
 
     return legacy_args
 
@@ -87,9 +81,7 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
         output_dir=split_dir,
         test_size=preprocessing_config.get('test_size', 0.2),
         random_state=preprocessing_config.get('random_state', 42),
-        # image_pattern=preprocessing_config.get('raw_data_patterns', {}).get('brightfield', 't1_*_w1_*.tif'),
-        # mask_pattern=preprocessing_config.get('raw_data_patterns', {}).get('masks', 'Cells_*.tif'),
-        file_handler=BF_IF_FileHandler()
+        file_handler=BF_IF_FileHandler()  # image, mask patterns are handled internally
     )
 
     # Step 2: Combine 2D to 3D
@@ -108,7 +100,7 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
     blur_config = config.get('quality', {}).get('blur_detection', {})
     blur_dir = output_dir / "blur_heatmaps"
     logger.info(f"Generating blur heatmaps at {blur_dir} ...")
-    measure_dataset_blur_heatmaps(
+    generate_blur_heatmap_batch(
         input_dir=output_3d_dir,
         output_dir=blur_dir,
         pattern="*_BF_3d.tif",

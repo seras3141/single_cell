@@ -8,7 +8,6 @@ which helps identify blurry images that should be excluded from training or anal
 import numpy as np
 from scipy.ndimage import laplace
 import tifffile as tiff
-import os
 from pathlib import Path
 from tqdm import tqdm
 from glob import glob
@@ -18,9 +17,9 @@ from skimage.transform import resize
 from joblib import Parallel, delayed
 
 from src.utils.logging_utils import setup_logging
+from src.utils.image_utils import load_image
 
 logger = logging.getLogger(__name__)
-
 
 def measure_patchwise_blur(
     img: np.ndarray, 
@@ -109,7 +108,6 @@ def measure_patchwise_blur(
 
     return blur_map
 
-
 def measure_image_blur(img_path: str, method: str = 'laplacian') -> float:
     """
     Calculate the blur level of an entire image.
@@ -123,11 +121,7 @@ def measure_image_blur(img_path: str, method: str = 'laplacian') -> float:
     """
     try:
         # Read image
-        if img_path.lower().endswith('.tif') or img_path.lower().endswith('.tiff'):
-            img = tiff.imread(img_path)
-        else:
-            from PIL import Image
-            img = np.array(Image.open(img_path).convert('L'))  # Convert to grayscale
+        img = load_image(img_path)
             
         # If 3D stack, use the first image
         if img.ndim > 2:
@@ -141,8 +135,7 @@ def measure_image_blur(img_path: str, method: str = 'laplacian') -> float:
     except Exception as e:
         logger.error(f"Error analyzing {img_path}: {e}")
         return 0.0
-        
-        
+                
 def analyze_dataset_blur(
     data_dir: Union[str, Path], 
     pattern: str = '*.tif',
@@ -179,7 +172,6 @@ def analyze_dataset_blur(
     
     return results
     
-    
 def filter_blurry_images(
     image_paths: List[str],
     threshold: float = 100.0
@@ -203,6 +195,38 @@ def filter_blurry_images(
     logger.info(f"Removed {len(image_paths) - len(results)} blurry images out of {len(image_paths)} total images")
     return results
 
+def resize_image(img: np.ndarray, target_img: np.ndarray) -> np.ndarray:
+    """
+    Resize an image to the target shape using skimage's resize function.
+    
+    Args:
+        img: Input image as a numpy array
+        target_shape: Desired output shape (height, width)
+        
+    Returns:
+        Resized image as a numpy array
+    """
+
+    if img.ndim == 3:
+        # 3D case: resize each slice
+        target_shape = target_img.shape[1:]  # (height, width)
+        resized_slices = []
+        for slice_ in img:
+            if slice_.shape != target_shape:
+                resized_slice = resize(slice_, target_shape, order=1, mode='reflect', 
+                                     preserve_range=True, anti_aliasing=False)
+            else:
+                resized_slice = slice_
+            resized_slices.append(resized_slice)
+        img = np.stack(resized_slices)
+    else:
+        # 2D case: resize if necessary
+        target_shape = target_img.shape  # (height, width)
+        if img.shape != target_shape:
+            img = resize(img, target_shape, order=1, mode='reflect',
+                                preserve_range=True, anti_aliasing=False)
+            
+    return img
 
 def measure_blur_heatmap(
     input_data: np.ndarray, 
@@ -274,42 +298,21 @@ def measure_blur_heatmap(
                 blur_heatmap = (blur_heatmap - min_val) / (max_val - min_val)
 
     # Resize to match original input size if needed
-    if blur_heatmap.ndim == 3:
-        # 3D case: resize each slice
-        target_shape = img.shape[1:]  # (height, width)
-        resized_slices = []
-        for slice_ in blur_heatmap:
-            if slice_.shape != target_shape:
-                resized_slice = resize(slice_, target_shape, order=1, mode='reflect', 
-                                     preserve_range=True, anti_aliasing=False)
-            else:
-                resized_slice = slice_
-            resized_slices.append(resized_slice)
-        blur_heatmap = np.stack(resized_slices)
-    else:
-        # 2D case: resize if necessary
-        target_shape = img.shape  # (height, width)
-        if blur_heatmap.shape != target_shape:
-            blur_heatmap = resize(blur_heatmap, target_shape, order=1, mode='reflect',
-                                preserve_range=True, anti_aliasing=False)
-    
+    blur_heatmap = resize_image(blur_heatmap, input_data)
+
     return blur_heatmap
 
-def read_image(image_path: Union[str, Path]) -> np.ndarray:
-    """
-    Read an image file and return it as a numpy array.
-    
-    Args:
-        image_path: Path to the image file
-    Returns:
-        Numpy array representing the image.
-    """
-    if isinstance(image_path, str):
-        image_path = Path(image_path)
-    if image_path.suffix.lower() in ['.tif', '.tiff']:
-        return tiff.imread(image_path)
-    else:
-        raise ValueError(f"Unsupported image format: {image_path.suffix}. Only TIFF files are supported.")
+def load_blur_heatmap(blur_path: Union[str, Path]) -> np.ndarray:
+    """Load a blur heatmap from disk."""
+    blur_path = Path(blur_path)
+    if not blur_path.exists():
+        raise FileNotFoundError(f"Blur heatmap file not found: {blur_path}")
+    try:
+        blur_map = tiff.imread(blur_path).astype(np.float32)
+    except Exception as e:
+        raise Warning(f"Failed to load cached blur map {blur_path}: {e}")
+
+    return blur_map
         
 def get_or_compute_blur_heatmap(
     image_path: Union[str, Path],
@@ -332,14 +335,12 @@ def get_or_compute_blur_heatmap(
         
     # Check disk cache
     if blur_path is not None and Path(blur_path).exists():
-        try:
-            blur_map = tiff.imread(blur_path)
-        except Exception as e:
-            raise Warning(f"Failed to load cached blur map {blur_path}: {e}")
+        blur_map = load_blur_heatmap(blur_path)
+        logger.debug(f"Loaded cached blur heatmap from {blur_path}")
 
     else:
         image_path = Path(image_path)
-        image = read_image(image_path)
+        image = load_image(image_path)
 
         blur_map = measure_blur_heatmap(
             image,
@@ -357,8 +358,8 @@ def get_or_compute_blur_heatmap(
 
             except Exception as e:
                 raise Warning(f"Failed to save blur map to cache: {e}")
-            
-        print(f"Blur heatmap for {image_path.name} computed with shape {blur_map.shape}") # Debugging line to check shape
+
+        logger.debug(f"Blur heatmap for {image_path.name} computed with shape {blur_map.shape}")
 
     return blur_map
 

@@ -7,7 +7,7 @@ import tempfile
 import shutil
 from pathlib import Path
 import pytest
-from src.preprocessing.dataset_split import train_test_split_directory, get_image_from_pattern, get_mask_from_pattern
+from src.preprocessing.dataset_split import train_test_split_directory
 from src.utils.file_utils import DefaultFileHandler, BF_IF_FileHandler
 
 @pytest.fixture
@@ -45,8 +45,6 @@ def test_split_keeps_groups_together(mock_data_dir):
         str(output_dir),
         test_size=0.33,
         random_state=42,
-        image_pattern="t1_*_s1_w1_z1.tif",
-        mask_pattern="Cells_*-Z1-T1.tif",
         file_handler=BF_IF_FileHandler()
     )
     assert len(result['train_images']) > 0, "Should have training images"
@@ -68,24 +66,6 @@ def test_split_keeps_groups_together(mock_data_dir):
     assert len(train_wells) > 0, "Should have at least one training well"
     assert len(test_wells) > 0, "Should have at least one test well"
 
-def test_get_image_from_no_pattern(mock_data_dir):
-    data_dir, output_dir = mock_data_dir
-    with pytest.raises(ValueError) as context:
-        get_image_from_pattern(
-            str(data_dir),
-            pattern="nonexistent_*.tif",
-        )
-    assert "No images found matching pattern" in str(context.value)
-
-def test_get_mask_from_no_pattern(mock_data_dir):
-    data_dir, output_dir = mock_data_dir
-    with pytest.raises(ValueError) as context:
-        get_mask_from_pattern(
-            str(data_dir),
-            pattern="nonexistent_*.tif",
-        )
-    assert "No masks found matching pattern" in str(context.value)
-
 
 def test_split_with_no_matching_files(tmp_path):
     # Create images and masks that cannot be paired by the handler
@@ -105,8 +85,6 @@ def test_split_with_no_matching_files(tmp_path):
             str(output_dir),
             test_size=0.33,
             random_state=42,
-            image_pattern="t1_*_s1_w1_z1.tif",
-            mask_pattern="Cells_*-Z1-T1.tif",
             file_handler=BF_IF_FileHandler(),
         )
     assert "No matching image-mask groups found" in str(context.value)
@@ -118,8 +96,6 @@ def test_split_proportions(mock_data_dir):
         str(output_dir),
         test_size=0.33,
         random_state=42,
-        image_pattern="t1_*_s1_w1_z1.tif",
-        mask_pattern="Cells_*-Z1-T1.tif",
         file_handler=BF_IF_FileHandler(),
     )
     total_images = len(result['train_images']) + len(result['test_images'])

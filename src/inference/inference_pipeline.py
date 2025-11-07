@@ -19,6 +19,7 @@ from .output_manager import OutputManager
 
 from src.utils.config import ConfigManager
 from src.utils.conversion import combine_2d_to_3d
+from src.utils.image_utils import load_image
 
 class InferencePipeline:
     """
@@ -330,15 +331,9 @@ class InferencePipeline:
         Returns:
             Loaded image as numpy array
         """
-        file_path = Path(file_path)
+
         try:
-            if file_path.suffix.lower() in ['.tif', '.tiff']:
-                image = tiff.imread(str(file_path))
-            else:
-                # Try with PIL for other formats
-                from PIL import Image
-                image = np.array(Image.open(file_path))
-            
+            image = load_image(file_path)
             return image
             
         except Exception as e:

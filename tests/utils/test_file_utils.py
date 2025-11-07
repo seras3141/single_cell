@@ -13,16 +13,20 @@ def mock_data_dirs():
     data_dir.mkdir(parents=True, exist_ok=True)
     mask_dir.mkdir(parents=True, exist_ok=True)
     mock_image_files = [
+        # Mock brightfield image files
         "t1_J03_s1_w1_z1.tif",
         "t1_J03_s1_w1_z2.tif",
         "t1_J03_s1_w1_z3.tif",
+        # Different wavelength
         "t1_J03_s1_w2_z1.tif",
         "t1_J03_s1_w2_z2.tif",
+        # Different sample
         "t1_J04_s1_w1_z1.tif",
         "t1_J04_s1_w1_z2.tif",
         "t1_J04_s1_w1_z3.tif",
         "t1_J04_s1_w2_z1.tif",
         "t1_J04_s1_w2_z2.tif",
+        # Different plate
         "t1_L11_s1_w1_z1.tif",
         "t1_L11_s1_w1_z2.tif",
         "t1_L11_s1_w2_z1.tif",
@@ -58,18 +62,18 @@ class TestDefaultFileHandler:
         self.handler = DefaultFileHandler()
 
     def test_rename_image(self):
-        input_path = 'some/path/image.tif'
-        expected = 'image.tif'
+        input_path = 'some/path/BF Images/t1_I12_s1_w1_z10.tif'
+        expected = 'I12_z10_BF.tif'
         assert self.handler.rename_image(input_path) == expected
 
     def test_rename_mask(self):
-        input_path = 'some/path/image_mask.tif'
-        expected = 'image_mask.tif'
+        input_path = 'some/path/BF Images/Cells_R1-C1-F1-Z1-T1.tif'
+        expected = 'A01_z2_Cells.tif'
         assert self.handler.rename_mask(input_path) == expected
 
     def test_extract_group_id(self):
-        filename = 'image.tif'
-        assert self.handler.extract_group_id(filename) == 'image'
+        filename = 'I12_z10_BF.tif'
+        assert self.handler.extract_group_id(filename) == 'I12'
 
     def test_file_handler(self, mock_data_dirs):
         file_handler = self.handler
@@ -107,15 +111,42 @@ class TestBFIFFileHandler:
         filename = 'p2126_A01_z1_BF.tif'
         assert self.handler.extract_group_id(filename) == 'p2126_A01'
 
+class TestBFFileHandler:
+    def setup_method(self):
+        self.handler = BF_IF_FileHandler()
+
+    def test_rename_image(self):
+        # Example: Plate 1234/t1_B02_s1_w1_z3.tif -> p1234_B02_z3_BF.tif
+        input_path = 'Plate 1234/t1_B02_s1_w1_z3.tif'
+        expected = 'p1234_B02_z3_BF.tif'
+        assert self.handler.rename_image(input_path) == expected
+
+    def test_rename_image_different_wavelength(self):
+        # Example: Plate 1234/t1_B02_s1_w2_z3.tif -> Error
+        input_path = 'Plate 1234/t1_B02_s1_w2_z3.tif'
+        with pytest.raises(ValueError):
+            self.handler.rename_image(input_path)
+
+    def test_rename_mask(self):
+        # Example: Plate 1234/Cells_R2-C2-F0-Z3-T0.tif -> p1234_B02_z4_Cells.tif
+        input_path = 'Plate 1234/Cells_R2-C2-F0-Z3-T0.tif'
+        expected = 'p1234_B02_z4_Cells.tif'
+        assert self.handler.rename_mask(input_path) == expected
+
+    def test_extract_group_id(self):
+        filename = 'p1234_B02_z3_BF.tif'
+        assert self.handler.extract_group_id(filename) == 'p1234_B02'
+
+
 class TestBlurFileHandler:
     def setup_method(self):
         self.handler = BlurFileHandler()
 
     def test_rename_image(self):
         # Example: A01_BF_3d.tif with suffix 'blur32'
-        input_path = 'A01_BF_3d.tif'
+        input_path = 'p1234_A01_BF_3d.tif'
         suffix = '_blur32'
-        expected = 'A01_BF_3d_blur32.tif'
+        expected = 'p1234_A01_BF_3d_blur32.tif'
         assert self.handler.rename_image(input_path, suffix) == expected
 
     def test_rename_image_missing_suffix(self):

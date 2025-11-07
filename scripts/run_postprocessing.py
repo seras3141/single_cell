@@ -10,14 +10,13 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 # Add the project root to the path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from src.postprocessing.tracking_processor import CellTrackingPipeline
 from src.utils.config_schemas import PostprocessingConfig, TrackingConfig, FilterConfig
-from src.utils.config import ConfigManager
+from src.utils.config import get_config_manager
 from src.utils.logging_utils import setup_logging
 
 def get_tracking_config(config: dict) -> TrackingConfig:
@@ -136,8 +135,8 @@ def get_postprocessing_args():
     optional_arg("--min-area", type=int, default=10, help="Minimum cell area to consider")
     optional_arg("--max-area", type=int, default=5000, help="Maximum cell area to consider")
     # Pipeline options
-    optional_arg("--filter-before-tracking", action="store_true", default=True, help="Apply blur filtering before tracking")
-    optional_arg("--track-before-filtering", action="store_true", help="Apply tracking before blur filtering")
+    # optional_arg("--filter-before-tracking", action="store_true", default=True, help="Apply blur filtering before tracking")
+    # optional_arg("--track-before-filtering", action="store_true", help="Apply tracking before blur filtering")
     optional_arg("--save-intermediate", action="store_true", default=True, help="Save intermediate processing results")
     # General options
     optional_arg("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging level")
@@ -279,35 +278,11 @@ def main():
     args, parser = get_postprocessing_args()
     cli_args = vars(args)
 
-    # Remove None values from cli_args
-    cli_args = {k: v for k, v in cli_args.items() if v is not None}
-
     # Set up logging
     setup_logging(cli_args.get("log_level", "INFO"))
     logger = logging.getLogger(__name__)
 
-    # 1: Load base config (from YAML or default)
-    if "config" in cli_args:
-        config_manager = ConfigManager(cli_args["config"])
-        logging.info(f"Loaded configuration from {args.config}")
-    else:
-        config_manager = ConfigManager()  # Use defaults
-        logging.info("Using default configuration")
-
-    # 2: Apply dotlist overrides from CLI
-    from omegaconf import OmegaConf
-    if "override" in cli_args:
-        overrides = OmegaConf.from_dotlist(cli_args["override"])
-        override_dict = OmegaConf.to_container(overrides)
-        logging.info(f"Applying CLI overrides: {cli_args['override']}")
-        config_manager = config_manager.merge_with_overrides(override_dict) #type: ignore
-        # config_dict.update(override_dict)
-
-    # 3: Apply legacy overrides and Merge config and CLI args        
-    legacy_overrides = get_legacy_args(cli_args)
-    if legacy_overrides:
-        config_manager = config_manager.merge_with_overrides(legacy_overrides)
-        logging.info(f"Applied legacy CLI overrides: {list(legacy_overrides.keys())}")
+    config_manager = get_config_manager(cli_args=cli_args, legacy_args_function=get_legacy_args)
 
     # Get final config as dict for backward compatibility
     config_dict = config_manager.to_dict()

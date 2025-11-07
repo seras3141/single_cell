@@ -11,8 +11,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union, Any, Callable
 import numpy as np
 import pandas as pd
-import tifffile
 from skimage.measure import regionprops
+from scipy import ndimage as ndi
+
+from joblib import Parallel, delayed
 
 # Import the centralized configuration
 from src.utils.config_schemas import FilterConfig
@@ -175,7 +177,19 @@ class BlurFilter:
             intensity_image=blur_heatmap,
             extra_properties=[blur_intensity_metric]
         )
-        
+
+        if len(regions) == 0:
+            self.logger.warning("No regions found in segmentation mask.")
+            filtered_mask = np.zeros_like(segmentation_mask)
+            quality_df = pd.DataFrame(columns=[
+                'label', 'area', 'centroid_x', 'centroid_y',
+                'blur_intensity', 'passes_threshold'
+            ])
+            return filtered_mask, quality_df
+
+        # print(np.unique(segmentation_mask))  # Debugging line to check unique labels
+        # print(f"Number of regions found: {len(regions)}")  # Debugging line
+
         # Filter regions based on blur threshold
         def blur_passes_threshold(blur_value: float) -> bool:
             if np.isnan(blur_value):
@@ -188,6 +202,7 @@ class BlurFilter:
         # Create filtered mask
         filtered_mask = np.zeros_like(segmentation_mask)
         quality_stats = []
+
         
         for region in regions:
             blur_value = region.blur_intensity_metric
@@ -206,13 +221,62 @@ class BlurFilter:
                 filtered_mask[segmentation_mask == region.label] = region.label
         
         quality_df = pd.DataFrame(quality_stats)
+
+        # print(quality_df.head())  # Debugging line to check quality stats
         
         n_original = len(regions)
         n_filtered = quality_df['passes_threshold'].sum()
         self.logger.info(f"Blur filtering: {n_filtered}/{n_original} cells passed threshold {blur_threshold}")
         
         return filtered_mask, quality_df
-    
+
+    def filter_cells_by_blur_fast(self, segmentation_mask, blur_heatmap,
+                                blur_threshold=None, invert_threshold=None):
+
+        blur_threshold = blur_threshold or self.config.blur_threshold
+        invert_threshold = invert_threshold if invert_threshold is not None else self.config.invert_threshold
+        
+        labels = np.unique(segmentation_mask)
+        labels = labels[labels != 0]
+
+        if len(labels) == 0:
+            self.logger.warning("No regions found in segmentation mask.")
+            filtered_mask = np.zeros_like(segmentation_mask)
+            quality_df = pd.DataFrame(columns=[
+                'label', 'area', 'centroid_x', 'centroid_y',
+                'blur_intensity', 'passes_threshold'
+            ])
+            return filtered_mask, quality_df
+
+        # Compute stats vectorized
+        blur_means = ndi.mean(blur_heatmap, labels=segmentation_mask, index=labels)
+        areas = ndi.sum(np.ones_like(segmentation_mask), labels=segmentation_mask, index=labels)
+        centroids = np.array(ndi.center_of_mass(np.ones_like(segmentation_mask), labels=segmentation_mask, index=labels))
+
+        # Apply threshold vectorized
+        if invert_threshold:
+            passes = blur_means > blur_threshold
+        else:
+            passes = blur_means < blur_threshold
+
+        # Build stats table
+        quality_df = pd.DataFrame({
+            'label': labels,
+            'area': areas,
+            'centroid_x': centroids[:, 1],
+            'centroid_y': centroids[:, 0],
+            'blur_intensity': blur_means,
+            'passes_threshold': passes
+        })
+
+        # Vectorized filtering
+        keep_labels = labels[passes]
+        filtered_mask = np.where(np.isin(segmentation_mask, keep_labels), segmentation_mask, 0)
+
+        self.logger.info(f"Blur filtering: {passes.sum()}/{len(labels)} cells passed threshold {blur_threshold}")
+
+        return filtered_mask, quality_df
+
     def filter_3d_stack(
         self,
         segmentation_stack: np.ndarray,
@@ -241,6 +305,9 @@ class BlurFilter:
         
         filtered_stack = np.zeros_like(segmentation_stack)
         all_quality_stats = []
+
+        print(f"Filtering 3D stack with {segmentation_stack.shape[0]} slices")  # Debugging line
+        print(f"Blur list length: {len(blur_list)}")  # Debugging line
         
         for z in range(segmentation_stack.shape[0]):
             filtered_slice, quality_stats = self.filter_cells_by_blur(
@@ -255,7 +322,60 @@ class BlurFilter:
         
         return filtered_stack, all_quality_stats
 
+    def filter_3d_stack_fast(
+        self,
+        segmentation_stack: np.ndarray,
+        blur_heatmaps: Union[np.ndarray, List[np.ndarray]],
+        n_jobs: int = -1,
+        **kwargs
+    ) -> Tuple[np.ndarray, List[pd.DataFrame]]:
+        """
+        Filter a 3D segmentation stack based on blur measurements (parallelized and optimized).
 
+        Args:
+            segmentation_stack: 3D segmentation array (z, y, x)
+            blur_heatmaps: 3D blur array or list of 2D arrays
+            n_jobs: Number of parallel jobs to use (-1 = all cores)
+            **kwargs: Additional arguments for filter_cells_by_blur_fast
+
+        Returns:
+            Tuple of (filtered_stack, list_of_quality_stats)
+        """
+        # Ensure blur_heatmaps matches the stack shape
+        if isinstance(blur_heatmaps, np.ndarray) and blur_heatmaps.ndim == 3:
+            blur_list = [blur_heatmaps[z] for z in range(blur_heatmaps.shape[0])]
+        else:
+            blur_list = blur_heatmaps
+
+        if len(blur_list) != segmentation_stack.shape[0]:
+            raise ValueError(
+                f"Number of blur heatmaps ({len(blur_list)}) must match "
+                f"number of z-slices ({segmentation_stack.shape[0]})"
+            )
+
+        n_slices = segmentation_stack.shape[0]
+        self.logger.info(f"Filtering 3D stack with {n_slices} slices using {n_jobs} parallel jobs.")
+
+        # Parallel processing across z-slices
+        results = Parallel(n_jobs=n_jobs, backend='loky')(
+            delayed(self.filter_cells_by_blur_fast)(
+                segmentation_stack[z],
+                blur_list[z],
+                **kwargs
+            ) for z in range(n_slices)
+        )
+
+        # Reconstruct filtered stack and quality stats
+        filtered_slices, quality_stats_list = zip(*results)
+        filtered_stack = np.stack(filtered_slices, axis=0)
+
+        # Add z-index to each DataFrame
+        for z, df in enumerate(quality_stats_list):
+            df['z'] = z
+
+        return filtered_stack, list(quality_stats_list)
+
+'''
 def filter_cells_by_blur(
     segmentation_path: Union[str, Path],
     image_path: Union[str, Path],
@@ -341,8 +461,9 @@ def filter_cells_by_blur(
                f"(rate: {results['filter_rate']:.2%})")
     
     return results
+'''
 
-
+'''
 def assess_segmentation_quality(
     segmentation_path: Union[str, Path],
     image_path: Union[str, Path],
@@ -395,3 +516,4 @@ def assess_segmentation_quality(
     }
     
     return quality_metrics
+'''

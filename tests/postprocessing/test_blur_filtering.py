@@ -5,7 +5,6 @@ import tifffile
 import pytest
 from pathlib import Path
 from src.postprocessing.blur_filtering import BlurFilter, FilterConfig, blur_intensity_metric
-from src.utils.blur_measure import measure_blur_heatmap
 
 def test_blur_intensity_metric():
     regionmask = np.zeros((10, 10), dtype=bool)
@@ -42,8 +41,3 @@ def test_get_or_compute_blur_heatmap(tmp_path):
     # Should load from cache
     blur_map2 = blur_filter.get_or_compute_blur_heatmap(img_path, tmp_path)
     assert np.allclose(blur_map, blur_map2)
-
-def test_measure_blur_heatmap_2d_with_normalize_raises():
-    img = np.random.randint(0, 255, (10, 10), dtype=np.uint8)
-    with pytest.raises(AssertionError, match="Only 3D images.*can be processed with normalization"):
-        measure_blur_heatmap(img, normalize=True)

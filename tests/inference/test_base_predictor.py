@@ -16,8 +16,10 @@ class MockPredictor(BasePredictor):
     
     def __init__(self, model_name="mock_model", **kwargs):
         super().__init__(model_name=model_name, **kwargs)
-        self.model = MagicMock()
-        self._is_loaded = True
+        if model_name:
+            self.model = MagicMock()
+        else:
+            self.model = None
         
         # Store additional kwargs as attributes
         for key, value in kwargs.items():
@@ -25,7 +27,7 @@ class MockPredictor(BasePredictor):
     
     def load_model(self, model_path=None):
         """Mock model loading."""
-        self._is_loaded = True
+        self.model = MagicMock()
         return True
     
     def predict(self, image, **kwargs):
@@ -62,7 +64,7 @@ class MockPredictor(BasePredictor):
         """Mock model info."""
         return {
             'model_name': self.model_name,
-            'status': 'loaded' if self._is_loaded else 'not_loaded',
+            'status': 'loaded' if self.model is not None else 'not_loaded',
             'gpu_enabled': getattr(self, 'gpu', False),
             'default_parameters': getattr(self, 'default_params', {})
         }
@@ -76,7 +78,7 @@ def test_mock_predictor_initialization():
     """Test that mock predictor initializes correctly."""
     predictor = MockPredictor(model_name="test_model")
     assert predictor.model_name == "test_model"
-    assert predictor._is_loaded is True
+    assert predictor.model is not None
 
 def test_mock_predictor_with_kwargs():
     """Test mock predictor initialization with additional kwargs."""
@@ -92,11 +94,11 @@ def test_mock_predictor_with_kwargs():
 def test_load_model():
     """Test model loading functionality."""
     predictor = MockPredictor()
-    predictor._is_loaded = False
-    
+    predictor.model = None
+
     result = predictor.load_model("fake/path")
     assert result is True
-    assert predictor._is_loaded is True
+    assert predictor.model is not None
 
 def test_predict_single_image():
     """Test prediction on a single image."""
@@ -164,8 +166,8 @@ def test_get_model_info():
 def test_model_info_when_not_loaded():
     """Test model info when model is not loaded."""
     predictor = MockPredictor()
-    predictor._is_loaded = False
-    
+    predictor.model = None
+
     info = predictor.get_model_info()
     assert info['status'] == 'not_loaded'
 

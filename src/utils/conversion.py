@@ -112,6 +112,13 @@ def split_3d_to_2d(input_path: str, output_dir: Union[str, Path], suffix: Option
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Assume all files are tiff
+    if suffix:
+        if suffix.endswith('.tif'):
+            suffix = suffix[:-4]
+        if suffix.endswith('_3d'):
+            suffix = suffix[:-3]
+
     # Load 3D TIFF
     volume = tiff.imread(input_path)
     
@@ -119,8 +126,9 @@ def split_3d_to_2d(input_path: str, output_dir: Union[str, Path], suffix: Option
     base_name = Path(input_path).stem
     if base_name.endswith('_3d'):
         base_name = base_name[:-3]
-    if suffix:
-        base_name = base_name.rstrip('_' + suffix)
+    if suffix and base_name.endswith(suffix):
+        base_name = base_name[:-(len(suffix))]
+    base_name = base_name.rstrip('_')
     
     # Save each z-slice as a separate 2D TIFF
     for z in tqdm(range(volume.shape[0]), desc=f"Splitting {base_name}"):

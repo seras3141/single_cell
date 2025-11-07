@@ -15,13 +15,12 @@ from pathlib import Path
 import os
 from glob import glob
 from typing import Optional
-import tifffile
 
 # Add src to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from src.utils.logging_utils import setup_logging
-from src.utils.config import ConfigManager, create_config_from_overrides
+from src.utils.config import get_config_manager
 
 
 def run_data_preparation(input_dir: str, output_dir: str, config) -> None:
@@ -146,38 +145,19 @@ def get_pipeline_args():
     
     return parser.parse_args()
 
+
 def parse_config_and_args():
 
-    logger = logging.getLogger(__name__)
     args = get_pipeline_args()
     cli_args = vars(args)
 
-    # Remove None values from cli_args
-    cli_args = {k: v for k, v in cli_args.items() if v is not None}
+    # Get config manager with CLI args and legacy overrides
+    config_manager = get_config_manager(cli_args, legacy_args_function=get_pipeline_legacy_args)
 
-    # 1: Load base config (from YAML or default)
-    if "config" in cli_args:
-        config_manager = ConfigManager(cli_args["config"])
-        logger.info(f"Loaded configuration from {args.config}")
-    else:
-        config_manager = ConfigManager()  # Use defaults
-        logger.info("Using default configuration")
-
-    # 2: Apply dotlist overrides from CLI
-    if "override" in cli_args:
-        from omegaconf import OmegaConf
-        overrides = OmegaConf.from_dotlist(cli_args["override"])
-        override_dict = OmegaConf.to_container(overrides)
-        logger.info(f"Applying CLI overrides: {cli_args['override']}")
-        config_manager = config_manager.merge_with_overrides(override_dict) #type: ignore
-
-    # 3: Apply legacy overrides and Merge config and CLI args
-    legacy_overrides = get_pipeline_legacy_args(cli_args)
-    if legacy_overrides:
-        config_manager = config_manager.merge_with_overrides(legacy_overrides)
-        logger.info(f"Applied legacy CLI overrides: {list(legacy_overrides.keys())}")
-
+    # Get final config as dict for backward compatibility
     config_dict = config_manager.to_dict()
+    logging.info("Final merged configuration:")
+    logging.info(config_dict)
 
     config_dict["steps"] = cli_args.get("steps", ["prepare", "segment-2d", "track"])
 
@@ -194,9 +174,6 @@ def main():
     output_dir = paths_config.get("output_dir", "")
 
     steps = config.get("steps", ["prepare", "segment-2d", "track"])
-
-    print(log_config)   # debugging line to check log_config
-    print(steps)  # debugging line to check steps
 
     setup_logging(log_config=log_config)
     logger = logging.getLogger(__name__)

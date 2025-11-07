@@ -14,13 +14,14 @@ import pytest
 from unittest.mock import patch, MagicMock
 from PIL import Image
 
+from src.utils.image_utils import load_image
+
 from src.utils.blur_measure import (
     measure_patchwise_blur,
     measure_blur_heatmap,
     measure_image_blur,
     analyze_dataset_blur,
     filter_blurry_images,
-    read_image,
     get_or_compute_blur_heatmap,
 )
 
@@ -522,77 +523,6 @@ class TestFilterBlurryImages:
         filtered = filter_blurry_images(sample_image_paths, threshold=75.0)
         assert len(filtered) == 1  # Only the 100.0 score should pass
 
-
-# --- read_image tests ---
-class TestReadImage:
-    """Test cases for read_image function."""
-    
-    @pytest.fixture
-    def sample_images(self, temp_dir):
-        """Create sample image files."""
-        image_dir = Path(temp_dir) / "images"
-        image_dir.mkdir()
-        
-        # Create TIFF images
-        test_2d = np.random.rand(64, 64) * 255
-        test_3d = np.random.rand(4, 32, 32) * 255
-        
-        tiff_2d_path = image_dir / "test_2d.tif"
-        tiff_3d_path = image_dir / "test_3d.tiff"
-        png_path = image_dir / "test.png"
-        
-        tiff.imwrite(str(tiff_2d_path), test_2d.astype(np.uint8))
-        tiff.imwrite(str(tiff_3d_path), test_3d.astype(np.uint8))
-        
-        # Create a non-TIFF file
-        png_path.touch()
-        
-        return {
-            "tiff_2d": tiff_2d_path,
-            "tiff_3d": tiff_3d_path,
-            "png": png_path,
-            "test_2d_data": test_2d,
-            "test_3d_data": test_3d
-        }
-
-    def test_read_tiff_2d(self, sample_images):
-        """Test reading 2D TIFF image."""
-        result = read_image(sample_images["tiff_2d"])
-        expected_shape = sample_images["test_2d_data"].shape
-        
-        assert isinstance(result, np.ndarray)
-        assert result.shape == expected_shape
-
-    def test_read_tiff_3d(self, sample_images):
-        """Test reading 3D TIFF image."""
-        result = read_image(sample_images["tiff_3d"])
-        expected_shape = sample_images["test_3d_data"].shape
-        
-        assert isinstance(result, np.ndarray)
-        assert result.shape == expected_shape
-
-    def test_read_string_path(self, sample_images):
-        """Test reading with string path."""
-        result = read_image(str(sample_images["tiff_2d"]))
-        assert isinstance(result, np.ndarray)
-
-    def test_read_pathlib_path(self, sample_images):
-        """Test reading with pathlib Path."""
-        result = read_image(sample_images["tiff_2d"])
-        assert isinstance(result, np.ndarray)
-
-    def test_read_unsupported_format(self, sample_images):
-        """Test reading unsupported format raises ValueError."""
-        with pytest.raises(ValueError, match="Unsupported image format"):
-            read_image(sample_images["png"])
-
-    def test_read_nonexistent_file(self, temp_dir):
-        """Test reading non-existent file."""
-        nonexistent_path = Path(temp_dir) / "nonexistent.tif"
-        with pytest.raises(FileNotFoundError):
-            read_image(nonexistent_path)
-
-
 # --- Enhanced get_or_compute_blur_heatmap tests ---
 class TestGetOrComputeBlurHeatmap:
     """Enhanced test cases for get_or_compute_blur_heatmap function."""
@@ -714,10 +644,10 @@ class TestGetOrComputeBlurHeatmap:
             # If Warning is raised, that's also acceptable behavior
             pass
 
-    @patch('src.utils.blur_measure.read_image')
-    def test_read_image_error_handling(self, mock_read_image, sample_images):
+    @patch('src.utils.blur_measure.load_image')
+    def test_load_image_error_handling(self, mock_load_image, sample_images):
         """Test error handling when reading image fails."""
-        mock_read_image.side_effect = Exception("Mock read error")
+        mock_load_image.side_effect = Exception("Mock read error")
         
         with pytest.raises(Exception):
             get_or_compute_blur_heatmap(

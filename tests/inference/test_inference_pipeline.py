@@ -23,8 +23,10 @@ class MockPredictor(BasePredictor):
     def __init__(self, model_name="mock_model", fail_on_file=None, **kwargs):
         super().__init__(model_name=model_name, **kwargs)
         self.fail_on_file = fail_on_file
-        self.model = MagicMock()
-        self._is_loaded = True
+        if model_name:
+            self.model = MagicMock()
+        else:
+            self.model = None
     
     def load_model(self, model_path=None):
         return True
@@ -142,7 +144,7 @@ def test_validate_setup_success(pipeline):
 def test_validate_setup_failure(pipeline):
     """Test setup validation when predictor is not loaded."""
     predictor = MockPredictor()
-    predictor._is_loaded = False  # Simulate unloaded model
+    predictor.model = None  # Simulate unloaded model 
     pipeline.predictor = predictor
     
     validation = pipeline.validate_setup()
@@ -251,24 +253,19 @@ def test_run_inference_with_progress_callback(pipeline, temp_dirs, test_files):
 @patch('src.inference.inference_pipeline.ConfigManager')
 def test_from_config_class_method(mock_config_manager_class, temp_dirs):
     """Test pipeline creation from configuration file."""
-    # Mock ConfigManager instance
-    mock_config_manager = MagicMock()
-    mock_config_manager_class.return_value = mock_config_manager
-    
-    # Mock configuration access
-    mock_config_manager.get.side_effect = lambda key, default=None: {
-        'segmentation.cellpose.model_type': 'cyto3',
-        'segmentation.cellpose.gpu': True,
-        'segmentation.cellpose.flow_threshold': 0.4,
-        'segmentation.inference.save_overlays': True,
-        'segmentation.inference.save_metadata': True,
-    }.get(key, default)
-    
-    mock_config_manager.segmentation = {
-        'cellpose': {
-            'model_type': 'cyto3',
-            'gpu': True,
-            'flow_threshold': 0.4
+
+    # Create a mock config dict compatible with OmegaConf
+    config_dict = {
+        'segmentation': {
+            'cellpose': {
+                'model_type': 'cyto3',
+                'gpu': True,
+                'flow_threshold': 0.4
+            },
+            'inference': {
+                'save_overlays': True,
+                'save_metadata': True
+            }
         }
     }
     
@@ -281,16 +278,18 @@ def test_from_config_class_method(mock_config_manager_class, temp_dirs):
                 mock_output_class.return_value = mock_output_manager
                 
                 pipeline = InferencePipeline.from_config(
-                    config_path="fake_config.yaml",
+                    config=config_dict,
                     model_name="cyto3",
                     output_dir=temp_dirs[1],
                     dataset_name="test"
                 )
                 
                 assert pipeline is not None
-                mock_config_manager_class.assert_called_once_with("fake_config.yaml")
                 mock_predictor_class.assert_called_once()
                 mock_output_class.assert_called_once()
+
+# TODO : Write a test with config_path instead of config for from_config
+
 
 
 '''

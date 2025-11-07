@@ -49,7 +49,7 @@ def check_dependencies():
     #     missing.append("tifffile")
     
     if missing:
-        print(f"\n❌ Missing dependencies: {', '.join(missing)}")
+        print(f"\nMissing dependencies: {', '.join(missing)}")
         print("Install with:")
         print(f"  pip install {' '.join(missing)}")
         return False
@@ -114,7 +114,7 @@ def main():
         current_dir = Path(__file__).parent
         data_dir = current_dir.parent / "data"
         if not data_dir.exists():
-            print(f"⚠️  Warning: Data directory not found at {data_dir}")
+            print(f"Warning: Data directory not found at {data_dir}")
             print("   You can change the directory from within the GUI.")
         else:
             print(f"✓ Data directory found: {data_dir}")
@@ -132,7 +132,7 @@ def main():
         sys.exit(app.exec())
         
     except ImportError as e:
-        print(f"\n❌ Import error: {e}")
+        print(f"\nImport error: {e}")
         print("\nTroubleshooting:")
         print("1. Make sure you're in the correct directory")
         print("2. Install missing dependencies")
@@ -141,7 +141,7 @@ def main():
         sys.exit(1)
         
     except Exception as e:
-        print(f"\n❌ Error launching GUI: {e}")
+        print(f"\nError launching GUI: {e}")
         print(f"Error type: {type(e).__name__}")
         
         # Additional troubleshooting for Qt issues

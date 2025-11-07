@@ -15,13 +15,13 @@ import numpy as np
 
 
 from src.utils.blur_measure import get_or_compute_blur_heatmap
-from src.utils.file_utils import AbstractFileHandler, BlurFileHandler
+from src.utils.file_utils import BlurFileHandler
 from src.utils.logging_utils import setup_logging
 
 logger = logging.getLogger(__name__)
 
 
-def measure_dataset_blur_heatmaps(
+def generate_blur_heatmap_batch(
     input_dir: Union[str, Path],
     output_dir: Union[str, Path],
     pattern: str = "**/*.tif",
@@ -29,7 +29,7 @@ def measure_dataset_blur_heatmaps(
     stride_size: int = 16,
     normalize: bool = True,
     center_values: bool = True,
-    file_handler: Optional[AbstractFileHandler] = None,
+    file_handler: Optional[BlurFileHandler] = None,
     overwrite: bool = False
     ) -> Dict[str, str]:
     """
@@ -56,7 +56,8 @@ def measure_dataset_blur_heatmaps(
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Find all image files
-    image_files = list(input_dir.glob(pattern))
+    image_files = glob(os.path.join(input_dir, pattern), recursive=True)
+    # image_files = list(input_dir.glob(pattern))
     if not image_files:
         logger.warning(f"No images found in {input_dir} with pattern {pattern}")
         return {}
@@ -68,6 +69,7 @@ def measure_dataset_blur_heatmaps(
     failed_files = []
     
     for img_path in tqdm(image_files, desc="Generating blur heatmaps"):
+        img_path = Path(img_path)
         try:
             # Generate output filename
             if file_handler:
@@ -88,8 +90,8 @@ def measure_dataset_blur_heatmaps(
             # Generate blur heatmap
             blur_heatmap = get_or_compute_blur_heatmap(
                 img_path,
-                patch_size=patch_size,
                 blur_path=output_path,
+                patch_size=patch_size,
                 stride_size=stride_size,
                 normalize=normalize,
                 center_values=center_values,
@@ -109,7 +111,6 @@ def measure_dataset_blur_heatmaps(
     
     return results
 
-
 if __name__ == "__main__":
     import argparse
     
@@ -127,7 +128,7 @@ if __name__ == "__main__":
     # Configure logging
     setup_logging()
     
-    results = measure_dataset_blur_heatmaps(
+    results = generate_blur_heatmap_batch(
         input_dir=args.input,
         output_dir=args.output,
         pattern=args.pattern,

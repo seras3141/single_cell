@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 import numpy as np
 import tifffile as tiff
 
-from src.preprocessing.blur_analysis import measure_dataset_blur_heatmaps
+from src.preprocessing.blur_analysis import generate_blur_heatmap_batch
 from src.utils.file_utils import BF_IF_FileHandler
 
 
@@ -61,7 +61,7 @@ def test_basic_functionality(temp_dirs, sample_images):
         return mock_heatmap
     
     with patch('src.utils.blur_measure.get_or_compute_blur_heatmap', side_effect=mock_measure_side_effect) as mock_measure:
-        results = measure_dataset_blur_heatmaps(
+        results = generate_blur_heatmap_batch(
             input_dir=input_dir,
             output_dir=output_dir,
             patch_size=32,
@@ -85,7 +85,7 @@ def test_no_images_found(temp_dirs):
     """Test behavior when no images are found."""
     input_dir, output_dir = temp_dirs
     
-    results = measure_dataset_blur_heatmaps(
+    results = generate_blur_heatmap_batch(
         input_dir=input_dir,
         output_dir=output_dir,
         file_handler=None
@@ -111,7 +111,7 @@ def test_custom_pattern(temp_dirs):
         mock_measure.return_value = np.random.rand(25, 25)
         
         # Test PNG pattern
-        results = measure_dataset_blur_heatmaps(
+        results = generate_blur_heatmap_batch(
             input_dir=input_dir,
             output_dir=output_dir,
             pattern="test.tif",  # Match the renamed file
@@ -131,7 +131,7 @@ def test_file_handler_integration(temp_dirs, sample_images):
     with patch('src.utils.blur_measure.get_or_compute_blur_heatmap') as mock_measure:
         mock_measure.return_value = np.random.rand(50, 50)
         
-        results = measure_dataset_blur_heatmaps(
+        results = generate_blur_heatmap_batch(
             input_dir=input_dir,
             output_dir=output_dir,
             file_handler=file_handler
@@ -155,7 +155,7 @@ def test_overwrite_behavior(temp_dirs, sample_images):
     
     with patch('src.utils.blur_measure.get_or_compute_blur_heatmap', side_effect=mock_measure_side_effect) as mock_measure:
         # First run
-        results1 = measure_dataset_blur_heatmaps(
+        results1 = generate_blur_heatmap_batch(
             input_dir=input_dir,
             output_dir=output_dir,
             overwrite=False,
@@ -165,7 +165,7 @@ def test_overwrite_behavior(temp_dirs, sample_images):
         call_count_first = mock_measure.call_count
         
         # Second run without overwrite
-        results2 = measure_dataset_blur_heatmaps(
+        results2 = generate_blur_heatmap_batch(
             input_dir=input_dir,
             output_dir=output_dir,
             overwrite=False,
@@ -177,7 +177,7 @@ def test_overwrite_behavior(temp_dirs, sample_images):
         assert results1 == results2
         
         # Third run with overwrite
-        results3 = measure_dataset_blur_heatmaps(
+        results3 = generate_blur_heatmap_batch(
             input_dir=input_dir,
             output_dir=output_dir,
             overwrite=True,
@@ -199,7 +199,7 @@ def test_error_handling(temp_dirs, sample_images):
             np.random.rand(50, 50)   # Success
         ]
         
-        results = measure_dataset_blur_heatmaps(
+        results = generate_blur_heatmap_batch(
             input_dir=input_dir,
             output_dir=output_dir,
             file_handler=None,

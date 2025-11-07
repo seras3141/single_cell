@@ -42,8 +42,6 @@ def test_split_random_seed_reproducibility(create_dummy_tiffs):
             output_dir=out_dir1,
             test_size=0.3,
             random_state=123,
-            image_pattern="*_w1_*.tif",
-            mask_pattern="Cells_*.tif",
             file_handler=BF_IF_FileHandler()
         )
         # Second split with same seed
@@ -52,8 +50,6 @@ def test_split_random_seed_reproducibility(create_dummy_tiffs):
             output_dir=out_dir2,
             test_size=0.3,
             random_state=123,
-            image_pattern="*_w1_*.tif",
-            mask_pattern="Cells_*.tif",
             file_handler=BF_IF_FileHandler()
         )
 
