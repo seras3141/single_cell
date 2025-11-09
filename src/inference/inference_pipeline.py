@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional, Union, List, Callable
 from pathlib import Path
 import logging
 import tifffile as tiff
+import torch
 from tqdm import tqdm
 
 from .base_predictor import BasePredictor
@@ -51,15 +52,53 @@ class InferencePipeline:
         self._setup_logging()
         
         logging.info(f"Inference pipeline initialized with {predictor.model_name}")
+
+    @classmethod
+    def _resolve_config(
+        cls,
+        config: Optional[Dict[str, Any]] = None,
+        config_path: Optional[Union[str, Path]]=None,
+        overrides: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Resolve configuration from dict or YAML file with optional overrides.
+        
+        Args:
+            config: A full configuration dict
+            config_path: Path to a YAML config file
+            overrides: Additional overrides (dot notation or flat dict)
+        
+        Returns:
+            Resolved configuration dictionary
+        """
+        if (config_path is None and config is None) or (config_path and config):
+            raise ValueError("Provide either `config_path` or `config`, but not both.")
+        
+        if config_path:
+            base_config = ConfigManager(config_path)
+            if overrides:
+                base_config = base_config.merge_with_overrides(overrides)
+            resolved_config = base_config.to_dict()
+            
+        else:
+            from omegaconf import OmegaConf
+            base_config = OmegaConf.create(config)
+            if overrides:
+                base_config = OmegaConf.merge(base_config, OmegaConf.create(overrides))
+            resolved_config = OmegaConf.to_container(base_config, resolve=True)
+
+        assert isinstance(resolved_config, dict), "Resolved config must be a dictionary"
+        return resolved_config # type: ignore
     
     @classmethod
     def from_config(
         cls,
         config: Optional[Dict[str, Any]] = None,
         config_path: Optional[Union[str, Path]]=None,
-        model_name: Optional[str]="cyto3",
         output_dir: Optional[Union[str, Path]]=None,
         dataset_name: Optional[str] = "test",
+        model_name: Optional[str]=None,
+        device: Optional[Union[str, torch.device]]=None,
         **kwargs
     ) -> "InferencePipeline":
         """
@@ -73,9 +112,10 @@ class InferencePipeline:
         Args:
             config: A full configuration dict
             config_path: Path to a YAML config file
-            model_name: Optional model name override
             output_dir: Optional output dir override
             dataset_name: Optional dataset override
+            model_name: Optional model name override
+            device: Optional device override
             overrides: Additional overrides (dot notation or flat dict)
         
         Returns:
@@ -83,22 +123,14 @@ class InferencePipeline:
         """
         if (config_path is None and config is None) or (config_path and config):
             raise ValueError("Provide either `config_path` or `config`, but not both.")
+
+        # Step 1+2: Resolve configuration
+        resolved_config = InferencePipeline._resolve_config(
+            config=config,
+            config_path=config_path,
+            overrides=kwargs
+        )
         
-        if config_path:
-            base_config = ConfigManager(config_path)
-            if kwargs:
-                base_config = base_config.merge_with_overrides(kwargs)
-            resolved_config = base_config.to_dict()
-            
-        else:
-            from omegaconf import OmegaConf
-            base_config = OmegaConf.create(config)
-            if kwargs:
-                base_config = OmegaConf.merge(base_config, OmegaConf.create(kwargs))
-            resolved_config = OmegaConf.to_container(base_config, resolve=True)
-
-        assert isinstance(resolved_config, dict), "Resolved config must be a dictionary"
-
         # Step 3: Instantiate predictor
         segmentation_config = resolved_config.get("segmentation", {})
         if not segmentation_config:
@@ -109,6 +141,11 @@ class InferencePipeline:
         if not cellpose_cfg:
             raise ValueError("Missing `segmentation.cellpose` config.")
 
+        if model_name is not None:
+            cellpose_cfg["model_type"] = model_name
+        if device is not None:
+            cellpose_cfg["device"] = device
+
         predictor = CellposePredictor(**cellpose_cfg)
 
         # Step 4: Prepare output manager
@@ -116,7 +153,7 @@ class InferencePipeline:
         paths_config = resolved_config.get("paths", {})
         results_folder = inference_config.get("results_folder", "results")
 
-        model_name = model_name or cellpose_cfg.get("model_type", "cyto3")
+        model_name = cellpose_cfg.get("model_type", "cyto3")
         output_dir = output_dir or Path(paths_config.get("output_dir", "results")) / results_folder        
         dataset_name = dataset_name or inference_config.get("dataset_name", "test")
         
@@ -130,15 +167,43 @@ class InferencePipeline:
         log_config = resolved_config.get("logging", {})
 
         return cls(predictor, output_manager, log_config)
+    
+    @classmethod
+    def get_file_list(
+        cls,
+        input_dir: Union[str, Path],
+        file_pattern: str = "*_BF.tif"
+    ) -> List[Path]:
+        """
+        Get list of input files matching the pattern in the input directory.
+        
+        Args:
+            input_dir: Directory containing input images
+            file_pattern: Glob pattern for input files
+        Returns:
+            List of matching file paths
+        """
+        input_dir = Path(input_dir)
+        
+        if not input_dir.exists():
+            raise FileNotFoundError(f"Input directory not found: {input_dir}")
+        
+        input_files = sorted(input_dir.glob(file_pattern))
+        
+        if not input_files:
+            raise ValueError(f"No files found matching pattern '{file_pattern}' in {input_dir}")
+
+        return input_files
 
     def run_inference(
         self,
-        input_dir: Union[str, Path],
+        input_dir: Optional[Union[str, Path]],
+        input_files: Optional[List[Path]],
         file_pattern: str = "*_BF.tif",
         process_z_stacks: bool = False,
         save_overlays: bool = True,
         save_metadata: bool = True,
-        progress_callback: Optional[Callable] = None
+        progress_callback: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
         Run inference on all files in the input directory and generates segmentation masks.
@@ -154,16 +219,12 @@ class InferencePipeline:
         Returns:
             Dictionary containing run statistics and results
         """
-        input_dir = Path(input_dir)
-        
-        if not input_dir.exists():
-            raise FileNotFoundError(f"Input directory not found: {input_dir}")
-        
-        # Find input files
-        input_files = sorted(input_dir.glob(file_pattern))
-        
-        if not input_files:
-            raise ValueError(f"No files found matching pattern '{file_pattern}' in {input_dir}")
+
+        # Either read files from directory or use provided list
+        if input_dir:
+            input_files = self.get_file_list(input_dir, file_pattern)
+        elif input_files is None:
+            raise ValueError("Either `input_dir` or `input_files` must be provided.")
         
         logging.info(f"Found {len(input_files)} files to process")
         
@@ -269,7 +330,11 @@ class InferencePipeline:
         """
         try:
             # Load image
-            image = self._load_image(file_path)
+            try:
+                image = load_image(file_path)        
+            except Exception as e:
+                logging.error(f"Failed to load image {file_path}: {e}")
+                raise
             
             if image.ndim == 3:
                 # raise NotImplementedError("Z-stack processing for 3D data not implemented yet")
@@ -321,24 +386,6 @@ class InferencePipeline:
                 'error': str(e)
             }
 
-    def _load_image(self, file_path: Union[str, Path]) -> np.ndarray:
-        """
-        Load image from file.
-        
-        Args:
-            file_path: Path to image file
-            
-        Returns:
-            Loaded image as numpy array
-        """
-
-        try:
-            image = load_image(file_path)
-            return image
-            
-        except Exception as e:
-            logging.error(f"Failed to load image {file_path}: {e}")
-            raise
     
     def _setup_logging(self) -> None:
         """Set up logging configuration."""

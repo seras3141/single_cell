@@ -32,6 +32,7 @@ class CellposePredictor(BasePredictor):
         self,
         model_type: str = "cyto3",
         gpu: bool = True,
+        device: Optional[str] = None,
         **kwargs
     ):
         """
@@ -49,6 +50,7 @@ class CellposePredictor(BasePredictor):
         
         self.model_type = model_type
         self.gpu = gpu
+        self.device = device
         self.channels = kwargs.get('channels', [0, 0])  # Default grayscale
         self.diameter = kwargs.get('diameter', None)  # Auto-diameter
         self.flow_threshold = kwargs.get('flow_threshold', 0.4)
@@ -83,7 +85,8 @@ class CellposePredictor(BasePredictor):
                 self.model = models.CellposeModel(
                     model_type=None,
                     pretrained_model=model_path, # type: ignore
-                    gpu=self.gpu
+                    gpu=self.gpu,
+                    device=self.device
                 )
                 self.model_name = f"cellpose_custom_{Path(model_path).stem}"
 
@@ -93,7 +96,8 @@ class CellposePredictor(BasePredictor):
                 # Load pretrained model
                 self.model = models.CellposeModel(
                     model_type=self.model_type,
-                    gpu=self.gpu
+                    gpu=self.gpu,
+                    device=self.device
                 )
                 self.model_name = f"cellpose_{self.model_type}"
     

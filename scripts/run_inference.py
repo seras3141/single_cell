@@ -12,11 +12,14 @@ Usage:
     python scripts/run_inference.py --config config/inference_config.yaml
 """
 
+import os
 import argparse
 import logging
 import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
+import torch
+import torch.distributed as dist
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -137,6 +140,73 @@ def run_inference_from_config(config : Dict[str, Any], input_dir: Optional[str] 
     logging.info("Inference completed successfully")
 
 
+def run_inference_from_config_dist(config : Dict[str, Any], input_dir: Optional[str] = None, dataset_name : Optional[str] = None, device:Optional[str]=None):
+    """
+    Run inference using a configuration file and command-line arguments.
+    Distributed inference version.
+    Merges config file with CLI args, with CLI args taking precedence.
+    """
+
+    dist.init_process_group(backend='nccl', init_method='env://')
+    local_rank = int(os.environ['LOCAL_RANK'])
+    world_size = dist.get_world_size()
+    rank = dist.get_rank()
+    torch_device = torch.device(f'cuda:{local_rank}')
+    torch.cuda.set_device(device)
+
+    pipeline = InferencePipeline.from_config(config=config, device=torch_device)
+    validation = pipeline.validate_setup()
+    if not validation['overall']:
+        raise ValueError("Pipeline validation failed")
+
+    inference_config = config.get('segmentation', {}).get('inference', {})
+
+    if input_dir is None:
+        input_dir = config.get('paths', {}).get('input_dir', 'data/test')
+    if dataset_name is None:
+        dataset_name = inference_config.get('dataset_name', 'test')
+
+    model_info = pipeline.get_model_info()
+    logging.info(f"Model information: {model_info}")
+
+    input_files = pipeline.get_file_list(Path(input_dir) / dataset_name, inference_config.get('file_pattern', '*_BF.tif')) # type: ignore
+    N = len(input_files)
+
+    # Distribute files among processes
+    indices = list(range(rank, N, world_size))
+    input_files = [input_files[i] for i in indices if i < len(input_files)]
+
+    results = pipeline.run_inference(
+        input_files=input_files, # type: ignore
+        process_z_stacks=inference_config.get('process_z_stacks', False),
+        save_overlays=inference_config.get('save_overlays', False),
+        save_metadata=inference_config.get('save_metadata', False)
+    )
+
+    dist.barrier()
+    if rank == 0:
+        # optional: aggregate logs, or create summary
+        print("All done.")
+
+    dist.destroy_process_group()
+
+
+
+    print("\n" + "="*50)
+    print("INFERENCE COMPLETED")
+    print("="*50)
+    print(f"Total files processed: {len(results['processed_files'])}")
+    print(f"Total cells detected: {results['total_cells']}")
+    print(f"Failed files: {len(results['failed_files'])}")
+    # print(f"Results saved to: {output_manager.output_dir}")
+    print(f"Summary report: {results['summary_path']}")
+    if results['failed_files']:
+        print("\nFailed files:")
+        for failed in results['failed_files']:
+            print(f"  - {failed['file']}: {failed['error']}")
+    logging.info("Inference completed successfully")
+
+
 def main():
     """Main inference function with OmegaConf configuration support."""
     args = get_inference_args()
@@ -153,8 +223,12 @@ def main():
     logging.info(merged_config)
 
     try:
-        logging.info("Starting inference...")
-        run_inference_from_config(merged_config)
+        if merged_config.get('distributed', {}).get('enabled', False):
+            logging.info("Starting distributed inference...")
+            run_inference_from_config_dist(merged_config)
+        else:
+            logging.info("Starting inference...")
+            run_inference_from_config(merged_config)
 
     except Exception as e:
         logging.error(f"Inference failed: {e}")
