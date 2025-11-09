@@ -17,6 +17,8 @@ from .file_utils import (
 
 # Blur measure utilities
 from .blur_measure import (
+    measure_patchwise_blur_fast,
+    measure_patchwise_blur,
     measure_blur_heatmap,
     analyze_dataset_blur,
     get_or_compute_blur_heatmap
@@ -42,6 +44,8 @@ __all__ = [
     "BlurFileHandler",
 
     # Blur measure
+    "measure_patchwise_blur_fast",
+    "measure_patchwise_blur",
     "measure_blur_heatmap",
     "analyze_dataset_blur",
     "get_or_compute_blur_heatmap",

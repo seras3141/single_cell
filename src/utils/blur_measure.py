@@ -6,7 +6,7 @@ which helps identify blurry images that should be excluded from training or anal
 """
 
 import numpy as np
-from scipy.ndimage import laplace
+from scipy.ndimage import laplace, uniform_filter
 import tifffile as tiff
 from pathlib import Path
 from tqdm import tqdm
@@ -107,6 +107,52 @@ def measure_patchwise_blur(
                 blur_map[i, j] = variance
 
     return blur_map
+
+def measure_patchwise_blur_fast(
+    img: np.ndarray,
+    patch_size: int = 32,
+    stride_size: int = 8,
+) -> np.ndarray:
+    """
+    Efficient patchwise blur estimation using Laplacian variance.
+
+    Args:
+        img: 2D grayscale image array.
+        patch_size: (height, width) or int, window size for local variance.
+        stride_size: (height, width) or int, stride for sampling blur values.
+        center_values: 
+            If True, output is same size as input (values centered per pixel).
+            If False, output is subsampled according to stride.
+
+    Returns:
+        2D numpy array of Laplacian variance (blur map).
+    """
+    # --- Input validation ---
+    assert img.ndim == 2, "Input image must be a 2D array"
+
+    H, W = img.shape
+
+    # --- Step 1: Compute Laplacian once ---
+    lap = laplace(img)
+
+    # --- Step 2: Compute local mean and variance via uniform filters ---
+    mean = uniform_filter(lap, size=patch_size, mode='reflect')
+    mean_sq = uniform_filter(lap**2, size=patch_size, mode='reflect')
+    var_map = mean_sq - mean**2  # local variance
+
+
+
+    # # --- Step 3: Handle centering & stride sampling ---
+    #     # If stride > 1 but we want to preserve full resolution, 
+    #     # you can still stride-smooth to reduce redundancy:
+    #     if stride_size > 1:
+    #         out = uniform_filter(var_map, size=stride_size, mode='reflect')
+    #     else:
+    #         out = var_map
+
+    out = var_map[::stride_size, ::stride_size]
+
+    return out
 
 def measure_image_blur(img_path: str, method: str = 'laplacian') -> float:
     """

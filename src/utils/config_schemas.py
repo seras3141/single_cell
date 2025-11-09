@@ -423,6 +423,14 @@ class LoggingConfig:
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     filename: str = "logs/pipeline.log"
 
+# Distribution Configuration
+@dataclass
+class DistributionConfig:
+    """Distributed processing configuration."""
+    enabled: bool = False
+    backend: str = "nccl"  # or "gloo"
+    init_method: Optional[str] = "env://"
+
 
 # =============================================================================
 # Main Pipeline Configuration
@@ -443,7 +451,7 @@ class PipelineConfig:
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
-
+    distributed: DistributionConfig = field(default_factory=DistributionConfig)
 
 # =============================================================================
 # Validation Functions
