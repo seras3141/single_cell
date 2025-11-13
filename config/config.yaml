@@ -8,6 +8,12 @@ paths:
   # models: "models/"
   # temp: "temp/"
 
+# Image quality assessment
+quality:
+  blur_detection:
+    patch_size: [32, 32]
+    stride_size: [8, 8]
+
 # File processing parameters
 preprocessing:
   # Dataset splitting
@@ -16,18 +22,7 @@ preprocessing:
   split_by_group: true
   split_folder: "split_data"
   out_3d_folder: "3d_images"
-
-  raw_data_patterns:
-    brightfield: "t1_*_w1_*.tif"
-    masks: "Cells_*.tif"
-    nuclei: "Nuclei_*.tif"
   
-  # File naming patterns
-  output_suffixes:
-    brightfield: "*_BF*.tif"
-    masks: "*_Cells*.tif"
-    nuclei: "*_Nuclei*.tif"
-
 # Segmentation parameters
 segmentation:
   # Cellpose parameters
@@ -48,13 +43,6 @@ segmentation:
     process_z_stacks: false  # Whether to process Z-stacks
     save_overlays: true  # Whether to save overlay images
     save_metadata: true  # Whether to save JSON metadata for predictions
-  
-# Image quality assessment
-quality:
-  blur_detection:
-    patch_size: [32, 32]
-    stride_size: [8, 8]
-
 
 # Training parameters
 training:
@@ -67,26 +55,28 @@ training:
   channels: [0, 0]
   normalize: true
 
-filtering:
-  # Cell filtering parameters
-  # min_cell_size: 30
-  # max_cell_size: 1000
-  # min_nucleus_size: 10
-  # max_nucleus_size: 500
-  blur_threshold: 0.5
-
-# Cell tracking parameters
-tracking:
-  min_area: 30
-  max_area: 1000
-  search_range: 5
-  memory: 1
-  min_track_length: 3
-
+# Post-processing parameters
 postprocessing:
   enable_blur_filtering: true
   filter_before_tracking: true
   save_intermediate_results: false
+
+  filtering:
+    # Cell filtering parameters
+    # min_cell_size: 30
+    # max_cell_size: 1000
+    # min_nucleus_size: 10
+    # max_nucleus_size: 500
+    blur_threshold: 0.5
+
+  # Cell tracking parameters
+  tracking:
+    min_area: 30
+    max_area: 1000
+    search_range: 5
+    memory: 1
+    min_track_length: 3
+
 
 feature_extraction:
   # Processing options

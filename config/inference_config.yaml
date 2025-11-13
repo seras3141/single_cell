@@ -34,7 +34,7 @@ logging:
   filename: "logs/inference.log"
 
 distributed:
-  enabled: false          # Enable distributed inference
+  enabled: true          # Enable distributed inference
   backend: "nccl"        # Backend for distributed processing (e.g., nccl, gloo)
   init_method: "env://"  # Initialization method for distributed processing
 

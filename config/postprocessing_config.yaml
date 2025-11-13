@@ -13,26 +13,30 @@ quality:
     patch_size: [32, 32]
     stride_size: [8, 8]
 
-filtering:
-  # Cell filtering parameters
-  # min_cell_size: 30
-  # max_cell_size: 1000
-  # min_nucleus_size: 10
-  # max_nucleus_size: 500
-  blur_threshold: 0.5
-
-# Cell tracking parameters
-tracking:
-  min_area: 30
-  max_area: 1000
-  search_range: 5
-  memory: 1
-  min_track_length: 3
-
 postprocessing:
+  image_pattern: "*_BF_3d.tif"
+  mask_pattern: "*_masks_3d.tif"
   enable_blur_filtering: true
   filter_before_tracking: true
   save_intermediate_results: false
+
+  filtering:
+    # Cell filtering parameters
+    # min_cell_size: 30
+    # max_cell_size: 1000
+    # min_nucleus_size: 10
+    # max_nucleus_size: 500
+    blur_threshold: 0.5
+
+  # Cell tracking parameters
+  tracking:
+    min_area: 30
+    max_area: 1000
+    search_range: 5
+    memory: 1
+    min_track_length: 3
+
+
 
 # Logging configuration
 logging:
