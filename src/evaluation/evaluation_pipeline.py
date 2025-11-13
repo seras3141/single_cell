@@ -119,8 +119,8 @@ class EvaluationPipeline:
                 logger.error(f"Failed to compute pixel metrics for {image_id}: {e}")
                 image_result['pixel_metrics'] = {}
         
-        # Store result
-        self.results['image_results'].append(image_result)
+        # Store result : TODO : Move this to calling function (to avoid parallel issues)
+        # self.results['image_results'].append(image_result)
         
         return image_result
 
@@ -177,6 +177,8 @@ class EvaluationPipeline:
                     'instance_metrics': {},
                     'pixel_metrics': {}
                 })
+
+        self.results['image_results'].extend(batch_results)
         
         return batch_results
 
@@ -222,6 +224,7 @@ class EvaluationPipeline:
                 gt = load_single_file(gt_path)
                 results = self.evaluate_single_image(pred, gt, img_id)
             except Exception as e:
+                logger.error(f"Failed to evaluate image {img_id}: {e}")
                 results = {
                     'image_id': img_id,
                     # 'metadata': metadata,
@@ -235,6 +238,9 @@ class EvaluationPipeline:
             delayed(_process_single)(p, g, i)
             for p, g, i in tqdm(zip(pred_masks, gt_masks, image_ids), total=len(pred_masks))
         )
+
+        # Aggregate all results into self.results
+        self.results['image_results'].extend(batch_results)
 
         return batch_results #type: ignore
 

@@ -63,8 +63,6 @@ def get_postprocessing_arguments(postprocessing_kwargs: dict = {}):
     postprocessing_kwargs["filter_before_tracking"] = bool(postprocessing_kwargs.get("filter_before_tracking", True))
     postprocessing_kwargs["save_intermediate_results"] = bool(postprocessing_kwargs.get("save_intermediate_results", False))
 
-    print("XXX Postprocessing", postprocessing_kwargs) # DEBUG
-
     # postprocessing_kwargs = {
     #     "enable_blur_filtering": bool(postprocessing_kwargs.get("enable_blur_filtering", True)),
     #     "filter_before_tracking": bool(postprocessing_kwargs.get("filter_before_tracking", True)),
