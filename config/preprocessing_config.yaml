@@ -8,30 +8,17 @@ paths:
 # File processing parameters
 preprocessing:
   # Dataset splitting
-  test_size: 0.2
+  test_size: 1
   random_state: 42
   split_by_group: true
   split_folder: "split_data"
-  out_3d_folder: "3d_images"
-
-  raw_data_patterns:
-    brightfield: "t1_*_w1_*.tif"
-    masks: "Cells_*.tif"
-    nuclei: "Nuclei_*.tif"
-  
-  # File naming patterns
-  output_suffixes:
-    brightfield: "*_BF*.tif"
-    masks: "*_Cells*.tif"
-    nuclei: "*_Nuclei*.tif"
+  out_3d_folder: "3d_data"  
   
 # Image quality assessment
 quality:
   blur_detection:
     patch_size: [32, 32]
     stride_size: [8, 8]
-
-
 
 # Logging configuration
 logging:

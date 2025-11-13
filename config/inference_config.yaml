@@ -7,7 +7,7 @@ paths:
 # Segmentation model configuration
 segmentation:
   cellpose:
-    model_type: "cyto3"  # Options: cyto, cyto2, cyto3, nuclei, or custom model path
+    model_type: "cellpose-sam"  # Options: cyto, cyto2, cyto3, nuclei, or custom model path
     gpu: true
     channels: [0, 0]  # [cytoplasm, nucleus] - [0,0] for grayscale
     diameter: null  # Auto-diameter detection, or specify in pixels
@@ -18,8 +18,8 @@ segmentation:
     invert: false
 
   inference:
-    dataset_name: "test"  # Subfolder within input_dir
-    results_folder: "results"  # Subfolder within output_dir
+    dataset_name: ""  # Subfolder within input_dir (and subfolder in results_folder)
+    results_folder: "inference"  # Subfolder within output_dir
     file_pattern: "*_BF.tif"  # Glob pattern for selecting image files
     process_z_stacks: false  # Whether to process Z-stacks
     save_overlays: true  # Whether to save overlay images
@@ -33,6 +33,10 @@ logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR
   filename: "logs/inference.log"
 
+distributed:
+  enabled: false          # Enable distributed inference
+  backend: "nccl"        # Backend for distributed processing (e.g., nccl, gloo)
+  init_method: "env://"  # Initialization method for distributed processing
 
 # Optional future extensions
 # runtime:

@@ -197,12 +197,13 @@ class InferencePipeline:
 
     def run_inference(
         self,
-        input_dir: Optional[Union[str, Path]],
-        input_files: Optional[List[Path]],
+        input_dir: Optional[Union[str, Path]] = None,
+        input_files: Optional[List[Path]] = None,
         file_pattern: str = "*_BF.tif",
         process_z_stacks: bool = False,
         save_overlays: bool = True,
         save_metadata: bool = True,
+        combine_z_stacks: bool = True,
         progress_callback: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
@@ -222,6 +223,8 @@ class InferencePipeline:
 
         # Either read files from directory or use provided list
         if input_dir:
+            if input_files:
+                raise ValueError("Provide either `input_dir` or `input_files`, not both.")
             input_files = self.get_file_list(input_dir, file_pattern)
         elif input_files is None:
             raise ValueError("Either `input_dir` or `input_files` must be provided.")
@@ -264,13 +267,8 @@ class InferencePipeline:
                 })
         
         # Combine 2D masks to 3D if needed
-        if input_files and results['2d_files']:
-            logging.info("Combining 2D masks into 3D volumes")
-            mask_dir = self.output_manager.masks_dir
-            output_dir = self.output_manager.masks_dir.parent / (self.output_manager.masks_dir.name + "_3d")
-
-            pattern = r"(.+?)_z(\d+)(?:_(masks))?\.(tif|tiff)"
-            combine_2d_to_3d(str(mask_dir), str(output_dir), pattern=pattern)
+        if input_files and results['2d_files'] and combine_z_stacks:
+            self._combine_2d_to_3d()
         
         # Finalize run
         summary_path = self.output_manager.finalize_run()
@@ -283,6 +281,19 @@ class InferencePipeline:
             logging.warning(f"Failed to process {len(results['failed_files'])} files")
         
         return results
+    
+    def _combine_2d_to_3d(self) -> None:
+        """
+        Combine 2D mask slices into 3D volumes.
+        """
+        from src.utils.conversion import combine_2d_to_3d
+
+        logging.info("Combining 2D masks into 3D volumes")
+        mask_dir = self.output_manager.masks_dir
+        output_dir = self.output_manager.masks_dir.parent / (self.output_manager.masks_dir.name + "_3d")
+
+        pattern = r"(.+?)_z(\d+)(?:_(masks))?\.(tif|tiff)"
+        combine_2d_to_3d(str(mask_dir), str(output_dir), pattern=pattern)
     
     def run_inference_single(
         self,

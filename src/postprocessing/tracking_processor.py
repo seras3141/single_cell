@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 class CellTrackingPipeline:
     def __init__(self, config: Optional[PostprocessingConfig] = None):
         self.config = config or PostprocessingConfig()
-        self.tracker = CellTracker3D(self.config.tracking_config)
-        self.blur_filter = BlurFilter(self.config.filter_config) if self.config.enable_blur_filtering else None
+        self.tracker = CellTracker3D(self.config.tracking)
+        self.blur_filter = BlurFilter(self.config.filtering) if self.config.enable_blur_filtering else None
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def _get_or_compute_blur_heatmap(self, image_path: Path, blur_cache_dir: Optional[Path]) -> Optional[np.ndarray]:
@@ -42,14 +42,14 @@ class CellTrackingPipeline:
         
         if blur_cache_dir is not None:
             blur_file_handler = BlurFileHandler()
-            blur_file_name = blur_file_handler.rename_image(image_path, self.config.filter_config.blur_map_suffix)
+            blur_file_name = blur_file_handler.rename_image(str(image_path), self.config.filtering.blur_map_suffix)
             blur_path = blur_cache_dir / blur_file_name
 
         sharpness_image = get_or_compute_blur_heatmap(
             image_path,
             blur_path=blur_path if blur_cache_dir else None,
-            patch_size=self.config.filter_config.patch_size,
-            stride_size=self.config.filter_config.stride_size,
+            patch_size=self.config.filtering.patch_size,
+            stride_size=self.config.filtering.stride_size,
             normalize=True
         )
         
@@ -80,7 +80,7 @@ class CellTrackingPipeline:
         Raises an error if any required configuration is missing.
         """
 
-        if not self.config.tracking_config:
+        if not self.config.tracking:
             raise ValueError("Tracking configuration is not set.")
         
         if self.config.enable_blur_filtering and not self.blur_filter:
@@ -337,7 +337,7 @@ class CellTrackingPipeline:
 
         seg_files = list(mask_dir.glob(mask_pattern))
         if not seg_files:
-            self.logger.warning(f"No segmentation files found in {mask_dir}.")
+            self.logger.warning(f"No segmentation files found in {mask_dir} with suffix {mask_suffix}")
             return []
         
         results = []

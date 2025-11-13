@@ -60,6 +60,54 @@ def load_image_file(file_path: Path) -> np.ndarray:
                 logger.error(f"All image loading methods failed for {file_path}: {e3}")
                 raise
 
+def get_masks_from_directory(
+    directory: Path,
+    file_suffix: str = "_masks.tif",
+    # supported_extensions: Optional[List[str]] = None
+) -> Dict[str, str]:
+    """
+    List all mask files from a directory.
+    
+    Args:
+        directory: Directory containing mask files
+        file_suffix: Pattern suffix for file matching
+        supported_extensions: List of supported file extensions
+        
+    Returns:
+        Dictionary mapping filenames to loaded masks
+    """
+    # if supported_extensions is None:
+    #     supported_extensions = ['.png', '.tif', '.tiff', '.jpg', '.jpeg']
+
+    if file_suffix not in ["_masks.tif", "_Cells.tif"]:
+        raise NotImplementedError("Complex file patterns are not supported yet. Use simple patterns like '*.png'.")
+
+    directory = Path(directory)
+    if not directory.exists():
+        raise FileNotFoundError(f"Directory not found: {directory}")
+    
+    masks = {}
+
+    files = directory.glob(f"*{file_suffix}")
+
+    # Filter by supported extensions
+    # supported_files = [f for f in files if f.suffix.lower() in supported_extensions]
+    
+    # if not supported_files:
+    #     raise ValueError(f"No supported files found in {directory}. "
+    #                     f"Supported extensions: {supported_extensions}")
+
+    supported_files = list(files)
+    
+    logger.info(f"Found {len(supported_files)} files from {directory} with suffix {file_suffix}")
+
+    for file_path in supported_files:
+        key = file_path.name.replace(file_suffix, "")
+        masks[key] = file_path
+    
+    return masks
+
+
 
 def load_masks_from_directory(
     directory: Path,
@@ -119,7 +167,7 @@ def load_masks_from_directory(
     return masks
 
 
-def load_single_file(file_path: Path) -> np.ndarray:
+def load_single_file(file_path: Union[Path, str]) -> np.ndarray:
     """
     Load a single file containing multiple masks.
     
@@ -137,6 +185,41 @@ def load_single_file(file_path: Path) -> np.ndarray:
     logger.info(f"Loading single file: {file_path}")
     
     return load_image_file(file_path)
+
+def check_prediction_label_matching(
+        pred_mask: np.ndarray,
+        label_mask: np.ndarray,
+        key: Optional[str] = ""
+    ) -> bool:
+    """
+    Check if prediction and label masks match in shape.
+    Args:
+        pred_mask: Prediction mask array
+        label_mask: Label mask array
+    Returns:
+        True if shapes match or can be made to match, False otherwise
+    """
+
+    # Validate shapes
+    if pred_mask.shape != label_mask.shape:
+        logger.warning(f"Shape mismatch for {key}: pred {pred_mask.shape} vs label {label_mask.shape}")
+        # Try to handle 3D vs 2D
+        if len(pred_mask.shape) == 3 and len(label_mask.shape) == 2:
+            if pred_mask.shape[0] == 1:
+                pred_mask = pred_mask[0]
+            else:
+                logger.error(f"Cannot handle 3D prediction with {pred_mask.shape[0]} frames")
+                return False
+        elif len(label_mask.shape) == 3 and len(pred_mask.shape) == 2:
+            if label_mask.shape[0] == 1:
+                label_mask = label_mask[0]
+            else:
+                logger.error(f"Cannot handle 3D label with {label_mask.shape[0]} frames")
+                return False
+        else:
+            logger.error(f"Cannot resolve shape mismatch for {key}")
+            return False
+    return True
 
 
 def match_prediction_to_labels(
@@ -179,31 +262,58 @@ def match_prediction_to_labels(
     for key in sorted(common_keys):
         pred_mask = predictions[key]
         label_mask = labels[key]
-        
-        # Validate shapes
-        if pred_mask.shape != label_mask.shape:
-            logger.warning(f"Shape mismatch for {key}: pred {pred_mask.shape} vs label {label_mask.shape}")
-            # Try to handle 3D vs 2D
-            if len(pred_mask.shape) == 3 and len(label_mask.shape) == 2:
-                if pred_mask.shape[0] == 1:
-                    pred_mask = pred_mask[0]
-                else:
-                    logger.error(f"Cannot handle 3D prediction with {pred_mask.shape[0]} frames")
-                    continue
-            elif len(label_mask.shape) == 3 and len(pred_mask.shape) == 2:
-                if label_mask.shape[0] == 1:
-                    label_mask = label_mask[0]
-                else:
-                    logger.error(f"Cannot handle 3D label with {label_mask.shape[0]} frames")
-                    continue
-            else:
-                logger.error(f"Cannot resolve shape mismatch for {key}")
-                continue
-        
+
+        if not check_prediction_label_matching(pred_mask, label_mask, key):
+            continue
+
         matched_pairs.append((pred_mask, label_mask, key))
     
     return matched_pairs
 
+def match_prediction_to_labels_path(
+    predictions: Dict[str, str],
+    labels: Dict[str,str]
+) -> List[tuple]:
+    """
+    Match prediction masks to label masks by filename.
+    
+    Args:
+        predictions: Dictionary of prediction masks
+        labels: Dictionary of label masks
+        
+    Returns:
+        List of (pred_mask, label_mask, image_id) tuples
+    """
+    matched_pairs = []
+    
+    # Find common keys
+    pred_keys = set(predictions.keys())
+    label_keys = set(labels.keys())
+    common_keys = pred_keys & label_keys
+    
+    if not common_keys:
+        logger.error("No matching files found between predictions and labels!")
+        logger.info(f"Prediction files: {sorted(pred_keys)}")
+        logger.info(f"Label files: {sorted(label_keys)}")
+        raise ValueError("No matching files found")
+    
+    missing_in_pred = label_keys - pred_keys
+    missing_in_labels = pred_keys - label_keys
+    
+    if missing_in_pred:
+        logger.warning(f"Labels without predictions: {sorted(missing_in_pred)}")
+    if missing_in_labels:
+        logger.warning(f"Predictions without labels: {sorted(missing_in_labels)}")
+    
+    logger.info(f"Found {len(common_keys)} matching pairs")
+    
+    for key in sorted(common_keys):
+        pred_mask = predictions[key]
+        label_mask = labels[key]
+                
+        matched_pairs.append((pred_mask, label_mask, key))
+    
+    return matched_pairs
 
 
 def get_matching_prediction_label_files(
@@ -263,3 +373,51 @@ def get_matching_prediction_label_files(
     matched_pairs = match_prediction_to_labels(predictions, labels)
 
     return matched_pairs
+
+
+def get_matching_prediction_label_file_paths(
+    predictions_path: Union[str, Path],
+    labels_path: Union[str, Path],
+    prediction_file_pattern: str = "*",
+    label_file_pattern: str = "*"
+) -> List[tuple]:
+    """
+    Get matching prediction and label files from directories or single files.
+    
+    Args:
+        predictions_path: Path to predictions (directory or file)
+        labels_path: Path to labels (directory or file)
+        file_pattern: Pattern for matching files in directories
+    Returns:
+        List of (pred_mask, label_mask, image_id) tuples
+    """
+
+    predictions_path = Path(predictions_path)
+    labels_path = Path(labels_path)
+    prediction_file_suffix = prediction_file_pattern.replace("*", "")
+    label_file_suffix = label_file_pattern.replace("*", "")
+    
+    logger.info("Starting evaluation...")
+    logger.info(f"Predictions: {predictions_path}, with pattern: {prediction_file_pattern}")
+    logger.info(f"Labels: {labels_path}, with pattern: {label_file_pattern}")
+
+    # Load predictions
+    logger.info("Loading predictions...")
+    if predictions_path.is_dir():
+        predictions = get_masks_from_directory(predictions_path, prediction_file_suffix)
+    else:
+        raise NotImplementedError("Single file path matching not implemented for file paths.")
+    
+    # Load labels
+    logger.info("Loading labels...")
+    if labels_path.is_dir():
+        labels = get_masks_from_directory(labels_path, label_file_suffix)
+    else:
+        raise NotImplementedError("Single file path matching not implemented for file paths.")
+        
+    # Match predictions to labels
+    logger.info("Matching predictions to labels...")
+    matched_pairs = match_prediction_to_labels_path(predictions, labels)
+
+    return matched_pairs
+

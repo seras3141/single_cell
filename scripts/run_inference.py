@@ -140,7 +140,7 @@ def run_inference_from_config(config : Dict[str, Any], input_dir: Optional[str] 
     logging.info("Inference completed successfully")
 
 
-def run_inference_from_config_dist(config : Dict[str, Any], input_dir: Optional[str] = None, dataset_name : Optional[str] = None, device:Optional[str]=None):
+def run_inference_from_config_dist(config : Dict[str, Any], input_dir: Optional[str] = None, dataset_name : Optional[str] = None):
     """
     Run inference using a configuration file and command-line arguments.
     Distributed inference version.
@@ -152,7 +152,7 @@ def run_inference_from_config_dist(config : Dict[str, Any], input_dir: Optional[
     world_size = dist.get_world_size()
     rank = dist.get_rank()
     torch_device = torch.device(f'cuda:{local_rank}')
-    torch.cuda.set_device(device)
+    torch.cuda.set_device(torch_device)
 
     pipeline = InferencePipeline.from_config(config=config, device=torch_device)
     validation = pipeline.validate_setup()
@@ -180,11 +180,13 @@ def run_inference_from_config_dist(config : Dict[str, Any], input_dir: Optional[
         input_files=input_files, # type: ignore
         process_z_stacks=inference_config.get('process_z_stacks', False),
         save_overlays=inference_config.get('save_overlays', False),
-        save_metadata=inference_config.get('save_metadata', False)
+        save_metadata=inference_config.get('save_metadata', False),
+        combine_z_stacks=False  # Disable combining in each process
     )
 
     dist.barrier()
     if rank == 0:
+        pipeline._combine_2d_to_3d()  # Combine 2D to 3D once in the main process
         # optional: aggregate logs, or create summary
         print("All done.")
 

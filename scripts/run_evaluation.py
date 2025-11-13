@@ -36,7 +36,7 @@ import json
 from src.evaluation.evaluation_pipeline import evaluate_segmentation_performance, EvaluationPipeline
 from src.evaluation.instance_metrics import calculate_map
 from src.evaluation.pixel_metrics import calculate_dice_coefficient
-from src.evaluation.file_matching import get_matching_prediction_label_files
+from src.evaluation.file_matching import get_matching_prediction_label_files, get_matching_prediction_label_file_paths
 
 
 # Set up logging
@@ -105,7 +105,8 @@ def run_evaluation(
     iou_thresholds: Optional[List[float]] = None,
     pixel_spacing: Optional[float] = None,
     compute_distances: bool = False,
-    file_pattern: str = "*",
+    prediction_file_pattern: str = "*",
+    label_file_pattern: str = "*",
     create_plots: bool = True
 ) -> Dict[str, Any]:
     """
@@ -125,21 +126,31 @@ def run_evaluation(
         Dictionary containing evaluation results
     """
 
-    matched_pairs = get_matching_prediction_label_files(
+    matched_pairs = get_matching_prediction_label_file_paths(
         predictions_path,
         labels_path,
-        file_pattern
+        prediction_file_pattern=prediction_file_pattern,
+        label_file_pattern=label_file_pattern
     )
 
+    # matched_pairs = get_matching_prediction_label_files(
+    #     predictions_path,
+    #     labels_path,
+    #     prediction_file_pattern=prediction_file_pattern,
+    #     label_file_pattern=label_file_pattern
+    # )
     
     if not matched_pairs:
         raise ValueError("No valid prediction-label pairs found")
     
     # Extract arrays and image IDs
-    pred_masks = [pair[0] for pair in matched_pairs]
-    label_masks = [pair[1] for pair in matched_pairs]
+    # pred_masks = [pair[0] for pair in matched_pairs]
+    # label_masks = [pair[1] for pair in matched_pairs]
+    # image_ids = [pair[2] for pair in matched_pairs]
+    pred_paths = [pair[0] for pair in matched_pairs]
+    label_paths = [pair[1] for pair in matched_pairs]
     image_ids = [pair[2] for pair in matched_pairs]
-    
+
     # Initialize evaluation pipeline
     logger.info("Initializing evaluation pipeline...")
     pipeline = EvaluationPipeline(
@@ -150,7 +161,8 @@ def run_evaluation(
     
     # Run evaluation
     logger.info(f"Evaluating {len(matched_pairs)} image pairs...")
-    batch_results = pipeline.evaluate_batch(pred_masks, label_masks, image_ids)
+    batch_results = pipeline.evaluate_batch_path(pred_paths, label_paths, image_ids)
+    # batch_results = pipeline.evaluate_batch(pred_masks, label_masks, image_ids)
     
     # Compute summary metrics
     logger.info("Computing summary metrics...")
@@ -177,11 +189,12 @@ def run_evaluation(
     config = {
         'predictions_path': str(predictions_path),
         'labels_path': str(labels_path),
+        'prediction_file_pattern': prediction_file_pattern,
+        'label_file_pattern': label_file_pattern,
         'output_dir': str(output_dir),
         'iou_thresholds': iou_thresholds,
         'pixel_spacing': pixel_spacing,
         'compute_distances': compute_distances,
-        'file_pattern': file_pattern,
         'num_images_evaluated': len(matched_pairs),
         'image_ids': image_ids
     }
@@ -254,7 +267,10 @@ Examples:
         required=True,
         help='Path to ground truth labels (directory or file)'
     )
-    
+
+    parser.add_argument('--pred-pattern', type=str, default="*", help='File pattern for matching prediction files (default: "*")')
+    parser.add_argument('--label-pattern', type=str, default="*", help='File pattern for matching label files (default: "*")')
+
     parser.add_argument(
         '--output', '-o',
         type=str,
@@ -283,14 +299,7 @@ Examples:
         action='store_true',
         help='Compute distance-based metrics (Hausdorff, surface distance)'
     )
-    
-    parser.add_argument(
-        '--pattern',
-        type=str,
-        default='*',
-        help='File pattern for matching files in directories (default: "*")'
-    )
-    
+        
     parser.add_argument(
         '--verbose', '-v',
         action='store_true',
@@ -326,7 +335,8 @@ Examples:
             iou_thresholds=args.iou_thresholds,
             pixel_spacing=args.pixel_spacing,
             compute_distances=args.compute_distances,
-            file_pattern=args.pattern,
+            prediction_file_pattern=args.pred_pattern,
+            label_file_pattern=args.label_pattern,
             create_plots=not args.no_plots
         )
         

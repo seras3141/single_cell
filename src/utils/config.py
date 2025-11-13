@@ -66,7 +66,7 @@ class ConfigManager:
             validate_pipeline_config(OmegaConf.to_object(merged_config)) # type: ignore
             
             logger.info(f"Loaded configuration from {self.config_path}")
-            return merged_config
+            return merged_config # type: ignore
             
         except ValidationError as e:
             raise ValueError(f"Configuration validation failed: {e}")
@@ -125,8 +125,6 @@ class ConfigManager:
         section_map = {
             'segmentation': SegmentationConfig,
             'training': TrainingConfig,
-            'tracking': TrackingConfig,
-            'filtering': FilterConfig,
             'postprocessing': PostprocessingConfig,
         }
         
@@ -142,36 +140,7 @@ class ConfigManager:
     def config(self) -> DictConfig:
         """Get the full configuration as DictConfig."""
         return self._config
-    
-    @property
-    def paths(self) -> Dict[str, str]:
-        """Get paths configuration."""
-        return self.get('paths', {})
-    
-    @property
-    def segmentation(self) -> Dict[str, Any]:
-        """Get segmentation configuration."""
-        return self.get('segmentation', {})
-    
-    @property
-    def tracking(self) -> Dict[str, Any]:
-        """Get tracking configuration."""
-        return self.get('tracking', {})
-    
-    @property
-    def training(self) -> Dict[str, Any]:
-        """Get training configuration."""
-        return self.get('training', {})
-    
-    @property
-    def filtering(self) -> Dict[str, Any]:
-        """Get filtering configuration."""
-        return self.get('filtering', {})
-    
-    @property
-    def postprocessing(self) -> Dict[str, Any]:
-        """Get postprocessing configuration."""
-        return self.get('postprocessing', {})
+        
         
     def merge_with_overrides(self, overrides: Dict[str, Any]) -> 'ConfigManager':
         """Create a new ConfigManager with overrides applied."""

@@ -10,6 +10,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Dict, Any
 
 # Add the project root to the path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -19,13 +20,8 @@ from src.utils.config_schemas import PostprocessingConfig, TrackingConfig, Filte
 from src.utils.config import get_config_manager
 from src.utils.logging_utils import setup_logging
 
-def get_tracking_config(config: dict) -> TrackingConfig:
+def get_tracking_config(tracking_kwargs: dict) -> TrackingConfig:
     """Extract tracking arguments from config or CLI args."""
-
-    if 'tracking' in config:
-        tracking_kwargs = config['tracking']
-    else:
-        tracking_kwargs = {}
 
     # Remove None values
     tracking_kwargs = {k: v for k, v in tracking_kwargs.items() if v is not None}
@@ -43,11 +39,7 @@ def get_tracking_config(config: dict) -> TrackingConfig:
 
     return tracking_config
 
-def get_filtering_config(config: dict) -> FilterConfig:
-    if 'filtering' in config:
-        filtering_kwargs = config['filtering']
-    else:
-        filtering_kwargs = {}
+def get_filtering_config(filtering_kwargs: dict) -> FilterConfig:
 
     # Remove None values
     filtering_kwargs = {k: v for k, v in filtering_kwargs.items() if v is not None}
@@ -64,21 +56,24 @@ def get_filtering_config(config: dict) -> FilterConfig:
 
     return filter_config
 
-def get_postprocessing_arguments(config: dict = {}):
-    if 'postprocessing' in config:
-        postprocessing_kwargs = config['postprocessing']
-    else:
-        postprocessing_kwargs = {}
+def get_postprocessing_arguments(postprocessing_kwargs: dict = {}):
 
-    postprocessing_kwargs = {
-        "enable_blur_filtering": bool(postprocessing_kwargs.get("enable_blur_filtering", True)),
-        "filter_before_tracking": bool(postprocessing_kwargs.get("filter_before_tracking", True)),
-        "save_intermediate_results": bool(postprocessing_kwargs.get("save_intermediate_results", False)),
-        # "mask_pattern": str(postprocessing_kwargs.get("mask_pattern", "")),
-        # "image_pattern": str(postprocessing_kwargs.get("image_pattern", "")),
-        # "blur_heatmap_suffix": str(postprocessing_kwargs.get("blur_heatmap_suffix", "")),
-        # "output_suffix": str(postprocessing_kwargs.get("output_suffix", "")),
-    }
+    # Ensure boolean values are properly set
+    postprocessing_kwargs["enable_blur_filtering"] = bool(postprocessing_kwargs.get("enable_blur_filtering", True))
+    postprocessing_kwargs["filter_before_tracking"] = bool(postprocessing_kwargs.get("filter_before_tracking", True))
+    postprocessing_kwargs["save_intermediate_results"] = bool(postprocessing_kwargs.get("save_intermediate_results", False))
+
+    print("XXX Postprocessing", postprocessing_kwargs) # DEBUG
+
+    # postprocessing_kwargs = {
+    #     "enable_blur_filtering": bool(postprocessing_kwargs.get("enable_blur_filtering", True)),
+    #     "filter_before_tracking": bool(postprocessing_kwargs.get("filter_before_tracking", True)),
+    #     "save_intermediate_results": bool(postprocessing_kwargs.get("save_intermediate_results", False)),
+    #     "img_pattern": str(postprocessing_kwargs.get("img_pattern", "")),
+    #     "mask_pattern": str(postprocessing_kwargs.get("mask_pattern", "")),
+    #     # "blur_heatmap_suffix": str(postprocessing_kwargs.get("blur_heatmap_suffix", "")),
+    #     # "output_suffix": str(postprocessing_kwargs.get("output_suffix", "")),
+    # }
 
     postprocessing_kwargs = {k: v for k, v in postprocessing_kwargs.items() if v is not None}
     return postprocessing_kwargs
@@ -86,15 +81,27 @@ def get_postprocessing_arguments(config: dict = {}):
 
 def create_postprocessing_config(config : dict) -> PostprocessingConfig:
     """Create pipeline configuration from command line arguments or merged config."""
-    tracking_config = get_tracking_config(config)
+    print("XXX Creating postprocessing config", config) # DEBUG
 
-    filter_config = get_filtering_config(config)
+    postprocessing_kwargs = config.get('postprocessing', {})
 
-    postprocessing_kwargs = get_postprocessing_arguments(config)
+    if 'tracking' in postprocessing_kwargs:
+        tracking_kwargs = postprocessing_kwargs.pop('tracking')
+    else:
+        tracking_kwargs = {}
+    tracking_config = get_tracking_config(tracking_kwargs)
+
+    if 'filtering' in postprocessing_kwargs:
+        filtering_kwargs = postprocessing_kwargs.pop('filtering')
+    else:
+        filtering_kwargs = {}
+    filter_config = get_filtering_config(filtering_kwargs)
+
+    postprocessing_kwargs = get_postprocessing_arguments(postprocessing_kwargs)
 
     postprocessing_config = PostprocessingConfig(
-        tracking_config=tracking_config,
-        filter_config=filter_config,
+        tracking=tracking_config,
+        filtering=filter_config,
         **postprocessing_kwargs, # type: ignore
     )
     return postprocessing_config
@@ -143,57 +150,51 @@ def get_postprocessing_args():
     return parser.parse_args(), parser
 
 
-def get_legacy_args(args: dict):
-    """Extract legacy CLI arguments for backward compatibility."""
+def get_postprocessing_legacy_args(vargs: dict) -> Dict[str, Any]:
+    """
+    Extract legacy CLI arguments that are not part of the new config schema.
+    This is for backward compatibility with existing scripts.
+    """
+    legacy_mapping = {
+        # Input and Output directories
+        'image_dir': 'paths.image_dir',
+        'mask_dir': 'paths.mask_dir',
+        'output_dir': 'paths.output_dir',
+        'blur_dir': 'paths.blur_dir',
+        # Patterns for image and segmentation files
+        'img_pattern': 'postprocessing.image_pattern',
+        'seg_pattern': 'postprocessing.mask_pattern',
+        # Single file processing
+        'image_file': 'image_file',
+        'segmentation_file': 'segmentation_file',
+        # Blur filtering options
+        'blur_threshold': 'postprocessing.filtering.blur_threshold',
+        'invert_blur_threshold': 'postprocessing.filtering.invert_blur_threshold',
+        'blur_patch_size': 'postprocessing.filtering.patch_size',
+        'blur_stride_size': 'postprocessing.filtering.stride_size',
+        'cache_blur_maps': 'postprocessing.filtering.cache_blur_maps',
+        # Tracking options
+        'search_range': 'postprocessing.tracking.search_range',
+        'memory': 'postprocessing.tracking.memory',
+        'min_track_length': 'postprocessing.tracking.min_track_length',
+        'min_area': 'postprocessing.tracking.min_area',
+        'max_area': 'postprocessing.tracking.max_area',
+        # Pipeline options
+        'enable_blur_filtering': 'postprocessing.enable_blur_filtering',
+        'filter_before_tracking': 'postprocessing.filter_before_tracking',
+        'save_intermediate': 'postprocessing.save_intermediate_results',
+        # Logging options
+        'log_level': 'log_level',
+    }
+
     legacy_args = {}
-    # Input and Output directories
-    if "image_dir" in args:
-        legacy_args["paths.image_dir"] = args["image_dir"]
-    if "mask_dir" in args:
-        legacy_args["paths.mask_dir"] = args["mask_dir"]
-    if "output_dir" in args:
-        legacy_args["paths.output_dir"] = args["output_dir"]
-    if "blur_dir" in args:
-        legacy_args["paths.blur_dir"] = args["blur_dir"]
-    # Single file processing
-    if "image_file" in args:
-        legacy_args["image_file"] = args["image_file"]
-    if "segmentation_file" in args: 
-        legacy_args["segmentation_file"] = args["segmentation_file"]
-    # Blur filtering options
-    if "blur_threshold" in args:
-        legacy_args["filtering.blur_threshold"] = args["blur_threshold"]
-    if "invert_blur_threshold" in args:
-        legacy_args["filtering.invert_blur_threshold"] = args["invert_blur_threshold"]
-    if "blur_patch_size" in args:
-        legacy_args["filtering.blur_patch_size"] = args["blur_patch_size"]
-    if "blur_stride_size" in args:
-        legacy_args["filtering.blur_stride_size"] = args["blur_stride_size"]
-    if "cache_blur_maps" in args:
-        legacy_args["filtering.cache_blur_maps"] = args["cache_blur_maps"]
-    # Tracking options
-    if "search_range" in args:
-        legacy_args["tracking.search_range"] = args["search_range"]
-    if "memory" in args:
-        legacy_args["tracking.memory"] = args["memory"]
-    if "min_track_length" in args:
-        legacy_args["tracking.min_track_length"] = args["min_track_length"]
-    if "min_area" in args:
-        legacy_args["tracking.min_area"] = args["min_area"]
-    if "max_area" in args:
-        legacy_args["tracking.max_area"] = args["max_area"]
-    # Pipeline options
-    if "enable_blur_filtering" in args:
-        legacy_args["postprocessing.enable_blur_filtering"] = args["enable_blur_filtering"]
-    if "filter_before_tracking" in args:
-        legacy_args["postprocessing.filter_before_tracking"] = args["filter_before_tracking"]
-    if "save_intermediate" in args:
-        legacy_args["postprocessing.save_intermediate"] = args["save_intermediate"]
-    # Logging options
-    if "log_level" in args:
-        legacy_args["log_level"] = args["log_level"]
+
+    for k, v in legacy_mapping.items():
+        if k in vargs:
+            legacy_args[v] = vargs[k]
 
     return legacy_args
+
 
 def check_input(config, cli_args):
     paths_config = config.get('paths', {})
@@ -260,7 +261,7 @@ def run_single_file_postprocessing(pipeline, args):
     logger.info("Processing completed successfully")
     logger.info(f"Results saved to: {result.get('final_output', 'N/A')}")
 
-def run_batch_postprocessing(pipeline, image_dir, mask_dir, blur_dir, output_dir):
+def run_batch_postprocessing(pipeline, image_dir, mask_dir, blur_dir, output_dir, image_pattern="*_BF_3d.tif", mask_pattern="*_3d.tif"):
     """Run postprocessing pipeline on a batch of files."""
     logger = logging.getLogger(__name__)
     logger.info(f"Processing batch from directory: {mask_dir}")
@@ -282,7 +283,7 @@ def main():
     setup_logging(cli_args.get("log_level", "INFO"))
     logger = logging.getLogger(__name__)
 
-    config_manager = get_config_manager(cli_args=cli_args, legacy_args_function=get_legacy_args)
+    config_manager = get_config_manager(cli_args=cli_args, legacy_args_function=get_postprocessing_legacy_args)
 
     # Get final config as dict for backward compatibility
     config_dict = config_manager.to_dict()

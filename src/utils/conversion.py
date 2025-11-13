@@ -118,6 +118,7 @@ def split_3d_to_2d(input_path: str, output_dir: Union[str, Path], suffix: Option
             suffix = suffix[:-4]
         if suffix.endswith('_3d'):
             suffix = suffix[:-3]
+        suffix = suffix.strip('_')
 
     # Load 3D TIFF
     volume = tiff.imread(input_path)

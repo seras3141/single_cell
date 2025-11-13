@@ -147,8 +147,8 @@ class TrackingConfig:
 @dataclass
 class PostprocessingConfig:
     """Postprocessing pipeline configuration."""
-    tracking_config: TrackingConfig = field(default_factory=TrackingConfig)
-    filter_config: FilterConfig = field(default_factory=FilterConfig)
+    tracking: TrackingConfig = field(default_factory=TrackingConfig)
+    filtering: FilterConfig = field(default_factory=FilterConfig)
     enable_blur_filtering: bool = True
     filter_before_tracking: bool = True
     save_intermediate_results: bool = False
@@ -440,12 +440,10 @@ class DistributionConfig:
 class PipelineConfig:
     """Main pipeline configuration schema."""
     paths: PathsConfig = field(default_factory=PathsConfig)
-    preprocessing: PreprocessingConfig = field(default_factory=PreprocessingConfig)
     quality: QualityConfig = field(default_factory=QualityConfig)
+    preprocessing: PreprocessingConfig = field(default_factory=PreprocessingConfig)
     segmentation: SegmentationConfig = field(default_factory=SegmentationConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
-    filtering: FilterConfig = field(default_factory=FilterConfig)
-    tracking: TrackingConfig = field(default_factory=TrackingConfig)
     postprocessing: PostprocessingConfig = field(default_factory=PostprocessingConfig)
     feature_extraction: FeatureExtractionConfig = field(default_factory=FeatureExtractionConfig)
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
@@ -477,12 +475,12 @@ def validate_pipeline_config(config: PipelineConfig) -> None:
         raise ValueError("Cellpose cellprob threshold must be between 0 and 1")
     
     # Tracking validation
-    if config.tracking.search_range <= 0:
+    if config.postprocessing.tracking.search_range <= 0:
         raise ValueError("Tracking search range must be positive")
     
-    if config.tracking.min_area >= config.tracking.max_area:
+    if config.postprocessing.tracking.min_area >= config.postprocessing.tracking.max_area:
         raise ValueError("Tracking min_area must be less than max_area")
     
     # Filtering validation
-    if not 0 <= config.filtering.blur_threshold <= 1:
+    if not 0 <= config.postprocessing.filtering.blur_threshold <= 1:
         raise ValueError("Blur threshold should typically be between 0 and 1")

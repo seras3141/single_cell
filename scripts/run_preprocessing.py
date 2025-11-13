@@ -23,36 +23,34 @@ def get_preprocessing_args():
     parser.add_argument("--stride-size", type=int, help="Stride size for blur detection")
     # Input patterns
     parser.add_argument("--combine-pattern", help="Regex for 2D to 3D grouping")
-    # parser.add_argument("--image-pattern", help="Glob pattern for image files")
-    # parser.add_argument("--mask-pattern", help="Glob pattern for mask files")
     # misc
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing files")
     parser.add_argument("--config", type=str, help="Path to configuration file")
     parser.add_argument("--override", nargs='*', help="Override configuration values in dot notation (e.g., paths.input_dir=data/input)")
     return parser.parse_args()
 
-def get_preprocessing_legacy_args(args):
+def get_preprocessing_legacy_args(vargs: dict) -> Dict[str, Any]:
     """
     Extract legacy CLI arguments that are not part of the new config schema.
     This is for backward compatibility with existing scripts.
     """
+    legacy_mapping = {
+        # No direct legacy args for now; placeholder for future use
+        'input_dir': 'paths.input_dir',
+        'output_dir': 'paths.output_dir',
+        'test_size': 'preprocessing.test_size',
+        'random_seed': 'preprocessing.random_state',
+        'split_folder': 'preprocessing.split_folder',
+        'combine_pattern': 'preprocessing.combine_pattern',
+        'patch_size': 'quality.blur_detection.patch_size',
+        'stride_size': 'quality.blur_detection.stride_size',
+    }
+
     legacy_args = {}
-    if args.input_dir:
-        legacy_args['path.input_dir'] = args.input_dir
-    if args.output_dir:
-        legacy_args['path.output_dir'] = args.output_dir
-    if args.test_size:
-        legacy_args['preprocessing.test_size'] = args.test_size
-    if args.random_seed:
-        legacy_args['preprocessing.random_state'] = args.random_seed
-    if args.split_folder:
-        legacy_args['preprocessing.split_folder'] = args.split_folder
-    if args.patch_size:
-        legacy_args['quality.blur_detection.patch_size'] = args.patch_size
-    if args.stride_size:
-        legacy_args['quality.blur_detection.stride_size'] = args.stride_size
-    if args.combine_pattern:
-        legacy_args['preprocessing.combine_pattern'] = args.combine_pattern
+
+    for k, v in legacy_mapping.items():
+        if k in vargs:
+            legacy_args[v] = vargs[k]
 
     return legacy_args
 
@@ -131,20 +129,21 @@ def main():
 
     # Set up logging
     setup_logging(cli_args.get("log_level", "INFO"))
+    logger = logging.getLogger(__name__)
 
     config_manager = get_config_manager(cli_args=cli_args, legacy_args_function=get_preprocessing_legacy_args)
 
     # Get final config as dict for backward compatibility
     merged_config = config_manager.to_dict()
-    logging.info("Final merged configuration:")
-    logging.info(merged_config)    
+    logger.info("Final merged configuration:")
+    logger.info(merged_config)
     
     try:
-        logging.info("Starting preprocessing...")
+        logger.info("Starting preprocessing...")
         run_preprocessing_from_config(merged_config)
 
     except Exception as e:
-        logging.error(f"Preprocessing failed: {e}")
+        logger.error(f"Preprocessing failed: {e}")
         sys.exit(1)
 
 

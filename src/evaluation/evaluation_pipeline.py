@@ -5,8 +5,10 @@ This module provides a unified interface for evaluating segmentation results
 using both instance-level and pixel-level metrics.
 """
 
+import os
 from typing import Dict, List, Optional, Union, Tuple, Any
 from pathlib import Path
+from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
 import json
@@ -16,6 +18,7 @@ from tqdm import tqdm
 
 from .instance_metrics import InstanceSegmentationMetrics
 from .pixel_metrics import PixelWiseMetrics
+from .file_matching import load_single_file, load_image_file, check_prediction_label_matching
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +123,8 @@ class EvaluationPipeline:
         self.results['image_results'].append(image_result)
         
         return image_result
-    
+
+    # TODO : Remove this function later    
     def evaluate_batch(
         self,
         pred_masks: List[np.ndarray],
@@ -175,6 +179,65 @@ class EvaluationPipeline:
                 })
         
         return batch_results
+
+    
+    def evaluate_batch_path(
+        self,
+        pred_masks: List[str],
+        gt_masks: List[str],
+        image_ids: Optional[List[str]] = None,
+        n_jobs: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Evaluate multiple prediction-ground truth pairs.
+        
+        Args:
+            pred_masks: List of predicted segmentation paths
+            gt_masks: List of ground truth segmentation paths
+            image_ids: Optional list of image identifiers
+            
+        Returns:
+            List of evaluation results for each image
+        """
+        if len(pred_masks) != len(gt_masks):
+            raise ValueError("Number of prediction and ground truth masks must match")
+        
+        # Prepare optional arguments
+        if image_ids is None:
+            image_ids = [f"image_{i:04d}" for i in range(len(pred_masks))]
+        elif len(image_ids) != len(pred_masks):
+            raise ValueError("Number of image IDs must match number of masks")
+
+        # Respect SLURM environment variable if available
+        if n_jobs is None:
+            n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count())) # type: ignore
+
+        logger.info(f"Evaluating batch of {len(pred_masks)} images with {n_jobs} Jobs")
+        
+        batch_results = []
+
+        def _process_single(pred_path, gt_path, img_id):
+            try:
+                pred = load_single_file(pred_path)
+                gt = load_single_file(gt_path)
+                results = self.evaluate_single_image(pred, gt, img_id)
+            except Exception as e:
+                results = {
+                    'image_id': img_id,
+                    # 'metadata': metadata,
+                    'error': str(e),
+                    'instance_metrics': {},
+                    'pixel_metrics': {}
+                }
+            return results
+
+        batch_results = Parallel(n_jobs=n_jobs, backend='loky')(
+            delayed(_process_single)(p, g, i)
+            for p, g, i in tqdm(zip(pred_masks, gt_masks, image_ids), total=len(pred_masks))
+        )
+
+        return batch_results #type: ignore
+
     
     def compute_summary_metrics(self) -> Dict[str, Any]:
         """
@@ -190,9 +253,9 @@ class EvaluationPipeline:
         logger.info("Computing summary metrics")
         
         # Get final metrics from individual metric classes
-        instance_summary = self.instance_metrics.compute_final_metrics()
-        pixel_summary = self.pixel_metrics.compute_final_metrics()
-        
+        instance_summary = self.instance_metrics.compute_final_metrics() if self.instance_metrics else {}
+        pixel_summary = self.pixel_metrics.compute_final_metrics() if self.pixel_metrics else {}
+
         # Combine summaries
         summary = {
             'num_images_evaluated': len(self.results['image_results']),
@@ -366,8 +429,10 @@ class EvaluationPipeline:
     
     def reset(self) -> None:
         """Reset all evaluation results."""
-        self.instance_metrics.reset()
-        self.pixel_metrics.reset()
+        if self.instance_metrics is not None:
+            self.instance_metrics.reset()
+        if self.pixel_metrics is not None:
+            self.pixel_metrics.reset()
         self.results['image_results'].clear()
         logger.info("Evaluation pipeline reset")
     
