@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 from unittest.mock import patch, MagicMock
 
-from src.feature_extraction.feature_extractor_2d import (
+from src.feature_extraction.feature_extractor_incarta import (
     compute_morphology_features,
     compute_intensity_features,
     compute_spatial_features,

@@ -6,8 +6,7 @@ seamlessly with OmegaConf for type-safe configuration management.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List, Tuple, Union
-from pathlib import Path
+from typing import Dict, Any, Optional, List, Tuple
 
 
 # =============================================================================
@@ -194,31 +193,24 @@ class MorphologyConfig:
     extract_glrlm: bool = False
     extract_glszm: bool = False
 
-
 @dataclass
-class FeaturesConfig:
-    """Feature extraction configuration."""
-    radiomics: RadiomicsConfig = field(default_factory=RadiomicsConfig)
-    morphology: MorphologyConfig = field(default_factory=MorphologyConfig)
-
-@dataclass
-class FeatureExtractionConfig:
-    """Feature extraction configuration."""
-    n_jobs: int = -1  # Use all available cores
-    batch_size: int = 25  # Batch size for parallel processing
-    
+class IncartaConfig:
+    """Incarta feature extraction configuration."""
     features: Dict[str, bool] = field(default_factory=lambda: {
         "morphology": True,
         "intensity": True,
         "spatial": True,
         "texture": True
     })
-    
-    file_patterns: Dict[str, List[str]] = field(default_factory=lambda: {
-        "images": ["*_BF.tif"],
-        "masks": ["*_Cells.tif"]
-    })
-    
+
+
+@dataclass
+class FeatureExtractionConfig:
+    """Feature extraction configuration."""
+    n_jobs: int = -1  # Use all available cores (or set to 0)
+
+    method: str = "incarta"
+            
     preprocessing: Dict[str, Any] = field(default_factory=lambda: {
         "normalize_intensity": True,
         "clip_percentiles": [1, 99]
@@ -327,9 +319,7 @@ class VisualizationConfig:
         ]
     })
 
-    '''
-
-
+'''
 # =============================================================================
 # Dimensionality Reduction Settings
 # =============================================================================
@@ -356,60 +346,63 @@ class DimensionalityReductionConfig:
         }
     })
 
-  # Visualization levels
-  levels:
-    z_stack:
-      enabled: true
-      max_features_violin: 5  # Max features for violin plots
-      min_cells_per_stack: 3   # Min cells required for z-stack analysis
-      
-    sample:
-      enabled: true
-      max_features_heatmap: 8  # Max features for correlation heatmap
-      
-    dataset:
-      enabled: true
-      max_features_boxplot: 6   # Max features for boxplot
-      max_features_correlation: 10  # Max features for correlation matrix
-      
-  # Interactive plotting
-  interactive:
-    enabled: false
-    hover_data: ["instance_id", "z_stack", "sample_id"]
-    plot_width: 800
-    plot_height: 600
+    # Visualization levels
+    levels: Dict[str, Any] = field(default_factory=lambda: {
+        "z_stack": {
+            "enabled": True,
+            "max_features_violin": 5,  # Max features for violin plots
+            "min_cells_per_stack": 3   # Min cells required for z-stack analysis
+        },
+        "sample": {
+            "enabled": True,
+            "max_features_heatmap": 8  # Max features for correlation heatmap
+        },
+        "dataset": {
+            "enabled": True,
+            "max_features_boxplot": 6,   # Max features for boxplot
+            "max_features_correlation": 10  # Max features for correlation matrix
+        }
+    })
 
-  # TensorBoard logging
-  tensorboard:
-    enabled: false
-    log_dir: "tensorboard_logs"
-    
-  # Feature selection for visualization
-  features:
-    # Features to always include in analysis
-    priority_features:
-      - "area"
-      - "elongation"
-      - "circularity"
-      - "mean_intensity"
-      - "entropy"
-    
-    # Features to exclude from dimensionality reduction
-    exclude_from_reduction:
-      - "instance_id"
-      - "filename"
-      - "image_path"
-      - "sample_id"
-      - "z_stack"
-      - "sample_z_id"
-      - "centroid_x"
-      - "centroid_y"
-      - "center_of_mass_x"
-      - "center_of_mass_y"
-  
+    # Interactive plotting
+    interactive: Dict[str, Any] = field(default_factory=lambda: {
+        "enabled": False,
+        "hover_data": ["instance_id", "z_stack", "sample_id"],
+        "plot_width": 800,
+        "plot_height": 600
+    })
 
-    '''
+    # TensorBoard logging
+    tensorboard: Dict[str, Any] = field(default_factory=lambda: {
+        "enabled": False,
+        "log_dir": "tensorboard_logs"
+    })
 
+    # Feature selection for visualization
+    features: Dict[str, Any] = field(default_factory=lambda: {
+        # Features to always include in analysis
+        "priority_features": [
+            "area",
+            "elongation",
+            "circularity",
+            "mean_intensity",
+            "entropy"
+        ],
+        # Features to exclude from dimensionality reduction
+        "exclude_from_reduction": [
+            "instance_id",
+            "filename",
+            "image_path",
+            "sample_id",
+            "z_stack",
+            "sample_z_id",
+            "centroid_x",
+            "centroid_y",
+            "center_of_mass_x",
+            "center_of_mass_y"
+        ]
+    })
+'''
 
 # =============================================================================
 # Output Configuration
@@ -490,3 +483,8 @@ def validate_pipeline_config(config: PipelineConfig) -> None:
     # Filtering validation
     if not 0 <= config.filtering.blur_threshold <= 1:
         raise ValueError("Blur threshold should typically be between 0 and 1")
+    
+    # Feature extraction validation
+    valid_methods = ['incarta', 'regionprops', 'pyradiomics']
+    if config.feature_extraction.method not in valid_methods:
+        raise ValueError(f"Feature extraction method must be one of {valid_methods}, got '{config.feature_extraction.method}'")
