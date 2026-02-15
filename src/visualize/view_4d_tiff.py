@@ -117,11 +117,11 @@ def view_4d_tiff(file_path):
 
 if __name__ == '__main__':
     # Example usage
-    input_folder = '/Users/surensritharan/Projects/single-cell/data/Timelapse Experiment Compressed'
-    output_folder = '/Users/surensritharan/Projects/single-cell/data/Timelapse Experiment Compressed_4D'  # Optional
+    input_folder = '/Users/serenasritharan/Projects/single-cell/data/Timelapse Experiment Compressed'
+    output_folder = '/Users/serenasritharan/Projects/single-cell/data/Timelapse Experiment Compressed_4D'  # Optional
     
     # Convert all samples to 4D TIFFs
     # convert_samples_to_4d_tiffs(input_folder, output_folder)
     
     # View a specific 4D TIFF file
-    view_4d_tiff('/Users/surensritharan/Projects/single-cell/data/Timelapse Experiment Compressed_4D/F08_s1_w1_4D.tif') 
+    view_4d_tiff('/Users/serenasritharan/Projects/single-cell/data/Timelapse Experiment Compressed_4D/F08_s1_w1_4D.tif') 

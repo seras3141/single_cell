@@ -112,28 +112,6 @@ def combine_tiff_stacks(input_dir, output_dir, file_pattern, annotation_type=Non
         tifffile.imwrite(output_path, combined_stack)
         logging.info(f"Created 3D stack for sample {sample_id}: {output_path}")
 
-def setup_logging(output_dir, verbose=False):
-    """Set up logging configuration
-    
-    Args:
-        output_dir: Directory where to store the log file
-        verbose: If True, also print logs to console
-    """
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Set up handlers
-    handlers = [logging.FileHandler(os.path.join(output_dir, 'tiff_processing.log'))]
-    if verbose:
-        handlers.append(logging.StreamHandler())
-    
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=handlers
-    )
-
 def view_3d_stack_with_annotations(image_path, cells_path=None, nuclei_path=None):
     """
     Visualize a 3D TIFF stack with its corresponding cell and nuclei annotations using napari
@@ -180,14 +158,16 @@ def view_3d_stack_with_annotations(image_path, cells_path=None, nuclei_path=None
 
 def main(args):
     # Base directory containing all images and annotations
-    base_dir = "/Users/surensritharan/Projects/single-cell/data/BF+IF Experiments Labeled"
-    output_dir = "/Users/surensritharan/Projects/single-cell/data/BF+IF Experiments Labeled_3D"
+    base_dir = "/Users/serenasritharan/Projects/single-cell/data/BF+IF Experiments Labeled"
+    output_dir = "/Users/serenasritharan/Projects/single-cell/data/BF+IF Experiments Labeled_3D"
 
     stack = True
     view = not stack
 
     if stack:
-        setup_logging(output_dir, args.verbose)
+        from src.utils.logging_utils import setup_logging
+        # Set up logging
+        setup_logging(level="INFO", log_file=os.path.join(output_dir, 'tiff_processing.log'))
         logging.info("Starting TIFF processing")
 
         # Get all immediate subdirectories
@@ -232,7 +212,7 @@ def main(args):
         logging.info("All stacking complete")
 
     elif view:
-        image_path = '/Users/surensritharan/Projects/single-cell/data/BF+IF Experiments Labeled_3D/Plate 2126 Compressed - Timepoint  2hr/J03_3D.tif'
+        image_path = '/Users/serenasritharan/Projects/single-cell/data/BF+IF Experiments Labeled_3D/Plate 2126 Compressed - Timepoint  2hr/J03_3D.tif'
         # Extract sample ID from the image path
         sample_id = os.path.splitext(os.path.basename(image_path))[0].replace('_3D', '')
         cells_path = os.path.join(os.path.dirname(image_path), f"{sample_id}_Cells_3D.tif")
