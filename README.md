@@ -354,15 +354,11 @@ paths:
 
 feature_extraction:
   n_jobs: -1
-  batch_size: 50
   features:
     morphology: true
     intensity: true
     spatial: true
     texture: true
-    file_patterns:
-    images: ["*.tif", "*_BF*.tif"]
-    masks: ["Cells_*.tif", "*_mask*.tif"]
 ```
 
 ## Supported File Formats

@@ -1,5 +1,5 @@
 import numpy as np
-import cv2
+# import cv2
 from skimage.measure import regionprops, label, perimeter
 from skimage.filters import gabor
 from scipy.stats import skew, kurtosis, entropy
@@ -108,6 +108,15 @@ def compute_texture_features(mask, image):
 # - compute_texture_features
 
 def extract_instance_features(instance_id: int, label_mask: np.ndarray, image: np.ndarray) -> Dict:
+    """
+    Extract features for a single instance given its ID, label mask, and corresponding image.
+    Args:
+        instance_id (int): The ID of the instance to extract features for.
+        label_mask (np.ndarray): The labeled mask containing instance IDs.
+        image (np.ndarray): The corresponding intensity image.
+    Returns:
+        Dict: A dictionary of extracted features for the instance.
+    """
     mask = (label_mask == instance_id).astype(np.uint8)
     
     features = {

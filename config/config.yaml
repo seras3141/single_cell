@@ -81,7 +81,6 @@ postprocessing:
 feature_extraction:
   # Processing options
   n_jobs: -1  # Number of parallel jobs (-1 uses all cores)
-  batch_size: 50  # Process files in batches to manage memory
   
   # Feature types to compute
   features:
@@ -90,19 +89,6 @@ feature_extraction:
     spatial: true         # Centroids, center of mass
     texture: true         # Gabor, skewness, kurtosis, entropy
     
-  # File patterns for matching images and masks
-  file_patterns:
-    # Brightfield images
-    images:
-      - "*_BF.tif"
-    # Cell masks/labels
-    masks:
-      - "*_Cells.tif"
-      - "*_masks.tif"
-    # Additional patterns for different data types
-    nuclei:
-      - "*_Nuclei.tif"
-
 
   # # Feature extraction parameters
   # features:

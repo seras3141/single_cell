@@ -17,9 +17,11 @@ paths:
 
 # Feature extraction parameters
 feature_extraction:
+  # Feature extraction method
+  method: "incarta"  # Options: "incarta", "regionprops", "pyradiomics"
+  
   # Processing options
   n_jobs: -1  # Number of parallel jobs (-1 uses all cores)
-  batch_size: 50  # Process files in batches to manage memory
   
   # Feature types to compute
   features:
@@ -32,18 +34,6 @@ feature_extraction:
   preprocessing:
     normalize_intensity: false  # Normalize image intensity 
     clip_percentiles: null     # [lower, upper] percentiles to clip (e.g., [1, 99])
-
-  # File patterns for matching images and masks
-  file_patterns:
-    # Brightfield images
-    images:
-      - "*_BF.tif"
-    # Cell masks/labels
-    masks:
-      - "*_Cells.tif"
-    # Additional patterns for different data types
-    nuclei:
-      - "*_Nuclei.tif"
 
   # File organization
   output:

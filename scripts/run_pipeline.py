@@ -91,7 +91,7 @@ def run_cell_tracking(image_dir: str, segmentation_dir: str, blur_dir : str, out
 
 def run_feature_extraction(image_dir: str, ground_truth_dir: Optional[str] = None, inference_dir : Optional[str] = None, output_folder : Optional[str] = None, config : dict = {}) -> None:
     """Run feature extraction pipeline."""
-    from run_feature_extraction import run_feature_extraction_pipeline
+    from run_feature_extraction import run_feature_extraction_from_config
     
     logger = logging.getLogger(__name__)
     logger.info("Starting feature extraction...")
@@ -107,7 +107,7 @@ def run_feature_extraction(image_dir: str, ground_truth_dir: Optional[str] = Non
         config["paths"]["image_dir"] = image_dir
         config["paths"]["mask_dir"] = ground_truth_dir
         config["paths"]["output_dir"] = ground_truth_dir
-        run_feature_extraction_pipeline(config)
+        run_feature_extraction_from_config(config)
         
     if inference_dir:
         # Use inference directory to extract features
@@ -115,7 +115,7 @@ def run_feature_extraction(image_dir: str, ground_truth_dir: Optional[str] = Non
         config["paths"]["image_dir"] = image_dir
         config["paths"]["mask_dir"] = inference_dir
         config["paths"]["output_dir"] = inference_dir
-        run_feature_extraction_pipeline(config)
+        run_feature_extraction_from_config(config)
         
     logger.info("Feature extraction completed")
 
