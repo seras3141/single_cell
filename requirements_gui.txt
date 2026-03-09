@@ -1,0 +1,23 @@
+# Requirements for the 3D Segmentation Visualization GUI
+# Using PyQt5 instead of PySide6 for better napari compatibility
+
+# GUI Framework - PyQt5 (better napari integration)
+PyQt5>=5.15.0
+PyQt5-Qt5>=5.15.0
+
+# Qt compatibility layer - ensure it uses PyQt5
+qtpy>=2.3.0
+
+# Enhanced napari features with PyQt5 support
+napari[all]>=0.4.15
+
+# For better performance with large 3D data
+dask[array]>=2023.1.0
+
+# Image processing (should already be in main requirements.txt)
+tifffile>=2021.7.2
+numpy>=1.21.0
+scikit-image>=0.18.0
+
+# IMPORTANT: If you have PySide6 installed, you may want to uninstall it to avoid conflicts:
+# pip uninstall PySide6

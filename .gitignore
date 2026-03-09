@@ -176,10 +176,39 @@ cython_debug/
 # slurm files
 slurm/
 
-data/
+/data/
+/github/
+.vscode/
+
 build/
 dist/
 logs/
 models/
 Untitled/
+src/**/*.md
+
+#test outputs
+test_*
+tmp*
 tmp/
+tmp1/
+
+.DS_Store
+
+# Temporary image files
+*.png
+*.tif
+
+# Event files from TensorBoard
+events.out.tfevents.*
+*.tsv
+
+# Ignore feature files for now
+src/feature*
+tests/feature*
+
+# Ignore notebook checkpoints
+notebooks/.ipynb_checkpoints
+
+# Ignore examples
+examples/

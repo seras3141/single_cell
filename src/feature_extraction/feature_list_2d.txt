@@ -1,0 +1,34 @@
+Morphology Features
+===================
+area: Pixel area of the segmented 2D object (in µm²).
+perimeter: Length of the object boundary (in µm).
+elongation: Ratio of major axis to minor axis (from ellipse fit).
+compactness: (Perimeter²) / (4π × Area); shape complexity.
+circularity: (4π × Area) / (Perimeter²); 1.0 for perfect circles.
+feret_diameter: Maximum distance between any two boundary points.
+radius_of_gyration: Spread of pixels around the 2D centroid.
+major_axis: Length of major axis of the ellipse fit.
+minor_axis: Length of minor axis of the ellipse fit.
+
+Intensity Features
+==================
+mean_intensity: Average pixel intensity in the object region.
+std_intensity: Standard deviation of pixel intensities.
+cv_intensity: Coefficient of variation (std / mean).
+total_intensity: Sum of pixel intensities in the object.
+
+Spatial Features
+================
+centroid_x: X-coordinate of the object centroid.
+centroid_y: Y-coordinate of the object centroid.
+center_of_mass_x: X-coordinate of intensity-weighted centroid.
+center_of_mass_y: Y-coordinate of intensity-weighted centroid.
+mass_displacement: Euclidean distance between centroid and center of mass.
+
+Texture Features
+================
+gabor_mean: Mean intensity after Gabor filter (texture feature).
+gabor_std: Standard deviation after Gabor filter.
+skewness: Asymmetry of intensity distribution.
+kurtosis: Tailedness of intensity distribution.
+entropy: Shannon entropy of intensity histogram.

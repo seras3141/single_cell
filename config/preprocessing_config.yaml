@@ -1,0 +1,27 @@
+# Single Cell Analysis Pipeline Configuration
+
+# Data paths
+paths:
+  input_dir: "data/sample_data"
+  output_dir: "data/sample_data_out"
+
+# File processing parameters
+preprocessing:
+  # Dataset splitting
+  test_size: 1
+  random_state: 42
+  split_by_group: true
+  split_folder: "split_data"
+  out_3d_folder: "3d_data"  
+  
+# Image quality assessment
+quality:
+  blur_detection:
+    patch_size: [32, 32]
+    stride_size: [8, 8]
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  filename: "logs/preprocessing.log"

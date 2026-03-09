@@ -1,0 +1,128 @@
+# Single Cell Analysis Pipeline Configuration
+
+# Data paths
+paths:
+  input_dir: "data/sample_data"
+  output_dir: "data/sample_data_output"
+  # results: "results/"
+  # models: "models/"
+  # temp: "temp/"
+
+# Image quality assessment
+quality:
+  blur_detection:
+    patch_size: [32, 32]
+    stride_size: [8, 8]
+
+# File processing parameters
+preprocessing:
+  # Dataset splitting
+  test_size: 0.2
+  random_state: 42
+  split_by_group: true
+  split_folder: "split_data"
+  out_3d_folder: "3d_images"
+  
+# Segmentation parameters
+segmentation:
+  # Cellpose parameters
+  cellpose:
+    model_type: "cyto3"
+    channels: [0, 0]  # Grayscale
+    diameter: null  # Auto-diameter
+    flow_threshold: 0.4
+    cellprob_threshold: 0.0
+    min_size: 30
+    normalize: true
+    invert: false
+    gpu: true
+  inference:
+    dataset_name: "test"  # Subfolder within input_dir
+    results_folder: "results" # Subfolder within output_dir
+    file_pattern: "*_BF.tif"  # Glob pattern for selecting image files
+    process_z_stacks: false  # Whether to process Z-stacks
+    save_overlays: true  # Whether to save overlay images
+    save_metadata: true  # Whether to save JSON metadata for predictions
+
+# Training parameters
+training:
+  learning_rate: 0.1
+  weight_decay: 1e-4
+  n_epochs: 100
+  batch_size: 8
+  min_train_masks: 5
+  SGD: true
+  channels: [0, 0]
+  normalize: true
+
+# Post-processing parameters
+postprocessing:
+  enable_blur_filtering: true
+  filter_before_tracking: true
+  save_intermediate_results: false
+
+  filtering:
+    # Cell filtering parameters
+    # min_cell_size: 30
+    # max_cell_size: 1000
+    # min_nucleus_size: 10
+    # max_nucleus_size: 500
+    blur_threshold: 0.5
+
+  # Cell tracking parameters
+  tracking:
+    min_area: 30
+    max_area: 1000
+    search_range: 5
+    memory: 1
+    min_track_length: 3
+
+
+feature_extraction:
+  # Processing options
+  n_jobs: -1  # Number of parallel jobs (-1 uses all cores)
+  
+  # Feature types to compute
+  features:
+    morphology: true      # Area, perimeter, elongation, etc.
+    intensity: true       # Mean, std, CV, total intensity
+    spatial: true         # Centroids, center of mass
+    texture: true         # Gabor, skewness, kurtosis, entropy
+    
+
+  # # Feature extraction parameters
+  # features:
+  #   radiomics:
+  #     binWidth: 25
+  #     interpolator: "sitkLinear"
+  #     resampledPixelSpacing: null
+  #     padDistance: 10
+      
+  #   morphology:
+  #     extract_shape: true
+  #     extract_firstorder: true
+  #     extract_glcm: true
+  #     extract_glrlm: false
+  #     extract_glszm: false
+
+# Visualization parameters
+visualization:
+  figure_size: [12, 8]
+  dpi: 300
+  colormap: "viridis"
+  napari:
+    gamma: 1.0
+    contrast_limits: [0, 65535]
+
+# Output formats
+output:
+  save_masks: true
+  save_outlines: true
+  save_flows: false
+  save_features: true
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  filename: "logs/pipeline.log"

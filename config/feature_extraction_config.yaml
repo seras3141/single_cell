@@ -1,0 +1,58 @@
+# Feature Extraction Configuration
+
+# Input/Output paths
+paths:
+  image_dir: "data/sample_data_out/split_data/test"
+  mask_dir: "data/sample_data_out/split_data/test"
+  # mask_dir: "data/sample_data_out/results/cyto3/test/masks_3d"
+  # input_dir: "data/sample_data_out/split_data/test"
+  output_dir: "data/sample_data_out/features_output/split_data/test/"
+  # Alternative: specify exact dataset paths
+  # dataset_paths:
+  #   - input_dir: "data/BF+IF Experiments_2D_train_test_dataset"
+  #     output_dir: "data/features_output/BF_IF_2D"
+  #   - input_dir: "data/Plate 2426_2D_train_test_dataset" 
+  #     output_dir: "data/features_output/Plate_2426"
+
+
+# Feature extraction parameters
+feature_extraction:
+  # Feature extraction method
+  method: "incarta"  # Options: "incarta", "regionprops", "pyradiomics"
+  
+  # Processing options
+  n_jobs: -1  # Number of parallel jobs (-1 uses all cores)
+  
+  # Feature types to compute
+  features:
+    morphology: true      # Area, perimeter, elongation, etc.
+    intensity: true       # Mean, std, CV, total intensity
+    spatial: true         # Centroids, center of mass
+    texture: true         # Gabor, skewness, kurtosis, entropy
+    
+  # Image preprocessing (optional)
+  preprocessing:
+    normalize_intensity: false  # Normalize image intensity 
+    clip_percentiles: null     # [lower, upper] percentiles to clip (e.g., [1, 99])
+
+  # File organization
+  output:
+    folder_name: "features"  # Subdirectory for features
+
+    # Output options
+    save_individual_files: true   # Save features for each image separately
+    save_combined_file: false      # Save all features in one CSV
+    include_metadata: false        # Include filename and processing info
+
+    # Output file naming
+    individual_format: "{image_name}_features.csv"
+    combined_filename: "all_features.csv"
+    
+    # Directory structure
+    create_subdirs: true  # Create subdirectories for different datasets
+    
+
+# Logging and monitoring
+logging:
+  level: "INFO"
+  filename: "feature_extraction.log"
