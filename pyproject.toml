@@ -43,6 +43,7 @@ dependencies = [
     "tqdm>=4.62.0",
     "PyYAML>=5.4.0",
     "omegaconf>=2.3.0",
+    "threshold-activity-classifier @ file:src/threshold_activity_classifier",
 ]
 
 [project.optional-dependencies]
@@ -60,11 +61,15 @@ jupyter = [
     "ipywidgets>=7.6.0",
     "plotly>=5.0.0",
     "bokeh>=2.3.0",
+    "voila>=0.5.0",
 ]
 gpu = [
     "torch>=2.0.0",
     "torchvision>=0.15.0",
     "torchaudio>=2.0.0",
+]
+classifier = [
+    "threshold-activity-classifier[napari,jupyter] @ file:src/threshold_activity_classifier",
 ]
 
 [project.urls]

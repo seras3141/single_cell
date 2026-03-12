@@ -212,3 +212,8 @@ notebooks/.ipynb_checkpoints
 
 # Ignore examples
 examples/
+
+
+*.djcache
+*.csv
+*/uv.lock
