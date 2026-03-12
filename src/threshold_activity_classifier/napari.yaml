@@ -1,0 +1,7 @@
+name: threshold-activity-classifier
+display_name: Threshold Activity Classifier
+contributions:
+  widgets:
+    - command: threshold_activity_classifier._widget:threshold_classifier_widget_factory
+      display_name: Threshold Activity Classifier
+      autogenerate: false

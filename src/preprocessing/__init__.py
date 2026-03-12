@@ -8,7 +8,7 @@ This module provides utilities for data preprocessing, including:
 """
 
 from .dataset_split import (
-    split_dataset,
+    split_dataset_dict,
     train_test_split_directory,
     get_groups_from_filenames,
     copy_file,
@@ -23,7 +23,7 @@ from .blur_analysis import (
 
 __all__ = [
     # Dataset splitting
-    "split_dataset",
+    "split_dataset_dict",
     "train_test_split_directory",
     "get_groups_from_filenames",
     "copy_file",
