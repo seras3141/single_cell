@@ -8,15 +8,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional, List, Tuple, Union
 from tqdm import tqdm
+from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
 import tifffile as tiff
 from skimage import measure
 import logging
 
-from utils.file_utils import StandardFileHandler
-from utils.io import find_label_for_image, ensure_2d
-
+# Handle imports that work both in package and Jupyter contexts
+from threshold_activity_classifier.utils.io import find_label_from_mcherry_path, ensure_2d
 
 class InstanceMetricsExtractor:
     """Extract metrics from labeled instances in images.
@@ -32,7 +32,6 @@ class InstanceMetricsExtractor:
     def __init__(
         self,
         percentiles: Optional[List[int]] = None,
-        file_handler: Optional[StandardFileHandler] = None
     ):
         """Initialize the metrics extractor.
         
@@ -42,7 +41,6 @@ class InstanceMetricsExtractor:
             file_handler: Custom file handler. Default: StandardFileHandler()
         """
         self.percentiles = percentiles if percentiles is not None else [95, 90, 75, 50]
-        self.file_handler = file_handler if file_handler is not None else StandardFileHandler()
         
 
     def compute_basic_metrics(
@@ -151,7 +149,7 @@ class InstanceMetricsExtractor:
             - metrics_dataframe: DataFrame with metrics, or None if processing failed
         """
         img_path = Path(img_path)
-        lbl_path = lbl_path or find_label_for_image(img_path)
+        lbl_path = lbl_path or find_label_from_mcherry_path(img_path)
         
         if lbl_path is None:
             return f"warning: no label found for {img_path.name}, skipping", None
@@ -190,39 +188,39 @@ class InstanceMetricsExtractor:
         df['image'] = img_path.name
         return None, df
 
-    def process_images_batch(
-        self,
-        image_paths: List[Union[str, Path]],
-        show_progress: bool = True,
-        verbose: bool = True
+    def process_batch_images(
+            self,
+            img_paths: List[Union[str, Path]],
+            lbl_paths: List[Union[str, Path]] | None = None,
+            show_progress: bool = True,
+            n_jobs: int = -1,
     ) -> pd.DataFrame:
-        """Process multiple images and extract metrics.
+        """Process a batch of images and extract metrics for all instances.
         
         Args:
-            image_paths: List of paths to image files
+            img_paths: List of paths to image files
+            lbl_paths: Optional list of paths to label files (must correspond to img_paths)
             show_progress: Whether to show progress bar
-            verbose: Whether to print warnings
-            
-        Returns:
+            n_jobs: Number of parallel jobs (-1 uses all available CPUs)
+        returns:
             DataFrame with metrics for all instances from all images
         """
+        lbl_paths = lbl_paths or [None] * len(img_paths)  # type: ignore
+
+        pairs = tqdm(zip(img_paths, lbl_paths), total=len(img_paths), disable=not show_progress)
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(self.process_single_image)(img_path, lbl_path)
+            for img_path, lbl_path in pairs
+        )
+
         records = []
-        
-        iterator = tqdm(image_paths) if show_progress else image_paths
-        
-        for img_path in iterator:
-            warn, out = self.process_single_image(img_path)
-            
-            if verbose and warn is not None:
+        for warn, out in results:
+            if warn is not None:
                 print(warn)
-                
             if out is not None:
                 records.append(out)
 
-        # Concatenate all results
-        metrics_df = pd.concat(records, ignore_index=True) if records else pd.DataFrame()
-        
-        return metrics_df
+        return pd.concat(records, ignore_index=True) if records else pd.DataFrame()
 
     def process_directory(
         self,
@@ -249,30 +247,9 @@ class InstanceMetricsExtractor:
             logging.warning(f"Warning: No images found matching pattern '{pattern}' in {directory}")
             return pd.DataFrame()
         
-        return self.process_images_batch(image_paths, show_progress=show_progress, verbose=verbose)
-
-
-def process_one_image(img_path: Union[str, Path]) -> Tuple[Optional[str], Optional[pd.DataFrame]]:
-    """Process a single image (backward compatibility wrapper).
-    
-    Args:
-        img_path: Path to the image file
-        
-    Returns:
-        Tuple of (warning_message, metrics_dataframe)
-        
-    Note:
-        This is a backward compatibility wrapper. Consider using
-        InstanceMetricsExtractor class for more flexibility.
-    """
-    # Backward compatibility: keep module-level constants and function
-    PERCENTILES = [95, 90, 75, 50]
-
-    extractor = InstanceMetricsExtractor(percentiles=PERCENTILES)
-    return extractor.process_single_image(img_path)
+        return self.process_batch_images(image_paths, show_progress=show_progress, n_jobs=-1)
 
 
 __all__ = [
     'InstanceMetricsExtractor',
-    'process_one_image',  # Backward compatibility
 ]

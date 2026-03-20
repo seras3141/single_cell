@@ -213,7 +213,10 @@ notebooks/.ipynb_checkpoints
 # Ignore examples
 examples/
 
-
 *.djcache
 *.csv
+
+# venv and uv.lock
+venv/
+uv.lock
 */uv.lock

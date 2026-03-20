@@ -6,7 +6,7 @@ from typing import Union
 import numpy as np
 from skimage import filters
 
-from config import ThresholdParams, Method, validate_method_params
+from threshold_activity_classifier.config import ThresholdParams, Method, validate_method_params
 
 
 class ThresholdComputer:

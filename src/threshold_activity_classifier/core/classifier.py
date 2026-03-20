@@ -7,8 +7,7 @@ import numpy as np
 import pandas as pd
 from skimage import filters
 
-
-from config import ThresholdConfig, Method
+from threshold_activity_classifier.config import ThresholdConfig, Method
 from .preprocessing import ImagePreprocessor
 from .thresholding import ThresholdComputer
 
@@ -295,12 +294,12 @@ def create_activity_labeled_image(label_data, classification_data, label_dict=No
     classification_data : pandas.DataFrame
         DataFrame containing label IDs and is_active classification (of a given image)
     label_dict : Dict
-        Labels for active and dead classes
+        Labels for active and dead classes (if not set, defaults to positive for active and negative for dead)
         
     Returns:
     --------
     activity_labels : numpy.ndarray
-        Label image where active cells = original label ID, dead cells = -(label ID)
+        Label image (binary or non-binary) based on label_dict
     """
     # Ensure classification_data has required columns
     required_cols = {'label', 'is_active', 'image'}
