@@ -183,7 +183,7 @@ def get_images_from_mcherry(img_path: Path, activity_dir: Path|None=None) -> Dic
         "lbl": lbl,
         "activity_labels": activity_labels,
         "brightfield": brightfield,
-        "activity_is_bin": True
+        "activity_is_bin": activity_is_bin
     }
 
 

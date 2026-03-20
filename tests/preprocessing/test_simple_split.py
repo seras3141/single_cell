@@ -9,7 +9,7 @@ from src.preprocessing.dataset_split import train_test_split_directory
 from src.utils.file_utils import BF_IF_FileHandler
 
 
-def _group_ids_from_paths(file_paths: list[str], file_handler: BF_IF_FileHandler) -> set[str]:
+def _unique_ids_from_paths(file_paths: list[str], file_handler: BF_IF_FileHandler) -> set[str]:
     """Extract unique grouping IDs for split-integrity checks."""
     return {
         file_handler.extract_unique_id(Path(path).name)
@@ -70,8 +70,8 @@ def test_split_keeps_groups_together(mock_data_dir):
     assert test_total > 0, "Should have test files"
 
     for key in ("BF", "image", "mask"):
-        train_groups = _group_ids_from_paths(result["train_files"][key], file_handler)
-        test_groups = _group_ids_from_paths(result["test_files"][key], file_handler)
+        train_groups = _unique_ids_from_paths(result["train_files"][key], file_handler)
+        test_groups = _unique_ids_from_paths(result["test_files"][key], file_handler)
         overlap = train_groups & test_groups
         assert len(overlap) == 0, f"Groups should not overlap for {key}: {overlap}"
 

@@ -72,8 +72,8 @@ class TestDefaultFileHandler:
         assert self.handler.rename_mask(input_path) == expected
 
     def test_extract_group_id(self):
-        filename = 'I12_z10_BF.tif'
-        assert self.handler.extract_unique_id(filename) == 'I12'
+        filename = 'I12_t10_z10_BF.tif'
+        assert self.handler.extract_unique_id(filename) == 'I12_t10'
 
     def test_file_handler(self, mock_data_dirs):
         file_handler = self.handler

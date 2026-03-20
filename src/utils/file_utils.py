@@ -318,8 +318,10 @@ class BF_IF_FileHandler(DefaultFileHandler):
     def extract_unique_id(self, filename: str) -> str:
         """Extract unique identifier from standardized filename (without z-stack)."""
         parts = filename.split('_')
-        return parts[0] + "_" + parts[1] + "_" + parts[2]  # plate_rowcol_time
-    
+        if len(parts) < 3:
+            raise ValueError(f"Filename does not contain enough parts to extract unique ID: {filename} : p{{plate}}_{{row}}{{col}}_t{{time}}_z{{z}}")
+        return f"{parts[0]}_{parts[1]}_{parts[2]}"  # plate_rowcol_time
+
     def extract_time_point(self, filename: str) -> str:
         """Extract time point from filename."""
         match = re.search(r'_t(\d+)', filename)
@@ -712,7 +714,6 @@ def get_groups_from_filenames(file_map: Dict[str, str], file_handler: AbstractFi
 
 def list_all_files(directory: str, file_handler: AbstractFileHandler) -> Dict[str, List[str]]:
     """List files in a directory using the file handler."""
-        # Find all images and masks
     file_list = {}
     for k, v in file_handler.patterns.items():
         file_list[k] = file_handler.get_files_by_type(directory, k)
