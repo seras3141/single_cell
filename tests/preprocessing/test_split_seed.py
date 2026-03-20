@@ -53,5 +53,9 @@ def test_split_random_seed_reproducibility(create_dummy_tiffs):
             file_handler=BF_IF_FileHandler()
         )
 
-        assert set(result1['test_images']) == set(result2['test_images']), "Test split is not reproducible with same seed!"
-        assert set(result1['train_images']) == set(result2['train_images']), "Train split is not reproducible with same seed!"
+        assert set(result1["test_files"]["BF"]) == set(result2["test_files"]["BF"]), (
+            "Test split is not reproducible with same seed!"
+        )
+        assert set(result1["train_files"]["BF"]) == set(result2["train_files"]["BF"]), (
+            "Train split is not reproducible with same seed!"
+        )

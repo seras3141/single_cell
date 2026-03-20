@@ -1,52 +1,70 @@
-"""
-Test dataset splitting functionality.
+"""Tests for dataset splitting and copy utilities."""
 
-This module tests the dataset splitting functionality in the preprocessing module,
-ensuring that images from the same key (e.g., J03) are kept together in either
-the training or test split.
-"""
+from __future__ import annotations
 
-import re
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
+from typing import Iterator, TypedDict, cast
+
 import pytest
 
 from src.preprocessing.dataset_split import (
     copy_with_split_dict,
-    split_dataset,
     split_dataset_dict,
+    split_dataset_list,
     train_test_split_directory,
-    copy_file,
-    copy_without_split,
-    copy_with_split
 )
-from src.utils.file_utils import BF_IF_FileHandler, BF_FileHandler
+from src.utils.file_utils import BF_IF_FileHandler
+
+SplitMap = dict[str, list[str]]
+SplitResult = tuple[SplitMap, SplitMap]
+
+
+class MockDataDirs(TypedDict):
+    """Container for temporary mock dataset paths and filenames."""
+
+    mock_data_dir: Path
+    data_dir: Path
+    image_dir: Path
+    mask_dir: Path
+    mock_image_files: list[str]
+    mock_mask_files: list[str]
+
+
+def _group_ids_from_paths(file_paths: list[str], file_handler: BF_IF_FileHandler) -> set[str]:
+    """Extract grouping IDs used for split integrity assertions."""
+    return {
+        file_handler.extract_unique_id(Path(path).name)
+        for path in file_paths
+        if path
+    }
+
 
 @pytest.fixture(scope="module")
-def mock_data_dirs():
-    mock_data_dir = tempfile.mkdtemp()
-    data_dir = Path(mock_data_dir) / "Plate 2126 Test Data"
+def mock_data_dirs() -> Iterator[MockDataDirs]:
+    """Create temporary mock image and mask dataset."""
+    temp_root = Path(tempfile.mkdtemp())
+    data_dir = temp_root / "Plate 2126 Test Data"
     image_dir = data_dir
     mask_dir = data_dir / "masks"
+
     data_dir.mkdir(parents=True, exist_ok=True)
     mask_dir.mkdir(parents=True, exist_ok=True)
+
     mock_image_files = [
-        # J03 w1,2 z1-3
         "t1_J03_s1_w1_z1.tif",
         "t1_J03_s1_w1_z2.tif",
         "t1_J03_s1_w1_z3.tif",
         "t1_J03_s1_w2_z1.tif",
         "t1_J03_s1_w2_z2.tif",
         "t1_J03_s1_w2_z3.tif",
-        # J04 w1,2 z1-3
         "t1_J04_s1_w1_z1.tif",
         "t1_J04_s1_w1_z2.tif",
         "t1_J04_s1_w1_z3.tif",
         "t1_J04_s1_w2_z1.tif",
         "t1_J04_s1_w2_z2.tif",
         "t1_J04_s1_w2_z3.tif",
-        # L11 w1,2 z1-2
         "t1_L11_s1_w1_z1.tif",
         "t1_L11_s1_w1_z2.tif",
         "t1_L11_s1_w2_z1.tif",
@@ -62,296 +80,56 @@ def mock_data_dirs():
         "Cells_R12-C11-F0-Z0-T0.tif",
         "Cells_R12-C11-F0-Z1-T0.tif",
     ]
+
     for filename in mock_image_files:
         (image_dir / filename).touch()
     for filename in mock_mask_files:
         (mask_dir / filename).touch()
+
     yield {
-        "mock_data_dir": mock_data_dir,
+        "mock_data_dir": temp_root,
         "data_dir": data_dir,
         "image_dir": image_dir,
         "mask_dir": mask_dir,
         "mock_image_files": mock_image_files,
-        "mock_mask_files": mock_mask_files
+        "mock_mask_files": mock_mask_files,
     }
-    shutil.rmtree(mock_data_dir, ignore_errors=True)
+
+    shutil.rmtree(temp_root, ignore_errors=True)
 
 
 @pytest.fixture
-def temp_output_dir():
-    temp_dir = tempfile.mkdtemp()
-    output_dir = Path(temp_dir) / "output"
+def temp_output_dir() -> Iterator[Path]:
+    """Create temporary output directory."""
+    temp_dir = Path(tempfile.mkdtemp())
+    output_dir = temp_dir / "output"
     output_dir.mkdir(exist_ok=True)
     yield output_dir
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_split_dataset(mock_data_dirs, temp_output_dir):
-
-    image_dir = mock_data_dirs["image_dir"]
-    mask_dir = mock_data_dirs["mask_dir"]
-    mock_image_files = mock_data_dirs["mock_image_files"]
-    mock_mask_files = mock_data_dirs["mock_mask_files"]
-    image_files = [str(image_dir / f) for f in mock_image_files if 'w1' in f]
-    mask_files = [str(mask_dir / f) for f in mock_mask_files]
-    
-    # Test without output directory
-    train_images, train_masks, test_images, test_masks = split_dataset(
-        image_files, mask_files, test_size=0.33, random_state=42,
-        file_handler=BF_FileHandler()
-    )
-    assert len(train_images) > 0
-    assert len(test_images) > 0
-    assert len(train_masks) > 0
-    assert len(test_masks) > 0
-    train_groups = set()
-    test_groups = set()
-    for img in train_images:
-        match = re.search(r'_([A-Za-z]+\d+)_', Path(img).name)
-        if match:
-            train_groups.add(match.group(1))
-    for img in test_images:
-        match = re.search(r'_([A-Za-z]+\d+)_', Path(img).name)
-        if match:
-            test_groups.add(match.group(1))
-    assert len(train_groups & test_groups) == 0, f"Groups should not appear in both train and test splits. Found: {train_groups & test_groups}"
-
-    # Test with output directory
-    train_images, train_masks, test_images, test_masks = split_dataset(
-        image_files, mask_files, test_size=0.33, random_state=42,
-        file_handler=BF_IF_FileHandler(), output_dir=temp_output_dir
-    )
-    assert len(train_images) > 0
-    assert len(test_images) > 0
-    assert len(train_masks) > 0
-    assert len(test_masks) > 0
-    
-    # Check if files were copied correctly
-    train_dir = temp_output_dir / 'train'
-    test_dir = temp_output_dir / 'test'
-    assert train_dir.exists()
-    assert test_dir.exists()
-    assert any(train_dir.glob('*.tif'))
-    assert any(test_dir.glob('*.tif'))
-    
-    # Test no-split case (test_size = 0)
-    all_images, all_masks, no_images, no_masks = split_dataset(
-        image_files, mask_files, test_size=0, random_state=42,
-        file_handler=BF_IF_FileHandler(), output_dir=temp_output_dir / 'no_split'
-    )
-    assert len(all_images) == len(image_files)
-    assert len(all_masks) == len(mask_files)
-    assert len(no_images) == 0
-    assert len(no_masks) == 0
-    assert (temp_output_dir / 'no_split').exists()
-    assert any((temp_output_dir / 'no_split').glob('*.tif'))
-
-
-def test_split_dataset_train_only(mock_data_dirs, temp_output_dir):
-    """Test dataset splitting with edge cases (test_size = 0 or 1)"""
-    image_dir = mock_data_dirs["image_dir"]
-    mask_dir = mock_data_dirs["mask_dir"]
-    mock_image_files = [f for f in mock_data_dirs["mock_image_files"] if "_w1_" in f]
-    mock_mask_files = [f for f in mock_data_dirs["mock_mask_files"] if "_w1_" in f]
-    image_files = [str(image_dir / f) for f in mock_image_files]
-    mask_files = [str(mask_dir / f) for f in mock_mask_files]
-
-    train_images, train_masks, test_images, test_masks = split_dataset(
-        image_files, mask_files, test_size=0, random_state=42,
-        file_handler=BF_FileHandler(), output_dir=temp_output_dir / 'all_train'
-    )
-
-    assert len(train_images) == len(image_files), "All images should be in train set"
-    assert len(test_images) == 0, "Test set should be empty"
-    assert len(train_masks) == len(mask_files), "All masks should be in train set"
-    assert len(test_masks) == 0, "Test mask set should be empty"
-
-    assert (temp_output_dir / 'all_train').exists(), "Output directory should be created"
-    assert any((temp_output_dir / 'all_train').glob('*.tif')), "Files should be copied"
-    assert len(list((temp_output_dir / 'all_train').glob('*.tif'))) == len(image_files) + len(mask_files), "All files should be copied"
-    assert not (temp_output_dir / 'all_train' / 'train').exists(), "No train subdirectory should be created"
-    assert not (temp_output_dir / 'all_train' / 'test').exists(), "No test subdirectory should be created"
-
-def test_split_dataset_test_only(mock_data_dirs, temp_output_dir):
-    """Test dataset splitting with edge cases (test_size = 0 or 1)"""
-    image_dir = mock_data_dirs["image_dir"]
-    mask_dir = mock_data_dirs["mask_dir"]
-    mock_image_files = [f for f in mock_data_dirs["mock_image_files"] if "_w1_" in f]
-    mock_mask_files = [f for f in mock_data_dirs["mock_mask_files"] if "_w1_" in f]
-    image_files = [str(image_dir / f) for f in mock_image_files]
-    mask_files = [str(mask_dir / f) for f in mock_mask_files]
-
-    # Test with output directory for test_size = 1
-    train_images, train_masks, test_images, test_masks = split_dataset(
-        image_files, mask_files, test_size=1, random_state=42,
-        file_handler=BF_FileHandler(), output_dir=temp_output_dir / 'all_test'
-    )
-
-    assert len(train_images) == 0, "Train set should be empty"
-    assert len(test_images) == len(image_files), "All images should be in test set"
-    assert len(train_masks) == 0, "Train mask set should be empty"
-    assert len(test_masks) == len(mask_files), "All masks should be in test set"
-
-    assert (temp_output_dir / 'all_test').exists(), "Output directory should be created"
-    assert any((temp_output_dir / 'all_test').glob('*.tif')), "Files should be copied"
-    assert len(list((temp_output_dir / 'all_test').glob('*.tif'))) == len(image_files) + len(mask_files), "All files should be copied"
-    assert not (temp_output_dir / 'all_test' / 'train').exists(), "No train subdirectory should be created"
-    assert not (temp_output_dir / 'all_test' / 'test').exists(), "No test subdirectory should be created"
-
-    # # Verify that groups are kept together
-    # test_groups = set()
-    # for img in test_images:
-    #     match = re.search(r'_([A-Za-z]+\d+)_', Path(img).name)
-    #     if match:
-    #         test_groups.add(match.group(1))
-    # all_groups = set()
-    # for img in image_files:
-    #     match = re.search(r'_([A-Za-z]+\d+)_', Path(img).name)
-    #     if match:
-    #         all_groups.add(match.group(1))
-    # assert len(test_groups) == len(all_groups), "All groups should be in test set"
-
-
-def test_train_test_split_directory(mock_data_dirs, temp_output_dir):
-    data_dir = mock_data_dirs["data_dir"]
-    output_dir = temp_output_dir
-
-    result = train_test_split_directory(
-        str(data_dir),
-        str(output_dir),
-        test_size=0.33,
-        random_state=42,
-        file_handler=BF_FileHandler()
-    )
-    assert len(result["train_images"]) > 0
-    assert len(result["test_images"]) > 0
-    train_groups = set()
-    test_groups = set()
-    for img in result['train_images']:
-        filename = Path(img).name
-        match = re.search(r'_([A-Za-z]+\d+)_', filename)
-        if match:
-            train_groups.add(match.group(1))
-    for img in result['test_images']:
-        filename = Path(img).name
-        match = re.search(r'_([A-Za-z]+\d+)_', filename)
-        if match:
-            test_groups.add(match.group(1))
-    assert len(train_groups & test_groups) == 0, "Groups should not appear in both train and test splits"
-
-def test_copy_functions(mock_data_dirs, temp_output_dir):
-    # Test copy_file
-    src_file = mock_data_dirs["image_dir"] / mock_data_dirs["mock_image_files"][0]
-    dest_file = temp_output_dir / "test_copy.tif"
-    copy_file(src_file, dest_file)
-    assert dest_file.exists()
-    
-    # Test copy_without_split
-    image_tuples = [
-        (str(src_file), "renamed_image.tif"),
-        (str(src_file), "renamed_image2.tif")
+def test_split_dataset_dict_group_integrity_and_copy(
+    mock_data_dirs: MockDataDirs, temp_output_dir: Path
+) -> None:
+    """Split dictionary input and ensure group integrity between train and test."""
+    image_files = [
+        str(mock_data_dirs["image_dir"] / f)
+        for f in mock_data_dirs["mock_image_files"]
+        if "_w1_" in f
     ]
-    mask_tuples = [
-        (str(mock_data_dirs["mask_dir"] / mock_data_dirs["mock_mask_files"][0]), "renamed_mask.tif"),
-    ]
-    output_dir = temp_output_dir / "no_split"
-    copy_without_split(image_tuples, mask_tuples, output_dir)
-    assert (output_dir / "renamed_image.tif").exists()
-    assert (output_dir / "renamed_image2.tif").exists()
-    assert (output_dir / "renamed_mask.tif").exists()
-    
-    # Test copy_with_split
-    train_image_tuples = [(str(src_file), "train_image.tif")]
-    train_mask_tuples = [(str(mock_data_dirs["mask_dir"] / mock_data_dirs["mock_mask_files"][0]), "train_mask.tif")]
-    test_image_tuples = [(str(src_file), "test_image.tif")]
-    test_mask_tuples = [(str(mock_data_dirs["mask_dir"] / mock_data_dirs["mock_mask_files"][1]), "test_mask.tif")]
-    
-    split_output_dir = temp_output_dir / "split"
-    copy_with_split(
-        train_image_tuples, train_mask_tuples,
-        test_image_tuples, test_mask_tuples,
-        split_output_dir
-    )
-    assert (split_output_dir / "train" / "train_image.tif").exists()
-    assert (split_output_dir / "train" / "train_mask.tif").exists()
-    assert (split_output_dir / "test" / "test_image.tif").exists()
-    assert (split_output_dir / "test" / "test_mask.tif").exists()
+    mask_files = [str(mock_data_dirs["mask_dir"] / f) for f in mock_data_dirs["mock_mask_files"]]
+    split_dir = temp_output_dir / "dict_split"
+    file_handler = BF_IF_FileHandler()
 
-
-def test_copy_with_split_dict(mock_data_dirs, temp_output_dir):
-    # Test copy_with_split_dict
-    src_file = mock_data_dirs["image_dir"] / mock_data_dirs["mock_image_files"][0]
-    mask_file = mock_data_dirs["mask_dir"] / mock_data_dirs["mock_mask_files"][0]
-
-    train_file_tuple = {
-        "images": [(str(src_file), "train_image.tif")],
-        "masks": [(str(mask_file), "train_mask.tif")]
-    }
-    test_file_tuple = {
-        "images": [(str(src_file), "test_image.tif")],
-        "masks": [(str(mask_file), "test_mask.tif")]
-    }
-
-    split_output_dir = temp_output_dir / "split_dict"
-
-    copy_with_split_dict(
-        train_file_tuple,
-        test_file_tuple,
-        split_output_dir
-    )
-
-    assert (split_output_dir / "train" / "train_image.tif").exists()
-    assert (split_output_dir / "train" / "train_mask.tif").exists()
-    assert (split_output_dir / "test" / "test_image.tif").exists()
-    assert (split_output_dir / "test" / "test_mask.tif").exists()
-
-def test_copy_with_split_dict_filter_keys(mock_data_dirs, temp_output_dir):
-    # Test copy_with_split_dict with filter_file_keys
-    src_file = mock_data_dirs["image_dir"] / mock_data_dirs["mock_image_files"][0]
-    mask_file = mock_data_dirs["mask_dir"] / mock_data_dirs["mock_mask_files"][0]
-
-    train_file_tuple = {
-        "images": [(str(src_file), "train_image.tif")],
-        "masks": [(str(mask_file), "train_mask.tif")]
-    }
-    test_file_tuple = {
-        "images": [(str(src_file), "test_image.tif")],
-        "masks": [(str(mask_file), "test_mask.tif")]
-    }
-
-    split_output_dir = temp_output_dir / "split_dict_filter"
-
-    copy_with_split_dict(
-        train_file_tuple,
-        test_file_tuple,
-        split_output_dir,
-        filter_file_keys=["images"]
-    )
-
-    assert (split_output_dir / "train" / "train_image.tif").exists()
-    assert not (split_output_dir / "train" / "train_mask.tif").exists()
-    assert (split_output_dir / "test" / "test_image.tif").exists()
-    assert not (split_output_dir / "test" / "test_mask.tif").exists()
-
-def test_split_dataset_dict(mock_data_dirs, temp_output_dir):
-    image_dir = mock_data_dirs["image_dir"]
-    mask_dir = mock_data_dirs["mask_dir"]
-    mock_image_files = [f for f in mock_data_dirs["mock_image_files"] if "_w1_" in f]
-    mock_mask_files = [f for f in mock_data_dirs["mock_mask_files"]]
-    image_files = [str(image_dir / f) for f in mock_image_files]
-    mask_files = [str(mask_dir / f) for f in mock_mask_files]
-
-    file_dict = {
-        "BF": image_files,
-        "mask": mask_files
-    }
-
-    train_files, test_files = split_dataset_dict(
-        file_dict,
-        test_size=0.33,
-        random_state=42,
-        file_handler=BF_FileHandler(),
-        output_dir=temp_output_dir / 'dict_split'
+    train_files, test_files = cast(
+        SplitResult,
+        split_dataset_dict(
+            file_map={"BF": image_files, "mask": mask_files},
+            test_size=0.33,
+            random_state=42,
+            file_handler=file_handler,
+            output_dir=split_dir,
+        ),
     )
 
     assert len(train_files["BF"]) > 0
@@ -359,26 +137,190 @@ def test_split_dataset_dict(mock_data_dirs, temp_output_dir):
     assert len(train_files["mask"]) > 0
     assert len(test_files["mask"]) > 0
 
-def test_split_dataset_dict_no_split(mock_data_dirs, temp_output_dir):
-    image_dir = mock_data_dirs["image_dir"]
-    mask_dir = mock_data_dirs["mask_dir"]
-    mock_image_files = [f for f in mock_data_dirs["mock_image_files"] if "_w1_" in f]
-    mock_mask_files = [f for f in mock_data_dirs["mock_mask_files"] if "_w1_" in f]
-    image_files = [str(image_dir / f) for f in mock_image_files]
-    mask_files = [str(mask_dir / f) for f in mock_mask_files]
+    train_groups = _group_ids_from_paths(train_files["BF"], file_handler)
+    test_groups = _group_ids_from_paths(test_files["BF"], file_handler)
+    assert train_groups
+    assert test_groups
+    assert train_groups.isdisjoint(test_groups)
 
-    file_dict = {
-        "BF": image_files,
-        "mask": mask_files
-    }
+    assert (split_dir / "train").exists()
+    assert (split_dir / "test").exists()
+    assert any((split_dir / "train").rglob("*.tif"))
+    assert any((split_dir / "test").rglob("*.tif"))
 
-    train_files, test_files = split_dataset_dict(
-        file_dict,
-        test_size=0,
-        random_state=42,
-        file_handler=BF_FileHandler(),
-        output_dir=temp_output_dir / 'dict_no_split'
+
+def test_split_dataset_dict_no_split_all_train(
+    mock_data_dirs: MockDataDirs, temp_output_dir: Path
+) -> None:
+    """Test test_size=0 behavior where all data should go to train output."""
+    image_files = [
+        str(mock_data_dirs["image_dir"] / f)
+        for f in mock_data_dirs["mock_image_files"]
+        if "_w1_" in f
+    ]
+    mask_files = [str(mock_data_dirs["mask_dir"] / f) for f in mock_data_dirs["mock_mask_files"]]
+    output_dir = temp_output_dir / "dict_no_split"
+
+    train_files, test_files = cast(
+        SplitResult,
+        split_dataset_dict(
+            file_map={"BF": image_files, "mask": mask_files},
+            test_size=0,
+            random_state=42,
+            file_handler=BF_IF_FileHandler(),
+            output_dir=output_dir,
+        ),
     )
 
     assert len(train_files["BF"]) == len(image_files)
     assert len(train_files["mask"]) == len(mask_files)
+    assert test_files == {}
+
+    copied_files = list(output_dir.rglob("*.tif"))
+    assert len(copied_files) == len(image_files) + len(mask_files)
+    assert not (output_dir / "train").exists()
+    assert not (output_dir / "test").exists()
+
+
+def test_split_dataset_dict_all_test(
+    mock_data_dirs: MockDataDirs, temp_output_dir: Path
+) -> None:
+    """Test test_size=1 behavior where all data should go to test output."""
+    image_files = [
+        str(mock_data_dirs["image_dir"] / f)
+        for f in mock_data_dirs["mock_image_files"]
+        if "_w1_" in f
+    ]
+    mask_files = [str(mock_data_dirs["mask_dir"] / f) for f in mock_data_dirs["mock_mask_files"]]
+    output_dir = temp_output_dir / "dict_all_test"
+
+    train_files, test_files = cast(
+        SplitResult,
+        split_dataset_dict(
+            file_map={"BF": image_files, "mask": mask_files},
+            test_size=1,
+            random_state=42,
+            file_handler=BF_IF_FileHandler(),
+            output_dir=output_dir,
+        ),
+    )
+
+    assert train_files == {}
+    assert len(test_files["BF"]) == len(image_files)
+    assert len(test_files["mask"]) == len(mask_files)
+
+    copied_files = list(output_dir.rglob("*.tif"))
+    assert len(copied_files) == len(image_files) + len(mask_files)
+    assert not (output_dir / "train").exists()
+    assert not (output_dir / "test").exists()
+
+
+def test_split_dataset_list(
+    mock_data_dirs: MockDataDirs, temp_output_dir: Path
+) -> None:
+    """Test list-based API to ensure parity with dictionary-based splitting."""
+    image_files = [
+        str(mock_data_dirs["image_dir"] / f)
+        for f in mock_data_dirs["mock_image_files"]
+        if "_w1_" in f
+    ]
+    mask_files = [str(mock_data_dirs["mask_dir"] / f) for f in mock_data_dirs["mock_mask_files"]]
+
+    file_handler = BF_IF_FileHandler()
+    train_files, test_files = cast(
+        SplitResult,
+        split_dataset_list(
+            file_list=image_files + mask_files,
+            test_size=0.33,
+            random_state=42,
+            file_handler=file_handler,
+            output_dir=temp_output_dir / "list_split",
+        ),
+    )
+
+    assert len(train_files["BF"]) > 0
+    assert len(test_files["BF"]) > 0
+    assert len(train_files["mask"]) > 0
+    assert len(test_files["mask"]) > 0
+
+    train_groups = _group_ids_from_paths(train_files["BF"], file_handler)
+    test_groups = _group_ids_from_paths(test_files["BF"], file_handler)
+    assert train_groups.isdisjoint(test_groups)
+
+
+def test_train_test_split_directory(
+    mock_data_dirs: MockDataDirs, temp_output_dir: Path
+) -> None:
+    """Test directory-based splitting and persisted split metadata."""
+    result = train_test_split_directory(
+        data_dir=str(mock_data_dirs["data_dir"]),
+        output_dir=str(temp_output_dir),
+        test_size=0.33,
+        random_state=42,
+        file_handler=BF_IF_FileHandler(),
+    )
+
+    assert "train_files" in result
+    assert "test_files" in result
+    assert "train_images" not in result
+    assert "test_images" not in result
+    assert "BF" in result["train_files"]
+    assert "BF" in result["test_files"]
+    assert "image" in result["train_files"]
+    assert "image" in result["test_files"]
+    assert len(result["train_files"]["BF"]) > 0
+    assert len(result["test_files"]["BF"]) > 0
+    assert (temp_output_dir / "dataset_split.json").exists()
+
+
+def test_copy_with_split_dict(mock_data_dirs: MockDataDirs, temp_output_dir: Path) -> None:
+    """Test copy_with_split_dict copies files into train/test folders."""
+    src_file = mock_data_dirs["image_dir"] / mock_data_dirs["mock_image_files"][0]
+    mask_file = mock_data_dirs["mask_dir"] / mock_data_dirs["mock_mask_files"][0]
+
+    train_file_tuple = {
+        "images": [(str(src_file), "train_image.tif")],
+        "masks": [(str(mask_file), "train_mask.tif")],
+    }
+    test_file_tuple = {
+        "images": [(str(src_file), "test_image.tif")],
+        "masks": [(str(mask_file), "test_mask.tif")],
+    }
+
+    split_output_dir = temp_output_dir / "split_dict"
+    copy_with_split_dict(train_file_tuple, test_file_tuple, split_output_dir)
+
+    assert (split_output_dir / "train" / "train_image.tif").exists()
+    assert (split_output_dir / "train" / "train_mask.tif").exists()
+    assert (split_output_dir / "test" / "test_image.tif").exists()
+    assert (split_output_dir / "test" / "test_mask.tif").exists()
+
+
+def test_copy_with_split_dict_filter_keys(
+    mock_data_dirs: MockDataDirs, temp_output_dir: Path
+) -> None:
+    """Test copy_with_split_dict with file key filtering."""
+    src_file = mock_data_dirs["image_dir"] / mock_data_dirs["mock_image_files"][0]
+    mask_file = mock_data_dirs["mask_dir"] / mock_data_dirs["mock_mask_files"][0]
+
+    train_file_tuple = {
+        "images": [(str(src_file), "train_image.tif")],
+        "masks": [(str(mask_file), "train_mask.tif")],
+    }
+    test_file_tuple = {
+        "images": [(str(src_file), "test_image.tif")],
+        "masks": [(str(mask_file), "test_mask.tif")],
+    }
+
+    split_output_dir = temp_output_dir / "split_dict_filter"
+    copy_with_split_dict(
+        train_file_tuple,
+        test_file_tuple,
+        split_output_dir,
+        filter_file_keys=["images"],
+    )
+
+    assert (split_output_dir / "train" / "train_image.tif").exists()
+    assert not (split_output_dir / "train" / "train_mask.tif").exists()
+    assert (split_output_dir / "test" / "test_image.tif").exists()
+    assert not (split_output_dir / "test" / "test_mask.tif").exists()

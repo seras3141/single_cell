@@ -5,7 +5,7 @@ import numpy as np
 from skimage import filters, morphology
 from scipy import ndimage as ndi
 
-from config import PreprocessingConfig
+from threshold_activity_classifier.config import PreprocessingConfig
 
 
 class ImagePreprocessor:

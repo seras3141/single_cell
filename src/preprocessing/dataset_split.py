@@ -9,14 +9,12 @@ import json
 from pathlib import Path
 import random
 import logging
-import shutil
 from collections import defaultdict
 from typing import List, Tuple, Dict, Optional, Union, Any
-from src.utils.file_utils import AbstractFileHandler, DefaultFileHandler, BF_IF_FileHandler, BF_FileHandler
+from src.utils.file_utils import AbstractFileHandler, DefaultFileHandler, BF_IF_FileHandler, rename_all_files, copy_with_split_dict, copy_without_split_dict
 from src.utils.logging_utils import setup_logging
 
 logger = logging.getLogger(__name__)
-
 
 def get_groups_from_filenames(
         renamed_tuples, file_handler: AbstractFileHandler
@@ -34,175 +32,24 @@ def get_groups_from_filenames(
     groups = defaultdict(list)
 
     for src, dst in renamed_tuples:
-        group_id = file_handler.extract_group_id(dst)
+        group_id = file_handler.extract_unique_id(dst)
 
         groups[group_id].append((src, dst))
                 
     return dict(groups)
 
-def copy_file(
-    src_file: Union[str, Path],
-    dest_file: Union[str, Path],
-) -> None:
-    """
-    Copy a file from src_file to dest_file with metadata preservation.
-
-    Args:
-        src_file: Source file to copy
-        dest_file: Destination file path
-    """
-
-    src = Path(src_file).resolve()
-    dst = Path(dest_file)
-
-    # Ensure the parent directory exists
-    dst.parent.mkdir(parents=True, exist_ok=True)
-
-    if not src.exists():
-        raise FileNotFoundError(f"Source file '{src}' does not exist")
-
-    if dst.exists() or dst.is_symlink():
-        dst.unlink()  # Remove existing file
-
-    try:
-        dst.symlink_to(src, target_is_directory=False)
-    except (OSError, NotImplementedError):
-        # Use shutil.copy2 which preserves metadata instead of symlinks
-        # This works on all platforms without admin privileges
-        shutil.copy2(src, dst)
-
-def copy_without_split_dict(
-        file_tuple : Dict[str, List[Tuple[str, str]]],
-        output_dir: Union[str, Path],
-):
-    """
-    Copy image and mask files without splitting into train/test sets.
-
-    Args:
-        image_tuple: List of tuples (src_path, dest_path) for image files
-        mask_tuple: List of tuples (src_path, dest_path) for mask files
-        output_dir: Directory to copy the files to
-    """
-    if isinstance(output_dir, str):
-        output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    for k, v in file_tuple.items():
-        for file_pair in v:
-            src, dst = file_pair
-            copy_file(src, output_dir / dst)
-
-def copy_without_split(
-        image_tuple : List[Tuple[str, str]],
-        mask_tuple : List[Tuple[str, str]],
-        output_dir: Union[str, Path],
-):
-    """
-    Copy image and mask files without splitting into train/test sets.
-
-    Args:
-        image_tuple: List of tuples (src_path, dest_path) for image files
-        mask_tuple: List of tuples (src_path, dest_path) for mask files
-        output_dir: Directory to copy the files to
-    """
-    if isinstance(output_dir, str):
-        output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    for src, dst in image_tuple:
-        copy_file(src, output_dir / dst)
-
-    for src, dst in mask_tuple:
-        copy_file(src, output_dir / dst)
-
-def copy_with_split_dict(
-        train_file_tuple : Dict[str, List[Tuple[str, str]]],
-        test_file_tuple : Dict[str, List[Tuple[str, str]]],
-        output_dir: Union[str, Path],
-        filter_file_keys: Optional[List[str]] = None,
-    ):
-    """
-    Copy image and mask files into train and test subdirectories.
-
-    Args:
-        train_file_tuple: Dictionary containing train file tuples {"images": [...], "masks": [...]}
-        test_file_tuple: Dictionary containing test file tuples {"images": [...], "masks": [...]}
-        output_dir: Directory to copy the files to
-    """
-    if isinstance(output_dir, str):
-        output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    train_dir = output_dir / 'train'
-    test_dir = output_dir / 'test'
-    train_dir.mkdir(parents=True, exist_ok=True)
-    test_dir.mkdir(parents=True, exist_ok=True)
-
-    if filter_file_keys:
-        train_file_tuple = {k: v for k, v in train_file_tuple.items() if k in filter_file_keys}
-        test_file_tuple = {k: v for k, v in test_file_tuple.items() if k in filter_file_keys}
-
-    # TODO : Handle masks separately into mask subdirs
-    for k, v in test_file_tuple.items():
-        for src, dst in v:
-            copy_file(src, test_dir / dst)
-
-    for k, v in train_file_tuple.items():
-        for src, dst in v:
-            copy_file(src, train_dir / dst)
-
-
-def copy_with_split(
-        train_image_tuple : List[Tuple[str, str]],
-        train_mask_tuple : List[Tuple[str, str]],
-        test_image_tuple : List[Tuple[str, str]],
-        test_mask_tuple : List[Tuple[str, str]],
-        output_dir: Union[str, Path],
-    ):
-    """
-    Copy image and mask files into train and test subdirectories.
-
-    Args:
-        train_image_tuple: List of tuples (src_path, dest_path) for training image files
-        train_mask_tuple: List of tuples (src_path, dest_path) for training mask files
-        test_image_tuple: List of tuples (src_path, dest_path) for test image files
-        test_mask_tuple: List of tuples (src_path, dest_path) for test mask files
-        output_dir: Directory to copy the files to
-    """
-    if isinstance(output_dir, str):
-        output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    train_dir = output_dir / 'train'
-    test_dir = output_dir / 'test'
-    train_dir.mkdir(parents=True, exist_ok=True)
-    test_dir.mkdir(parents=True, exist_ok=True)
-
-    # TODO : Handle masks separately into mask subdirs
-    for src, dst in train_image_tuple:
-        copy_file(src, train_dir / dst)
-
-    for src, dst in train_mask_tuple:
-        copy_file(src, train_dir / dst)
-
-    for src, dst in test_image_tuple:
-        copy_file(src, test_dir / dst)
-
-    for src, dst in test_mask_tuple:
-        copy_file(src, test_dir / dst)
-
 def split_dataset_dict(
-        file_list: Dict[str, List[str]],
+        file_map: Dict[str, List[str]],
         test_size: float = 0.2,
         random_state: int = 42,
-        file_handler: DefaultFileHandler = BF_FileHandler(),
+        file_handler: DefaultFileHandler = DefaultFileHandler(),
         output_dir: Optional[Union[str, Path]] = None,
     ) -> Dict[str, List[str]]:
     """
     Split a dataset of images and masks into train and test sets, keeping groups together.
 
     Args:
-        file_list: List of all file paths
+        file_map: Dictionary mapping file types to lists of file paths
         test_size: Fraction of data to use for testing (0-1)
         random_state: Random seed for reproducibility
         file_handler: File renamer/handler for extracting group info
@@ -218,15 +65,15 @@ def split_dataset_dict(
     # if masks and len(images) != len(masks):
     #     raise ValueError("Number of images and masks must be the same", f"Images: {len(images)} != Masks: {len(masks)}")
 
-    # Set random seed for reproducibility
-    random.seed(random_state)
+    # {file_type : [(src_path, renamed_path)]}
+    file_tuples = rename_all_files(file_map, file_handler)
+
+    # file_tuples = {}
+    # for file_type, files in file_map.items():
+    #     file_tuples[file_type] = [(src, file_handler.rename_file(src, file_type)) for src in files]
 
     if test_size <= 0 or test_size >= 1:
         logger.info("Test size is 0 or >=1, no splitting will be performed.")
-
-        file_tuples = {}
-        for k, files in file_list.items():
-            file_tuples[k] = [(src, file_handler.rename_file(src, k)) for src in files]
 
         if output_dir:
             copy_without_split_dict(file_tuples, output_dir)
@@ -244,9 +91,6 @@ def split_dataset_dict(
         logger.info(f"Splitting dataset with test size = {test_size}")
 
         # Rename files and create tuples : src, dst (base name only)
-        file_tuples = {}
-        for file_type, files in file_list.items():
-            file_tuples[file_type] = [(src, file_handler.rename_file(src, file_type)) for src in files]
 
         grouped_file_tuples = {}
         group_keys = set()
@@ -263,7 +107,10 @@ def split_dataset_dict(
         # mask_group_keys = set(grouped_mask_tuples.keys())
         # if masks and image_group_keys != mask_group_keys:
         #     raise ValueError(f"Image and mask groups do not match: {image_group_keys ^ mask_group_keys}")
-        
+
+        # Set random seed for reproducibility
+        random.seed(random_state)
+
         # split based on image_group_keys
         groups = list(group_keys)
         # This doesn't mean that the split is uniform (since groups can have different sizes)
@@ -292,12 +139,32 @@ def split_dataset_dict(
 
         return train_files, test_files # type: ignore
 
+def split_dataset_list(
+        file_list: List[str],
+        test_size: float = 0.2,
+        random_state: int = 42,
+        file_handler: DefaultFileHandler = DefaultFileHandler(),
+        output_dir: Optional[Union[str, Path]] = None,
+        ) -> Dict[str, List[str]]:
+    """
+    Same as split_dataset_dict but for a list of files instead of a dict. The file handler will be used to determine the file type and groupings. 
+    """
+    if file_handler is None:
+        raise ValueError("No file handler provided, images may not be grouped correctly")
+    
+    file_map = defaultdict(list)
+    for file in file_list:
+        file_type = file_handler.get_file_type(file)
+        file_map[file_type].append(file)
+
+    return split_dataset_dict(file_map, test_size, random_state, file_handler, output_dir)
+
 def train_test_split_directory(
     data_dir: Union[str, Path],
     output_dir: Union[str, Path],
     test_size: float = 0.2,
     random_state: int = 42,
-    file_handler: DefaultFileHandler = BF_FileHandler(),
+    file_handler: DefaultFileHandler = DefaultFileHandler(),
 ) -> Dict[str, Any]:
     """
     Split data in a directory into train and test sets and organize into subdirectories.
@@ -319,7 +186,7 @@ def train_test_split_directory(
     # Find all images and masks
     file_list = {}
     for k, v in file_handler.patterns.items():
-        file_list[k] = file_handler.get_files(str(data_dir), k)
+        file_list[k] = file_handler.get_files_by_type(str(data_dir), k)
         if len(file_list[k]) == 0:
             logger.warning(f"No files found for pattern '{v}' in {data_dir} for type '{k}'")
 

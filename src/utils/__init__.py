@@ -12,7 +12,6 @@ from .conversion import combine_2d_to_3d, split_3d_to_2d
 # File handling utilities
 from .file_utils import (
     DefaultFileHandler,
-    BF_FileHandler,
     BF_IF_FileHandler,
     BlurFileHandler,
 )
@@ -43,7 +42,6 @@ __all__ = [
 
     # File handling
     "DefaultFileHandler",
-    "BF_FileHandler",
     "BF_IF_FileHandler",
     "BlurFileHandler",
 

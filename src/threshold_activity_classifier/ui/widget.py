@@ -12,11 +12,11 @@ import numpy as np
 from magicgui import magicgui
 from magicgui.widgets import Container, PushButton, ComboBox, SpinBox, FloatSpinBox
 
-from config import ThresholdConfig
+from threshold_activity_classifier.config import ThresholdConfig
 
 if TYPE_CHECKING:
     import napari.layers
-from core import ThresholdClassifier
+from threshold_activity_classifier.core import ThresholdClassifier
 
 
 class ThresholdWidget:
@@ -286,8 +286,8 @@ def threshold_classifier_widget(
         return
     
     # Import here to avoid circular imports
-    from config import ThresholdConfig, ThresholdParams, PreprocessingConfig
-    from core import ThresholdClassifier
+    from threshold_activity_classifier.config import ThresholdConfig, ThresholdParams, PreprocessingConfig
+    from threshold_activity_classifier.core import ThresholdClassifier
     
     # Create configuration
     config = ThresholdConfig(

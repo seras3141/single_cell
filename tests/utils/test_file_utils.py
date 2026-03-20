@@ -72,8 +72,8 @@ class TestDefaultFileHandler:
         assert self.handler.rename_mask(input_path) == expected
 
     def test_extract_group_id(self):
-        filename = 'I12_z10_BF.tif'
-        assert self.handler.extract_group_id(filename) == 'I12'
+        filename = 'I12_t10_z10_BF.tif'
+        assert self.handler.extract_unique_id(filename) == 'I12_t10'
 
     def test_file_handler(self, mock_data_dirs):
         file_handler = self.handler
@@ -86,9 +86,9 @@ class TestDefaultFileHandler:
         sample_mask = str(mask_dir / "Cells_R10-C3-F0-Z0-T0.tif")
         renamed_mask = file_handler.rename_mask(sample_mask)
         assert "J03" in renamed_mask
-        group_id = file_handler.extract_group_id(renamed_image)
+        group_id = file_handler.extract_unique_id(renamed_image)
         assert group_id == "J03"
-        mask_group_id = file_handler.extract_group_id(renamed_mask)
+        mask_group_id = file_handler.extract_unique_id(renamed_mask)
         assert mask_group_id == "J03"
 
 class TestBFIFFileHandler:
@@ -96,29 +96,29 @@ class TestBFIFFileHandler:
         self.handler = BF_IF_FileHandler()
 
     def test_rename_image(self):
-        # Example: Plate 2126/t1_A01_s1_w1_z1.tif -> p2126_A01_z1_BF.tif
+        # Example: Plate 2126/t1_A01_s1_w1_z1.tif -> p2126_A01_t1_z1_BF.tif
         input_path = 'Plate 2126/t1_A01_s1_w1_z1.tif'
-        expected = 'p2126_A01_z1_BF.tif'
+        expected = 'p2126_A01_t1_z1_BF.tif'
         assert self.handler.rename_image(input_path) == expected
 
     def test_rename_mask(self):
-        # Example: Plate 2126/Cells_R1-C1-F1-Z1-T1.tif -> p2126_A01_z2_Cells.tif
+        # Example: Plate 2126/Cells_R1-C1-F1-Z1-T1.tif -> p2126_A01_t2_z2_Cells.tif
         input_path = 'Plate 2126/Cells_R1-C1-F1-Z1-T1.tif'
-        expected = 'p2126_A01_z2_Cells.tif'
+        expected = 'p2126_A01_t2_z2_Cells.tif'
         assert self.handler.rename_mask(input_path) == expected
 
     def test_extract_group_id(self):
-        filename = 'p2126_A01_z1_BF.tif'
-        assert self.handler.extract_group_id(filename) == 'p2126_A01'
+        filename = 'p2126_A01_t1_z1_BF.tif'
+        assert self.handler.extract_unique_id(filename) == 'p2126_A01_t1'
 
 class TestBFFileHandler:
     def setup_method(self):
         self.handler = BF_IF_FileHandler()
 
     def test_rename_image(self):
-        # Example: Plate 1234/t1_B02_s1_w1_z3.tif -> p1234_B02_z3_BF.tif
+        # Example: Plate 1234/t1_B02_s1_w1_z3.tif -> p1234_B02_t1_z3_BF.tif
         input_path = 'Plate 1234/t1_B02_s1_w1_z3.tif'
-        expected = 'p1234_B02_z3_BF.tif'
+        expected = 'p1234_B02_t1_z3_BF.tif'
         assert self.handler.rename_image(input_path) == expected
 
     def test_rename_image_different_wavelength(self):
@@ -128,14 +128,14 @@ class TestBFFileHandler:
             self.handler.rename_image(input_path)
 
     def test_rename_mask(self):
-        # Example: Plate 1234/Cells_R2-C2-F0-Z3-T0.tif -> p1234_B02_z4_Cells.tif
+        # Example: Plate 1234/Cells_R2-C2-F0-Z3-T0.tif -> p1234_B02_t1_z4_Cells.tif
         input_path = 'Plate 1234/Cells_R2-C2-F0-Z3-T0.tif'
-        expected = 'p1234_B02_z4_Cells.tif'
+        expected = 'p1234_B02_t1_z4_Cells.tif'
         assert self.handler.rename_mask(input_path) == expected
 
     def test_extract_group_id(self):
-        filename = 'p1234_B02_z3_BF.tif'
-        assert self.handler.extract_group_id(filename) == 'p1234_B02'
+        filename = 'p1234_B02_t1_z3_BF.tif'
+        assert self.handler.extract_unique_id(filename) == 'p1234_B02_t1'
 
 
 class TestBlurFileHandler:
@@ -156,4 +156,8 @@ class TestBlurFileHandler:
 
     def test_extract_group_id(self):
         filename = 'A01_BF_3d.tif'
-        assert self.handler.extract_group_id(filename) == 'A01'
+        assert self.handler.extract_unique_id(filename) == 'A01'
+
+    def test_get_file_type(self):
+        assert self.handler.get_file_type('p1234_A01_BF_3d.tif') == 'file_3D'
+        assert self.handler.get_file_type('p1234_A01_z1_BF.tif') == 'file'

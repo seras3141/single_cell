@@ -12,8 +12,8 @@ except ImportError:
 
 import numpy as np
 
-from utils.io import find_label_for_image, ensure_2d
-from core.classifier import create_activity_labeled_image
+from threshold_activity_classifier.utils.io import find_label_from_mcherry_path, find_brightfield_from_mcherry_path, find_activity_from_mcherry_path, ensure_2d, get_images_from_mcherry
+from threshold_activity_classifier.core.classifier import create_activity_labeled_image
 
 
 class NapariImageViewer:
@@ -46,6 +46,7 @@ class NapariImageViewer:
         """
         self.metrics_df = metrics_df
         self.root_path = Path(root_path) if root_path is not None else None
+        self.activity_dir = None
         self.current_viewer = None
         self._widgets_initialized = False
         
@@ -55,7 +56,10 @@ class NapariImageViewer:
 
     # ------------------ Direct array mode methods -------------------------
     
-    def open(self, img, lbl=None, activity_labels=None, metrics_df=None, 
+    def open(self, img, lbl=None,
+             activity_labels=None,
+             brightfield=None,
+             metrics_df=None, 
              image_name="image", activity_is_bin=False):
         """
         Open napari viewer with provided image arrays.
@@ -68,6 +72,8 @@ class NapariImageViewer:
             Instance segmentation label image.
         activity_labels : np.ndarray, optional
             Activity classification labels. Positive values = active, negative = dead.
+        brightfield : np.ndarray, optional
+            Brightfield image for overlay (if available).
         metrics_df : pd.DataFrame, optional
             Classification results for statistics display.
         image_name : str
@@ -111,12 +117,16 @@ class NapariImageViewer:
         else:
             print(f"No activity classification data for {image_name}")
         
+        # Add brightfield image if available
+        if brightfield is not None:
+            self.current_viewer.add_image(brightfield, name=f"{image_name}_brightfield", colormap="gray", opacity=0.5)
+        
         self.current_viewer.window.resize(1200, 800)
         return self.current_viewer
     
-    def open_3d(self, image_volume, label_volume=None, activity_volume=None,
-                title="3D Volume", show_original=True, show_labels=True, 
-                show_activity=True):
+    def open_3d(self, image_volume, label_volume=None, activity_volume=None, brightfield_volume=None,
+                title="3D Volume", activity_is_bin=True,
+                show_original=True, show_labels=True, show_activity=True, show_brightfield=False):
         """
         Open napari viewer with 3D volume data.
         
@@ -128,6 +138,8 @@ class NapariImageViewer:
             3D instance segmentation labels.
         activity_volume : np.ndarray, optional
             3D activity classification labels (signed or binary).
+        brightfield_volume : np.ndarray, optional
+            3D brightfield volume for overlay.
         title : str
             Window title.
         show_original : bool
@@ -136,7 +148,8 @@ class NapariImageViewer:
             Whether to show instance labels.
         show_activity : bool
             Whether to show activity classification.
-            
+        show_brightfield : bool
+            Whether to show brightfield image.
         Returns
         -------
         napari.Viewer
@@ -151,6 +164,10 @@ class NapariImageViewer:
         lo, hi = np.percentile(image_volume, [0.1, 99.9])
         image_volume = np.clip(image_volume, lo, hi)
 
+        if brightfield_volume is not None:
+            lo, hi = np.percentile(brightfield_volume, [0.1, 99.9])
+            brightfield_volume = np.clip(brightfield_volume, lo, hi)
+
         if show_original:
             self.current_viewer.add_image(
                 image_volume, name='Original Images',
@@ -161,8 +178,11 @@ class NapariImageViewer:
             self.current_viewer.add_labels(label_volume, name='Instance Labels', opacity=0.5)
         
         if show_activity and activity_volume is not None:
-            self._add_activity_layer(activity_volume, 'Activity Classification', activity_is_bin=True)
+            self._add_activity_layer(activity_volume, 'Activity Classification', activity_is_bin=activity_is_bin)
         
+        if show_brightfield and brightfield_volume is not None:
+            self.current_viewer.add_image(brightfield_volume, name='Brightfield', colormap='gray', opacity=0.5)
+
         self.current_viewer.window.resize(1400, 1000)
         return self.current_viewer
     
@@ -357,6 +377,7 @@ class NapariImageViewer:
                 sample,
                 self.metrics_df,
                 self.root_path,
+                self.activity_dir,
                 show_original=self.show_original.value,
                 show_labels=self.show_labels.value,
                 show_activity=self.show_activity.value,
@@ -468,7 +489,7 @@ def visualize_image_with_napari(image_name, metrics_df, root_path,
         return None
     
     img_path = image_files[0]
-    lbl_path = find_label_for_image(img_path)
+    lbl_path = find_label_from_mcherry_path(img_path)
     
     if lbl_path is None or not lbl_path.exists():
         print(f"Label file not found for {image_name}")
@@ -552,7 +573,7 @@ def show_sample_images_napari(metrics_df, sample_id, root, z_indices=None, max_i
         print("Napari is not available. Install with: pip install napari[all]")
         return []
     
-    sample_images = metrics_df[metrics_df['sample'] == sample_id]['image'].unique()
+    sample_images = metrics_df[metrics_df['ID'] == sample_id]['image'].unique()
     
     if len(sample_images) == 0:
         print(f"No images found for sample {sample_id}")
@@ -560,7 +581,7 @@ def show_sample_images_napari(metrics_df, sample_id, root, z_indices=None, max_i
     
     if z_indices is not None:
         sample_data = metrics_df[
-            (metrics_df['sample'] == sample_id) & 
+            (metrics_df['ID'] == sample_id) & 
             (metrics_df['z_index'].isin(z_indices))
         ]
         filtered_images = sample_data['image'].unique()
@@ -583,8 +604,8 @@ def show_sample_images_napari(metrics_df, sample_id, root, z_indices=None, max_i
     return viewers
 
 
-def visualize_sample_zstack_napari(sample_id, metrics_df, root_path,
-                                   show_original=True, show_labels=True, show_activity=True,
+def visualize_sample_zstack_napari(sample_id, metrics_df, root_path, activity_dir,
+                                   show_original=True, show_labels=True, show_activity=True, show_brightfield=True,
                                    max_z_slices=None):
     """
     Open napari with all z-stack images from a sample in a single 3D viewer.
@@ -603,6 +624,8 @@ def visualize_sample_zstack_napari(sample_id, metrics_df, root_path,
         Whether to show the original instance labels.
     show_activity : bool
         Whether to show the activity-coded labels.
+    show_brightfield : bool
+        Whether to show the brightfield image.
     max_z_slices : int, optional
         Maximum number of z-slices to load (None for all).
         
@@ -616,7 +639,7 @@ def visualize_sample_zstack_napari(sample_id, metrics_df, root_path,
         return None
     
     # Get all images for this sample, sorted by z-index
-    sample_data = metrics_df[metrics_df['sample'] == sample_id].copy()
+    sample_data = metrics_df[metrics_df['ID'] == sample_id].copy()
     if len(sample_data) == 0:
         print(f"No images found for sample {sample_id}")
         return None
@@ -635,6 +658,7 @@ def visualize_sample_zstack_napari(sample_id, metrics_df, root_path,
     image_stack = []
     label_stack = []
     activity_stack = []
+    brightfield_stack = []
     valid_z_indices = []
     
     for i, image_name in enumerate(sample_images):
@@ -643,31 +667,49 @@ def visualize_sample_zstack_napari(sample_id, metrics_df, root_path,
             if not image_files:
                 print(f"Warning: Image {image_name} not found, skipping")
                 continue
-            
+
             img_path = image_files[0]
-            lbl_path = find_label_for_image(img_path)
-            
-            if lbl_path is None or not lbl_path.exists():
-                print(f"Warning: Label file not found for {image_name}, skipping")
-                continue
-            
-            img = tiff.imread(str(img_path))
-            lbl = tiff.imread(str(lbl_path))
-            
+
+            # Load image, labels, and activity in one step
+            img_dict = get_images_from_mcherry(
+                img_path, 
+                activity_dir=activity_dir
+            )
+
+            img = img_dict.get('img')
+            lbl = img_dict.get('lbl')
+            activity_labels = img_dict.get('activity_labels')
+            brightfield = img_dict.get('brightfield')
+            activity_is_bin = True  # Assume activity labels are binary if loaded from file
+            # activity_is_bin = img_dict.get('activity_is_bin', False)
+
+            # If activity labels are not already provided, create them from the metrics_df
+            if activity_labels is None:
+                print(f"Activity labels not found for {image_name}, creating from metrics_df...")
+                activity_is_bin = False
+                try:
+                    image_classification = metrics_df[metrics_df['image'] == image_name].copy()
+                    
+                    if len(image_classification) == 0:
+                        print(f"Warning: No classification data found for {image_name}, skipping")
+                        continue
+                    
+                    activity_labels = create_activity_labeled_image(lbl, image_classification)
+                except Exception as e:
+                    print(f"Warning: Could not create activity labels for {image_name}: {e}")
+                    activity_labels = None
+
             img = ensure_2d(img).astype(float)
             lbl = ensure_2d(lbl).astype(np.int32)
-            
-            image_classification = metrics_df[metrics_df['image'] == image_name].copy()
-            
-            if len(image_classification) == 0:
-                print(f"Warning: No classification data found for {image_name}, skipping")
-                continue
-            
-            activity_labels = create_activity_labeled_image(lbl, image_classification)
-            
+            brightfield = ensure_2d(brightfield).astype(float) if brightfield is not None else None
+            activity_labels = ensure_2d(activity_labels).astype(np.int32) if activity_labels is not None else None
+
             image_stack.append(img)
             label_stack.append(lbl)
-            activity_stack.append(activity_labels)
+            if activity_labels is not None:
+                activity_stack.append(activity_labels)
+            if brightfield is not None:
+                brightfield_stack.append(brightfield)
             valid_z_indices.append(z_indices[i] if i < len(z_indices) else i)
             
         except Exception as e:
@@ -680,43 +722,25 @@ def visualize_sample_zstack_napari(sample_id, metrics_df, root_path,
     
     image_volume = np.stack(image_stack, axis=0)
     label_volume = np.stack(label_stack, axis=0)
-    activity_volume = np.stack(activity_stack, axis=0)
-    
-    activity_volume_binary = np.zeros_like(activity_volume, dtype=np.uint8)
-    activity_volume_binary[activity_volume > 0] = 1
-    activity_volume_binary[activity_volume < 0] = 2
+    activity_volume = np.stack(activity_stack, axis=0) if len(activity_stack) > 0 else None
+    brightfield_volume = np.stack(brightfield_stack, axis=0) if len(brightfield_stack) > 0 else None
     
     print(f"Created 3D volumes with shape: {image_volume.shape}")
     
-    viewer = napari.Viewer(title=f"Sample {sample_id} - Z-Stack ({len(image_stack)} slices)")
-    
-    if show_original:
-        viewer.add_image(
-            image_volume, name='Original Images',
-            colormap='yellow', opacity=0.7, scale=(1, 1, 1)
-        )
-    
-    if show_labels:
-        viewer.add_labels(label_volume, name='Instance Labels', opacity=0.5)
-    
-    if show_activity:
-        activity_layer = viewer.add_labels(
-            activity_volume_binary, name='Activity Classification', opacity=0.8
-        )
-        try:
-            # Modern napari: assign a dict mapping label index -> color string
-            activity_layer.color = {0: 'black', 1: 'green', 2: 'magenta'} # type: ignore
-        except Exception:
-            try:
-                # Older/other napari: assign to .colors (numpy array of RGBA) or .color_cycle
-                activity_layer.colors = ['black', 'green', 'magenta'] # type: ignore
-            except Exception as e:
-                print(f"Could not set colors: {e}")
-                try:
-                    activity_layer.colormap = 'viridis' # type: ignore
-                    activity_layer.opacity = 0.6
-                except Exception:
-                    pass
+    viewer = NapariImageViewer()
+
+    viewer.open_3d(
+        image_volume=image_volume,
+        label_volume=label_volume,
+        activity_volume=activity_volume,
+        brightfield_volume=brightfield_volume,
+        title=f"Sample {sample_id} - Z-Stack ({len(image_stack)} slices)",
+        show_original=show_original,
+        show_labels=show_labels,
+        show_activity=show_activity,
+        show_brightfield=show_brightfield,
+        activity_is_bin=activity_is_bin
+    )
     
     sample_stats = sample_data.groupby('z_index').agg({
         'is_active': ['count', 'sum'],
@@ -734,7 +758,7 @@ def visualize_sample_zstack_napari(sample_id, metrics_df, root_path,
     print(f"   Active cells: {total_active} ({overall_activity_rate:.1f}%)")
     print(f"   Dead cells: {total_cells - total_active} ({100-overall_activity_rate:.1f}%)")
     
-    viewer.window.resize(1400, 1000)
+    # viewer.window.resize(1400, 1000)
     return viewer
 
 

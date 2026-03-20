@@ -3,9 +3,7 @@ Test suite for the dimensionality reduction utility module.
 """
 import numpy as np
 import pandas as pd
-import sys
-from pathlib import Path
-from unittest.mock import Mock, patch
+import pytest
 
 
 try:
@@ -148,7 +146,7 @@ class TestDimensionalityReducer:
         
         try:
             # Test with n_components > n_features
-            reduced_data = reducer.reduce_dimensionality(
+            _ = reducer.reduce_dimensionality(
                 self.sample_data[:, :5],  # Only 5 features
                 method='pca',
                 n_components=10  # More components than features
@@ -165,8 +163,13 @@ class TestDimensionalityReducer:
             
         reducer = DimensionalityReducer()
         
-        # Convert to DataFrame
-        df = pd.DataFrame(self.sample_data)
+        # Build a DataFrame with known feature names used by _get_feature_columns.
+        feature_names = [
+            "area", "perimeter", "elongation", "compactness", "circularity",
+            "mean_intensity", "std_intensity", "cv_intensity", "total_intensity",
+            "gabor_mean", "gabor_std", "skewness", "kurtosis", "entropy",
+        ]
+        df = pd.DataFrame(self.sample_data[:, : len(feature_names)], columns=feature_names)
         
         try:
             reduced_data = reducer.reduce_dimensionality(
@@ -180,6 +183,23 @@ class TestDimensionalityReducer:
         except Exception as e:
             # If sklearn not available, this is expected
             assert "sklearn" in str(e).lower() or "import" in str(e).lower()
+
+    def test_with_pandas_dataframe_no_feature_columns(self):
+        """Test DataFrame input with only metadata columns raises clear error."""
+        if DimensionalityReducer is None:
+            return
+
+        reducer = DimensionalityReducer()
+        metadata_df = pd.DataFrame(
+            {
+                "filename": [f"img_{i}.tif" for i in range(10)],
+                "sample_id": [f"S{i}" for i in range(10)],
+                "dataset_name": ["demo"] * 10,
+            }
+        )
+
+        with pytest.raises(ValueError, match="No features found"):
+            reducer.reduce_dimensionality(metadata_df, method="pca", n_components=2)
     
     def test_reproducibility(self):
         """Test that results are reproducible with same random state."""
@@ -223,7 +243,7 @@ class TestDimensionalityReducer:
         empty_data = np.array([]).reshape(0, 10)
         
         try:
-            reduced_data = reducer.reduce_dimensionality(
+            _ = reducer.reduce_dimensionality(
                 empty_data,
                 method='pca',
                 n_components=2

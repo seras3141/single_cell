@@ -9,8 +9,13 @@ import pandas as pd
 from tifffile import TiffFile
 import tifffile
 
-from config import ThresholdConfig
-from core import ThresholdClassifier
+# Handle imports that work both in package and Jupyter contexts
+try:
+    from ..config import ThresholdConfig
+    from ..core import ThresholdClassifier
+except ImportError:
+    from config import ThresholdConfig
+    from core import ThresholdClassifier
 from .validation import validate_folder
 
 

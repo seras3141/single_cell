@@ -60,7 +60,10 @@ def test_basic_functionality(temp_dirs, sample_images):
             tiff.imwrite(blur_path, mock_heatmap.astype(np.float32))
         return mock_heatmap
     
-    with patch('src.utils.blur_measure.get_or_compute_blur_heatmap', side_effect=mock_measure_side_effect) as mock_measure:
+    with patch(
+        "src.preprocessing.blur_analysis.get_or_compute_blur_heatmap",
+        side_effect=mock_measure_side_effect,
+    ) as mock_measure:
         results = generate_blur_heatmap_batch(
             input_dir=input_dir,
             output_dir=output_dir,
@@ -107,7 +110,7 @@ def test_custom_pattern(temp_dirs):
     tiff.imwrite(str(png_path), png_image)
     tiff.imwrite(str(tiff_path), tiff_image)
     
-    with patch('src.utils.blur_measure.get_or_compute_blur_heatmap') as mock_measure:
+    with patch("src.preprocessing.blur_analysis.get_or_compute_blur_heatmap") as mock_measure:
         mock_measure.return_value = np.random.rand(25, 25)
         
         # Test PNG pattern
@@ -128,7 +131,7 @@ def test_file_handler_integration(temp_dirs, sample_images):
     
     file_handler = BF_IF_FileHandler()
     
-    with patch('src.utils.blur_measure.get_or_compute_blur_heatmap') as mock_measure:
+    with patch("src.preprocessing.blur_analysis.get_or_compute_blur_heatmap") as mock_measure:
         mock_measure.return_value = np.random.rand(50, 50)
         
         results = generate_blur_heatmap_batch(
@@ -153,7 +156,10 @@ def test_overwrite_behavior(temp_dirs, sample_images):
             tiff.imwrite(blur_path, mock_heatmap.astype(np.float32))
         return mock_heatmap
     
-    with patch('src.utils.blur_measure.get_or_compute_blur_heatmap', side_effect=mock_measure_side_effect) as mock_measure:
+    with patch(
+        "src.preprocessing.blur_analysis.get_or_compute_blur_heatmap",
+        side_effect=mock_measure_side_effect,
+    ) as mock_measure:
         # First run
         results1 = generate_blur_heatmap_batch(
             input_dir=input_dir,
@@ -191,7 +197,7 @@ def test_error_handling(temp_dirs, sample_images):
     """Test error handling for failed processing."""
     input_dir, output_dir = temp_dirs
     
-    with patch('src.utils.blur_measure.get_or_compute_blur_heatmap') as mock_measure:
+    with patch("src.preprocessing.blur_analysis.get_or_compute_blur_heatmap") as mock_measure:
         # Make the first call succeed, second fail, third succeed
         mock_measure.side_effect = [
             np.random.rand(50, 50),  # Success
