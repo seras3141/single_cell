@@ -43,6 +43,10 @@ class PreprocessingConfig:
     # Z-range filtering for 2D-to-3D combination
     z_min: Optional[int] = 1  # Skip z-indices below this value (z0 is typically the 2D projection)
     z_max: Optional[int] = None  # Skip z-indices above this value (None = no upper limit)
+    # Skip stages
+    skip_split: bool = False
+    skip_3d: bool = False
+    skip_blur: bool = False
 
 
 @dataclass

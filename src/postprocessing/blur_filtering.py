@@ -326,7 +326,7 @@ class BlurFilter:
         self,
         segmentation_stack: np.ndarray,
         blur_heatmaps: Union[np.ndarray, List[np.ndarray]],
-        n_jobs: int = -1,
+        n_jobs: int | None = None,
         **kwargs
     ) -> Tuple[np.ndarray, List[pd.DataFrame]]:
         """
@@ -354,6 +354,9 @@ class BlurFilter:
             )
 
         n_slices = segmentation_stack.shape[0]
+        # Patched up code for slurm parallel execution 
+        if n_jobs is None:
+            n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1))
         self.logger.info(f"Filtering 3D stack with {n_slices} slices using {n_jobs} parallel jobs.")
 
         # Parallel processing across z-slices

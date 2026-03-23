@@ -42,6 +42,10 @@ def measure_patchwise_blur(
         If center_values=True, output size matches input size.
         If center_values=False, output size is reduced based on patch/stride sizes.
     """
+
+    # This function will be removed in the future and replaced with measure_patchwise_blur_fast, which is more efficient.
+    logger.info("Warning: measure_patchwise_blur is deprecated and will be removed in the future. Please use measure_patchwise_blur_fast instead for better performance.")
+
     if isinstance(patch_size, int):
         patch_size = (patch_size, patch_size)
     if isinstance(stride_size, int):
@@ -120,9 +124,6 @@ def measure_patchwise_blur_fast(
         img: 2D grayscale image array.
         patch_size: (height, width) or int, window size for local variance.
         stride_size: (height, width) or int, stride for sampling blur values.
-        center_values: 
-            If True, output is same size as input (values centered per pixel).
-            If False, output is subsampled according to stride.
 
     Returns:
         2D numpy array of Laplacian variance (blur map).
@@ -140,17 +141,11 @@ def measure_patchwise_blur_fast(
     mean_sq = uniform_filter(lap**2, size=patch_size, mode='reflect')
     var_map = mean_sq - mean**2  # local variance
 
-
-
     # # --- Step 3: Handle centering & stride sampling ---
-    #     # If stride > 1 but we want to preserve full resolution, 
-    #     # you can still stride-smooth to reduce redundancy:
-    #     if stride_size > 1:
-    #         out = uniform_filter(var_map, size=stride_size, mode='reflect')
-    #     else:
-    #         out = var_map
-
-    out = var_map[::stride_size, ::stride_size]
+    if stride_size > 1:
+        out = var_map[::stride_size, ::stride_size]
+    else:
+        out = var_map
 
     return out
 
@@ -302,27 +297,27 @@ def measure_blur_heatmap(
         # Process each slice and stack results in parallel using joblib.Parallel
         n_jobs = kwargs.get('n_jobs', -1)  # Use all available cores by default
 
-        def process_slice(z):
-            return measure_patchwise_blur(
+        def process_slice(z) -> np.ndarray:
+            return measure_patchwise_blur_fast(
             img[z], 
             patch_size=patch_size, 
             stride_size=stride_size,
-            center_values=center_values
+            # center_values=center_values
             )
 
         slices = Parallel(n_jobs=n_jobs)(
             delayed(process_slice)(z) for z in range(img.shape[0])
         )
         # Stack results to create a 3D blur heatmap
-        blur_heatmap = np.stack(slices)
+        blur_heatmap = np.stack(slices) # type: ignore
     else:
         assert img.ndim == 2 and not normalize, "Only 3D images (z-stacks) can be processed with normalization"
         # Process single 2D image
-        blur_heatmap = measure_patchwise_blur(
+        blur_heatmap = measure_patchwise_blur_fast(
             img,
             patch_size=patch_size,
             stride_size=stride_size,
-            center_values=center_values
+            # center_values=center_values
         )
     
     # Normalize if requested and for multi-dimensional data
