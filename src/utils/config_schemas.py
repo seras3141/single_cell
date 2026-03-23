@@ -37,6 +37,12 @@ class PreprocessingConfig:
     split_by_group: bool = True
     split_folder: str = "split_data"
     out_3d_folder: str = "3d_images"  # Directory for 3D images
+    # File handler options
+    wavelength_mappings: Any = None  # Dict mapping wavelength index (int) to channel name (str), e.g. {1: "BF", 2: "mCherry"}
+    plate_number: Optional[str] = None  # Default plate number; overrides auto-detection from filepath
+    # Z-range filtering for 2D-to-3D combination
+    z_min: Optional[int] = 1  # Skip z-indices below this value (z0 is typically the 2D projection)
+    z_max: Optional[int] = None  # Skip z-indices above this value (None = no upper limit)
 
 
 @dataclass
