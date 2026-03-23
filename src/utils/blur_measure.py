@@ -133,17 +133,19 @@ def measure_patchwise_blur_fast(
 
     H, W = img.shape
 
-    # --- Step 1: Compute Laplacian once ---
-    lap = laplace(img)
+    # Compute Laplacian globally
+    lap = laplace(img.astype(np.float64))
 
-    # --- Step 2: Compute local mean and variance via uniform filters ---
+    # Compute local variance: Var(X) = E[X²] - E[X]²
     mean = uniform_filter(lap, size=patch_size, mode='reflect')
     mean_sq = uniform_filter(lap**2, size=patch_size, mode='reflect')
-    var_map = mean_sq - mean**2  # local variance
+    var_map = np.maximum(mean_sq - mean**2, 0)  # clamp negatives from float error
 
-    # # --- Step 3: Handle centering & stride sampling ---
+    # Subsample at stride intervals, centered like the slow version
     if stride_size > 1:
         out = var_map[::stride_size, ::stride_size]
+        # half = patch_size // 2
+        # out = var_map[half::stride_size, half::stride_size]
     else:
         out = var_map
 
