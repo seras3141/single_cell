@@ -419,7 +419,7 @@ class ConfigurableFileHandler(BF_IF_FileHandler):
                 self.wavelength_mappings = load_wavelength_config(config_path)
             except (FileNotFoundError, ValueError):
                 # Fall back to default if config not found
-                self.wavelength_mappings = {1: "BF", 2: "mCherry", 3: "AnnexinV"}
+                self.wavelength_mappings = {1: "AnnexinV", 2: "mCherry", 3: "BF"}
         
         # Store default plate number
         self._default_plate_number = plate_number

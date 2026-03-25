@@ -19,7 +19,9 @@ def combine_2d_to_3d(
     input_dir: Union[str, Path],
     output_dir: Union[str, Path],
     pattern: str = r"(.+?)_z(\d+)(?:_(BF|Cells))?\.(tif|tiff)",
-    recursive: bool = False
+    recursive: bool = False,
+    z_min: Optional[int] = 1,
+    z_max: Optional[int] = None,
 ):
     """
     Combine 2D TIFF images into 3D volumetric TIFF files.
@@ -29,6 +31,9 @@ def combine_2d_to_3d(
         output_dir: Directory to save 3D TIFF volumes
         pattern: Regular expression pattern to extract base name, z-index, and suffix
         recursive: Whether to search subdirectories recursively
+        z_min: Minimum z-index to include (inclusive). Defaults to 1 to skip z0,
+            which is typically a 2D projection rather than an optical section.
+        z_max: Maximum z-index to include (inclusive). Defaults to None (no upper limit).
 
     Example:
         Converts files like "sample_z1_BF.tif", "sample_z2_BF.tif", ...
@@ -61,6 +66,10 @@ def combine_2d_to_3d(
             base_name = match.group(1)
             z_index = int(match.group(2))
             suffix = match.group(3)
+            if z_min is not None and z_index < z_min:
+                continue
+            if z_max is not None and z_index > z_max:
+                continue
             if suffix is None:
                 key = f"{base_name}"
             else:

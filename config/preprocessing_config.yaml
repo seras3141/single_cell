@@ -12,7 +12,21 @@ preprocessing:
   random_state: 42
   split_by_group: true
   split_folder: "split_data"
-  out_3d_folder: "3d_data"  
+  out_3d_folder: "3d_data"
+
+  # Optional: override wavelength-to-channel mappings (defaults to config/wavelength_config.yaml)
+  wavelength_mappings:
+    1: "AnnexinV"
+    2: "mCherry"
+    3: "BF"
+
+  # Optional: default plate number for file renaming (overrides auto-detection from filepath)
+  # plate_number: "2126"
+
+  # Z-range for 2D-to-3D combination
+  # z0 is the 2D projection and is skipped by default (z_min: 1)
+  z_min: 1       # first z-slice to include (inclusive)
+  # z_max: 20   # last z-slice to include (inclusive); omit for no upper limit
   
 # Image quality assessment
 quality:
