@@ -15,7 +15,7 @@ from tqdm import tqdm
 import numpy as np
 
 
-from src.utils.blur_measure import get_or_compute_blur_heatmap
+from src.utils.blur_measure import generate_blur_heatmap
 from src.utils.file_utils import BlurFileHandler
 from src.utils.logging_utils import setup_logging
 
@@ -88,8 +88,8 @@ def generate_blur_heatmap_batch(
                 results[str(img_path)] = str(output_path)
                 continue
             
-            # Generate blur heatmap
-            blur_heatmap = get_or_compute_blur_heatmap(
+            # Generate blur heatmap and save it
+            _ = generate_blur_heatmap(
                 img_path,
                 blur_path=output_path,
                 patch_size=patch_size,

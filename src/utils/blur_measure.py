@@ -356,6 +356,37 @@ def load_blur_heatmap(blur_path: Union[str, Path]) -> np.ndarray:
         raise Warning(f"Failed to load cached blur map {blur_path}: {e}")
 
     return blur_map
+
+def generate_blur_heatmap(
+    image_path: str | Path,
+    blur_path: str | Path | None = None,
+    patch_size: int = 32,
+    stride_size: int = 8,
+    normalize: bool = True,
+    center_values: bool = True
+) -> np.ndarray:
+    """Generate a blur heatmap for a single image and save it."""
+    image_path = Path(image_path)
+    image = load_image(image_path)
+
+    blur_map = measure_blur_heatmap(
+        image,
+        patch_size=patch_size,
+        stride_size=stride_size,
+        normalize=normalize,
+        center_values=center_values,
+    )
+
+    if blur_path is not None:
+        try:
+            blur_cache_dir = Path(blur_path).parent
+            blur_cache_dir.mkdir(parents=True, exist_ok=True)
+            tiff.imwrite(str(blur_path), blur_map.astype(np.float32))
+
+        except Exception as e:
+            raise Warning(f"Failed to save blur map to cache: {e}")
+
+    return blur_map
         
 def get_or_compute_blur_heatmap(
     image_path: Union[str, Path],
@@ -365,7 +396,8 @@ def get_or_compute_blur_heatmap(
     normalize: bool = True,
     center_values: bool = True,
 ) -> np.ndarray:
-    """    Get or compute a blur heatmap for an image.
+    """
+    Read or compute a blur heatmap for an image.
     Args:
         image_path: Path to the input image file
         blur_path: Optional path to save or load the blur heatmap
@@ -380,29 +412,16 @@ def get_or_compute_blur_heatmap(
     if blur_path is not None and Path(blur_path).exists():
         blur_map = load_blur_heatmap(blur_path)
         logger.debug(f"Loaded cached blur heatmap from {blur_path}")
-
     else:
-        image_path = Path(image_path)
-        image = load_image(image_path)
-
-        blur_map = measure_blur_heatmap(
-            image,
+        blur_map = generate_blur_heatmap(
+            image_path,
+            blur_path,
             patch_size=patch_size,
             stride_size=stride_size,
             normalize=normalize,
             center_values=center_values,
         )
-
-        if blur_path is not None:
-            try:
-                blur_cache_dir = Path(blur_path).parent
-                blur_cache_dir.mkdir(parents=True, exist_ok=True)
-                tiff.imwrite(str(blur_path), blur_map.astype(np.float32))
-
-            except Exception as e:
-                raise Warning(f"Failed to save blur map to cache: {e}")
-
-        logger.debug(f"Blur heatmap for {image_path.name} computed with shape {blur_map.shape}")
+        logger.debug(f"Blur heatmap for {Path(image_path).name} computed with shape {blur_map.shape}")
 
     return blur_map
 
