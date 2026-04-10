@@ -165,6 +165,11 @@ class DefaultFileHandler(AbstractFileHandler):
                 groups=['time', 'row', 'col', 'series', 'wavelength', 'z'],
                 output_format="{row}{col}_z{z}_w{wavelength}.tif"
             ),
+            'processed': FilePattern(
+                pattern=r'p(\d+)_t(\d+)_([A-Z])(\d+)_z(\d+)_(.+)',
+                groups=['plate', 'time', 'row', 'col', 'z', 'type'],
+                output_format="{plate}_{row}{col}_z{z}_w{type}.tif"
+            ),
         }
 
         self.patterns = patterns or DEFAULT_PATTERNS
@@ -228,7 +233,7 @@ class DefaultFileHandler(AbstractFileHandler):
 
     def extract_sample_id(self, filename: str) -> str | None:
         """Extract sample ID (e.g., B02) from filename like p2426_B02_z10_w2.tif"""
-        match = re.search(r'([A-Z]\d+)', filename)
+        match = re.search(r'_([A-Z]\d+)_', filename)
         if match:
             return match.group(1)
         return None
@@ -340,9 +345,9 @@ class BF_IF_FileHandler(DefaultFileHandler):
         Returns:
             Plate number as string, or "unknown" if not found
         """
-        # First, try to extract from filename itself (e.g., p2126_A01_z1.tif)
+        # First, try to extract from filename itself (e.g., p2126_A01_z1.tif or pMF5V1_A01_z1.tif)
         filename = Path(filepath).name
-        plate_match = re.search(r'p(\d+)_', filename)
+        plate_match = re.search(r"p([A-Za-z0-9]+)_", filename)
         if plate_match:
             return plate_match.group(1)
         

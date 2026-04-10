@@ -214,16 +214,16 @@ class DefaultFileHandler(AbstractFileHandler):
     def extract_unique_id(self, filename: str) -> str:
         """Extract position grouping from filename."""
         # Try to match standard pattern like "A01_z1_BF.tif"
-        match = re.search(r'([A-Z]\d+)', filename)
-        if match:
-            return match.group(1)
+        sample_id = self.extract_sample_id(filename)
+        if sample_id:
+            return sample_id
             
         # Fallback to filename without extension
         return Path(filename).stem.split('_')[0]
 
     def extract_sample_id(self, filename: str) -> str | None:
         """Extract sample ID (e.g., B02) from filename like p2426_B02_z10_w2.tif"""
-        match = re.search(r'([A-Z]\d+)', filename)
+        match = re.search(r'_([A-Z]\d+)_', filename)
         if match:
             return match.group(1)
         return None

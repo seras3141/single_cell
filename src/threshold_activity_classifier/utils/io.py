@@ -71,30 +71,32 @@ def find_brightfield_from_mcherry_path(img_path, mcherry_suffix:str = "_mCherry"
     return None
 
 
-def find_label_from_mcherry_path(img_path: Path, mcherry_suffix:str = "_mCherry", mask_suffix:str = "_Cells") -> Path | None:
+def find_label_from_mcherry_path(img_path: Path, mcherry_suffix:str = "_mCherry", mask_suffix:str = "_Cells", label_dir:Path|None = None) -> Path | None:
     """Find the corresponding label/mask file for an image.
     
     Args:
         img_path: Path to the image file
         mcherry_suffix: Suffix to identify mCherry images (default: "_mCherry")
         mask_suffix: Suffix for label/mask files (default: "_Cells")
+        label_dir: Directory to search for label files (default: None, which means search in the same directory as the image)
         
     Returns:
         Path to the label file, or None if not found
     """
     stem = img_path.name
-    
-    # If the input file is already a label file (ends with _Cells), return it as-is
-    if stem.endswith(mask_suffix + ".tif"):
-        return img_path
-    
+        
     # Strategy 1: Try exact suffix replacement with provided mcherry_suffix
     target_name = stem.replace(mcherry_suffix, mask_suffix)
-    candidate = img_path.parent / target_name
+
+    if label_dir:
+        candidate = label_dir / target_name
+    else:
+        candidate = img_path.parent / target_name
+
     if candidate.exists():
         return candidate
     else:
-        raise NotImplementedError("Method needs to be updated")
+        return None
     
     # # Strategy 2: If "_w2" in name, try prefix before that + mask_suffix
     # # (common pattern: _w2.tif -> _Cells.tif)
