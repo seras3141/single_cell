@@ -135,8 +135,8 @@ class InstanceMetricsExtractor:
 
     def process_single_image(
         self,
-        img_path: Union[str, Path],
-        lbl_path: None | str | Path = None
+        img_path: str | Path,
+        lbl_path: str | Path | None,
     ) -> Tuple[Optional[str], Optional[pd.DataFrame]]:
         """Process a single image and extract metrics for all instances.
         
@@ -149,11 +149,9 @@ class InstanceMetricsExtractor:
             - metrics_dataframe: DataFrame with metrics, or None if processing failed
         """
         img_path = Path(img_path)
-        lbl_path = lbl_path or find_label_from_mcherry_path(img_path)
-        
         if lbl_path is None:
-            return f"warning: no label found for {img_path.name}, skipping", None
-
+            return f"Warning: No label path provided for image {img_path.name}", None
+        
         # --- I/O (lean dtypes, avoid extra copies) ---
         img = tiff.imread(str(img_path))
         lbl = tiff.imread(str(lbl_path))
@@ -205,7 +203,11 @@ class InstanceMetricsExtractor:
         returns:
             DataFrame with metrics for all instances from all images
         """
-        lbl_paths = lbl_paths or [None] * len(img_paths)  # type: ignore
+
+        if lbl_paths is None:
+            lbl_paths = [find_label_from_mcherry_path(Path(p)) for p in img_paths]  # type: ignore
+        if lbl_paths is None or len(lbl_paths) != len(img_paths):
+            raise ValueError("Label paths must be provided and correspond to image paths")
 
         pairs = tqdm(zip(img_paths, lbl_paths), total=len(img_paths), disable=not show_progress)
         results = Parallel(n_jobs=n_jobs)(
