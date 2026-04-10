@@ -212,8 +212,7 @@ class EvaluationPipeline:
 
         # Respect SLURM environment variable if available
         if n_jobs is None:
-            n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count())) # type: ignore
-
+            n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1))
         logger.info(f"Evaluating batch of {len(pred_masks)} images with {n_jobs} Jobs")
         
         batch_results = []
@@ -454,6 +453,7 @@ class EvaluationPipeline:
     def plot_results(
         self,
         output_dir: Optional[Union[str, Path]] = None,
+        summary_metrics: Optional[Dict[str, Any]] = None,
         show: bool = True,
         plot_types: Optional[List[str]] = None
     ) -> Dict[str, Any]:
@@ -487,7 +487,8 @@ class EvaluationPipeline:
         figures = {}
         
         # Compute summary metrics if not already done
-        summary_metrics = self.compute_summary_metrics()
+        if summary_metrics is None:
+            summary_metrics = self.compute_summary_metrics()
         
         if output_dir:
             output_dir = Path(output_dir)

@@ -88,13 +88,12 @@ class BlurFilter:
         if blur_cache_dir is not None:
             blur_file_handler = BlurFileHandler()
             blur_suffix = f"{self.config.blur_map_suffix}_{self.config.patch_size}_{self.config.stride_size}"
-            blur_file_name = blur_file_handler.rename_image(image_path, blur_suffix)
+            blur_file_name = blur_file_handler.rename_image(str(image_path), blur_suffix)
             blur_path = Path(blur_cache_dir) / blur_file_name
 
         else:
             blur_path = None
 
-            
         blur_map = get_or_compute_blur_heatmap(
             image_path,
             blur_path=blur_path,
@@ -168,6 +167,10 @@ class BlurFilter:
         Returns:
             Tuple of (filtered_mask, quality_stats)
         """
+
+        # Will be deprecated in favor of filter_cells_by_blur_fast, but keeping for now for clarity and testing
+        self.logger.warning("filter_cells_by_blur is not optimized for large images. Consider using filter_cells_by_blur_fast instead.")
+
         blur_threshold = blur_threshold or self.config.blur_threshold
         invert_threshold = invert_threshold if invert_threshold is not None else self.config.invert_threshold
         

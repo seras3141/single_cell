@@ -213,9 +213,9 @@ def run_evaluation(
             )
             
             if plots:
-                print("\nPlots created:")
+                logger.info("Plots created:")
                 for plot_name in plots.keys():
-                    print(f"  - {plot_name}.png")
+                    logger.info(f"  - {plot_name}.png")
             
         except Exception as e:
             logger.warning(f"Failed to generate plots: {e}")

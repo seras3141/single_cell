@@ -37,7 +37,8 @@ class OutputManager:
         base_output_dir: Union[str, Path],
         model_name: str = "",
         dataset_name: str = "test",
-        create_subdirs: bool = True
+        create_subdirs: bool = True,
+        pred_mask_suffix: str = "_pred_mask"
     ):
         """
         Initialize output manager.
@@ -47,11 +48,13 @@ class OutputManager:
             model_name: Name of the model used for predictions
             dataset_name: Name of the dataset being processed
             create_subdirs: Whether to create subdirectories for different output types
+            pred_mask_suffix: Suffix for prediction mask files
         """
         self.base_output_dir = Path(base_output_dir)
         self.model_name = model_name
         self.dataset_name = dataset_name
         self.create_subdirs = create_subdirs
+        self.pred_mask_suffix = pred_mask_suffix
         
         # Create main output directory: {out_dir}/{model_name}/{dataset}
         self.output_dir = self.base_output_dir / model_name / dataset_name
@@ -88,7 +91,6 @@ class OutputManager:
         metadata: Dict[str, Any],
         input_path: Union[str, Path],
         original_image: Optional[np.ndarray] = None,
-        suffix: str = "_masks",
         save_overlay: bool = True,
         save_metadata: bool = True
     ) -> Dict[str, Path]:
@@ -109,6 +111,7 @@ class OutputManager:
         """
         input_path = Path(input_path)
         base_name = self._get_output_filename(input_path)
+        suffix = self.pred_mask_suffix
         
         saved_files = {}
         

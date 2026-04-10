@@ -22,7 +22,7 @@ segmentation:
     results_folder: "inference"  # Subfolder within output_dir
     file_pattern: "*_BF.tif"  # Glob pattern for selecting image files
     process_z_stacks: false  # Whether to process Z-stacks
-    save_overlays: true  # Whether to save overlay images
+    save_overlays: false  # Whether to save overlay images
     save_metadata: true  # Whether to save JSON metadata for predictions
 #   # save_individual_slices: true  # For Z-stacks, save individual slices
 #   # create_subdirs: true  # Create organized subdirectories

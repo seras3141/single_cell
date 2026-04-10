@@ -11,8 +11,15 @@ from typing import Dict, Any, Optional, Union, List, Callable
 from pathlib import Path
 import logging
 import tifffile as tiff
-import torch
 from tqdm import tqdm
+
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    torch = None
+    TORCH_AVAILABLE = False
+    logging.warning("torch not available. GPU inference will not be supported.")
 
 from .base_predictor import BasePredictor
 from .cellpose_predictor import CellposePredictor
@@ -98,7 +105,7 @@ class InferencePipeline:
         output_dir: Optional[Union[str, Path]]=None,
         dataset_name: Optional[str] = "test",
         model_name: Optional[str]=None,
-        device: Optional[Union[str, torch.device]]=None,
+        device: Optional[Union[str, Any]]=None,
         **kwargs
     ) -> "InferencePipeline":
         """
