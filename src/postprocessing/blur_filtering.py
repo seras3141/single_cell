@@ -118,6 +118,10 @@ class BlurFilter:
         Returns:
             Tuple of (filtered_mask, quality_stats)
         """
+
+        # Will be deprecated in favor of filter_cells_by_blur_fast, but keeping for now for clarity and testing
+        self.logger.warning("filter_cells_by_blur is not optimized for large images. Consider using filter_cells_by_blur_fast instead.")
+
         blur_threshold = blur_threshold or self.config.blur_threshold
         invert_threshold = invert_threshold if invert_threshold is not None else self.config.invert_threshold
         

@@ -168,6 +168,7 @@ class OutputManager:
         dataset_name: str = "test",
         create_subdirs: bool = True,
         label_format: str = "zarr",
+        pred_mask_suffix: str = "_pred_mask"
     ):
         """
         Initialize output manager.
@@ -179,6 +180,7 @@ class OutputManager:
             create_subdirs: Whether to create subdirectories for different output types
             label_format: Format for saving segmentation labels. One of
                 ``"tif"``, ``"zarr"`` (default), or ``"hdf5"``.
+            pred_mask_suffix: Suffix for prediction mask files
         """
         if label_format not in self.LABEL_FORMATS:
             raise ValueError(f"label_format must be one of {list(self.LABEL_FORMATS)}; got {label_format!r}")
@@ -189,6 +191,7 @@ class OutputManager:
         self.model_name = model_name
         self.dataset_name = dataset_name
         self.create_subdirs = create_subdirs
+        self.pred_mask_suffix = pred_mask_suffix
         
         # Create main output directory: {out_dir}/{model_name}/{dataset}
         self.output_dir = self.base_output_dir / model_name / dataset_name
@@ -225,7 +228,6 @@ class OutputManager:
         metadata: Dict[str, Any],
         input_path: Union[str, Path],
         original_image: Optional[np.ndarray] = None,
-        suffix: str = "_masks",
         save_overlay: bool = True,
         save_metadata: bool = True
     ) -> Dict[str, Path]:
@@ -246,6 +248,7 @@ class OutputManager:
         """
         input_path = Path(input_path)
         base_name = self._get_output_filename(input_path)
+        suffix = self.pred_mask_suffix
         
         saved_files = {}
         

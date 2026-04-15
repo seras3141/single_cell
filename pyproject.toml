@@ -7,7 +7,7 @@ name = "single-cell-analysis"
 version = "0.1.0"
 description = "Single cell segmentation, tracking, and feature extraction pipeline for brightfield microscopy"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
     {name = "Serena Sritharan", email = "serena.sritharan@helmholtz-munich.de"},
@@ -45,7 +45,7 @@ dependencies = [
     "tqdm>=4.62.0",
     "PyYAML>=5.4.0",
     "omegaconf>=2.3.0",
-    "threshold-activity-classifier @ file:src/threshold_activity_classifier",
+    "threshold-activity-classifier",
 ]
 
 [project.optional-dependencies]
@@ -71,7 +71,10 @@ gpu = [
     "torchaudio>=2.0.0",
 ]
 classifier = [
-    "threshold-activity-classifier[napari,jupyter] @ file:src/threshold_activity_classifier",
+    "threshold-activity-classifier[napari,jupyter]",
+]
+sam = [
+    "cellpose>=4.0.0",
 ]
 scportrait = [
     "scportrait>=1.6"
@@ -84,6 +87,10 @@ scportrait = [
 
 [project.scripts]
 single-cell-pipeline = "scripts.run_pipeline:main"
+
+[tool.uv.sources]
+threshold-activity-classifier = { path = "src/threshold_activity_classifier" }
+cellpose = { git = "https://github.com/MouseLand/cellpose", tag = "v4.0.0" }
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -25,7 +25,7 @@ preprocessing:
   wavelength_mappings:
     1: "AnnexinV"
     2: "mCherry"
-    3: "AnnexinV"
+    3: "BF"
 
   # Optional: default plate number (overrides auto-detection from filepath)
   # plate_number: "2126"

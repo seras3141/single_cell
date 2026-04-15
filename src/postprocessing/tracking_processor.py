@@ -15,6 +15,7 @@ import tifffile as tiff
 from tqdm import tqdm
 import json
 import time
+from joblib import Parallel, delayed
 
 from src.inference.output_manager import LABEL_FORMATS, save_labels
 
@@ -308,6 +309,30 @@ class CellTrackingPipeline:
 
         return results
 
+    def _process_single_wrapper(
+        self,
+        seg_file: Path,
+        image_dir: Path,
+        mask_suffix: str,
+        image_suffix: str,
+        blur_cache_dir: Optional[Path],
+        output_manager: "TrackingOutputManager",
+    ) -> Optional[Dict[str, Any]]:
+        """Error-handling wrapper around process_single_file_opt for parallel execution."""
+        image_file = self._get_candidate_image_for_segmentation(seg_file, image_dir, mask_suffix, image_suffix)
+        if image_file is None:
+            return None
+        try:
+            return self.process_single_file_opt(
+                seg_file, image_file,
+                segmentation_suffix=mask_suffix,
+                blur_cache_dir=blur_cache_dir,
+                output_manager=output_manager,
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to process {seg_file.name}: {e}")
+            return {'input_segmentation': str(seg_file), 'error': str(e)}
+
     def process_batch(
         self,
         image_dir: Union[str, Path],
@@ -316,6 +341,7 @@ class CellTrackingPipeline:
         blur_cache_dir: Optional[Union[str, Path]] = None,
         image_pattern: Optional[str] = None,
         mask_pattern: Optional[str] = None,
+        n_jobs: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """ Process a batch of segmentation files with their corresponding image files.
         Args:
@@ -341,20 +367,24 @@ class CellTrackingPipeline:
         if not seg_files:
             self.logger.warning(f"No segmentation files found in {mask_dir} with suffix {mask_suffix}")
             return []
-        
-        results = []
-        for seg_file in tqdm(seg_files, desc="Processing files"):
 
-            image_file = self._get_candidate_image_for_segmentation(seg_file, image_dir, mask_suffix, image_suffix)
-            if image_file is None:
-                continue
+        # Patched up code for slurm parallel execution 
+        # TODO : will be refactored in the future when we have a more robust file handling system in place
+        if n_jobs is None:
+            n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1))
+        self.logger.info(f"Processing {len(seg_files)} files with {n_jobs} workers")
 
-            try:
-                result = self.process_single_file_opt(seg_file, image_file, segmentation_suffix=mask_suffix, blur_cache_dir=blur_cache_dir, output_manager=output_manager)
-                results.append(result)
-            except Exception as e:
-                self.logger.error(f"Failed to process {seg_file.name}: {e}")
-                results.append({'input_segmentation': str(seg_file), 'error': str(e)})
+        blur_cache_path = Path(blur_cache_dir) if blur_cache_dir else None
+
+        raw_results = Parallel(n_jobs=n_jobs, backend='loky')(
+            delayed(self._process_single_wrapper)(
+                seg_file, image_dir, mask_suffix, image_suffix,
+                blur_cache_path, output_manager,
+            )
+            for seg_file in tqdm(seg_files, desc="Processing files")
+        )
+
+        results = [r for r in raw_results if r is not None]
 
         # Save batch summary as JSON
         output_manager.save_batch_summary(results)
