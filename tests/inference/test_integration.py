@@ -14,6 +14,7 @@ import yaml
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 from src.inference import InferencePipeline, CellposePredictor, OutputManager
+from src.inference.output_manager import load_labels
 
 @pytest.fixture
 def temp_dirs():
@@ -133,11 +134,12 @@ def test_output_single_file_validation(temp_dirs, test_files):
     )
     assert result['status'] == 'success'
     expected_base = temp_dirs[1] / "test_model" / "validation_test"
-    mask_file = expected_base / "masks" / test_file.name.replace("_BF.tif", "_masks.tif")
+    # OutputManager defaults to zarr format
+    mask_file = expected_base / "masks" / test_file.name.replace("_BF.tif", "_masks.zarr")
     assert mask_file.exists(), "Mask file does not exist : {}".format(mask_file)
 
-    masks = tifffile.imread(mask_file)
-    assert masks.dtype == np.uint16
+    masks = load_labels(mask_file)
+    assert masks.dtype in (np.dtype("uint8"), np.dtype("uint16"), np.dtype("uint32"))
     assert masks.shape[0] > 0 and masks.shape[1] > 0
 
     metadata_file = expected_base / "metadata" / test_file.name.replace("_BF.tif", "_metadata.json")

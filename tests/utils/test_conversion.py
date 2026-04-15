@@ -3,6 +3,8 @@ Unit tests for conversion module (utils).
 Tests for combining 2D images to 3D and splitting 3D images to 2D.
 """
 
+import importlib.util as _ilu
+
 import pytest
 import numpy as np
 import tempfile
@@ -13,6 +15,11 @@ import tifffile as tiff
 import shutil
 
 from src.utils.conversion import combine_2d_to_3d, split_3d_to_2d
+
+_ZARR_AVAILABLE = _ilu.find_spec("zarr") is not None
+_H5PY_AVAILABLE = _ilu.find_spec("h5py") is not None
+_skip_no_zarr = pytest.mark.skipif(not _ZARR_AVAILABLE, reason="zarr not installed")
+_skip_no_h5py = pytest.mark.skipif(not _H5PY_AVAILABLE, reason="h5py not installed")
 
 
 class TestCombine2DTo3D:
@@ -304,6 +311,68 @@ class TestSplit3DTo2D:
         # Should raise an error when trying to read non-existent file
         with pytest.raises(FileNotFoundError):
             split_3d_to_2d(nonexistent_file, output_dir)
+
+    @_skip_no_zarr
+    def test_split_zarr_input(self, temp_dir):
+        """split_3d_to_2d should accept a .zarr volume via load_labels."""
+        import zarr
+
+        input_dir = temp_dir["input"]
+        output_dir = str(temp_dir["output"])
+
+        np.random.seed(0)
+        volume = np.random.randint(0, 100, (3, 16, 16), dtype=np.uint16)
+        zarr_path = str(input_dir / "sample_3d.zarr")
+        z = zarr.open(zarr_path, mode="w", shape=volume.shape, dtype=volume.dtype)
+        z[:] = volume
+
+        split_3d_to_2d(zarr_path, output_dir)
+
+        output_files = sorted(Path(output_dir).glob("*.tif"))
+        assert len(output_files) == 3
+        assert [f.name for f in output_files] == [f"sample_z{i+1}.tif" for i in range(3)]
+        for z_idx, f in enumerate(output_files):
+            np.testing.assert_array_equal(tiff.imread(str(f)), volume[z_idx])
+
+    @_skip_no_h5py
+    def test_split_hdf5_input(self, temp_dir):
+        """split_3d_to_2d should accept a .h5 volume via load_labels."""
+        import h5py
+
+        input_dir = temp_dir["input"]
+        output_dir = str(temp_dir["output"])
+
+        np.random.seed(1)
+        volume = np.random.randint(0, 100, (4, 16, 16), dtype=np.uint16)
+        h5_path = str(input_dir / "sample_3d.h5")
+        with h5py.File(h5_path, "w") as f:
+            f.create_dataset("labels", data=volume)
+
+        split_3d_to_2d(h5_path, output_dir)
+
+        output_files = sorted(Path(output_dir).glob("*.tif"))
+        assert len(output_files) == 4
+        assert [f.name for f in output_files] == [f"sample_z{i+1}.tif" for i in range(4)]
+        for z_idx, f in enumerate(output_files):
+            np.testing.assert_array_equal(tiff.imread(str(f)), volume[z_idx])
+
+    @_skip_no_zarr
+    def test_split_zarr_input_with_suffix(self, temp_dir):
+        """Suffix is appended to each slice name when splitting a zarr volume."""
+        import zarr
+
+        input_dir = temp_dir["input"]
+        output_dir = str(temp_dir["output"])
+
+        volume = np.ones((2, 8, 8), dtype=np.uint16)
+        zarr_path = str(input_dir / "sample_3d.zarr")
+        z = zarr.open(zarr_path, mode="w", shape=volume.shape, dtype=volume.dtype)
+        z[:] = volume
+
+        split_3d_to_2d(zarr_path, output_dir, suffix="BF")
+
+        names = {f.name for f in Path(output_dir).glob("*.tif")}
+        assert names == {"sample_z1_BF.tif", "sample_z2_BF.tif"}
 
     def test_dtype_preservation(self, temp_dir):
         """Test that data type is preserved during splitting."""

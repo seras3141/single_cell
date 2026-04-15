@@ -4,6 +4,7 @@ Main inference pipeline for running cell segmentation predictions.
 This module provides a high-level interface for running inference
 on datasets using various segmentation models with organized output.
 """
+from __future__ import annotations
 
 import os
 import numpy as np
