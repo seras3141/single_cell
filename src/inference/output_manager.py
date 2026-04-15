@@ -6,12 +6,22 @@ with proper directory structure and file naming conventions.
 """
 
 import numpy as np
-from typing import Dict, Any, Optional, Union, List
+from typing import Dict, Any, Optional, Tuple, Union
 from pathlib import Path
 import logging
 import json
 import tifffile as tiff
 from datetime import datetime
+
+try:
+    import zarr
+    from numcodecs import Blosc
+    _ZARR_AVAILABLE = True
+except ImportError:
+    _ZARR_AVAILABLE = False
+
+import importlib.util as _importlib_util
+_H5PY_AVAILABLE = _importlib_util.find_spec("h5py") is not None
 
 try:
     import matplotlib
@@ -23,6 +33,106 @@ except ImportError:
     PLOTTING_AVAILABLE = False
     logging.warning("Plotting libraries not available. Visualization outputs will be skipped.")
 
+#: Supported label formats → file extensions.
+LABEL_FORMATS: Dict[str, str] = {"tif": ".tif", "zarr": ".zarr", "hdf5": ".h5"}
+
+def _optimal_label_dtype(arr):
+    max_val = int(arr.max())
+    if max_val <= np.iinfo(np.uint8).max:
+        return np.uint8
+    elif max_val <= np.iinfo(np.uint16).max:
+        return np.uint16
+    return np.uint32
+
+def _normalize_label_dtype(masks: np.ndarray) -> np.ndarray:
+    """Cast instance-label array to uint16 or uint32 as needed."""
+    return masks.astype(_optimal_label_dtype(masks))
+
+def save_labels(masks: np.ndarray, output_path: Union[str, Path], chunks: Tuple|None = None) -> None:
+    """
+    Save an instance-label array to the output format is determined by the file extension:
+
+    * ``.tif`` / ``.tiff``  LZW-compressed TIFF via tifffile
+    * ``.zarr``             Zarr directory store with Blosc/zstd compression
+    * ``.h5``               HDF5 file with gzip compression via h5py
+
+    The array dtype is normalised to uint16 or uint32 before writing.
+    """
+    output_path = Path(output_path)
+    masks = _normalize_label_dtype(masks)
+    ext = output_path.suffix.lower()
+
+    if ext in (".tif", ".tiff"):
+        tiff.imwrite(output_path, masks, compression="lzw")
+
+    elif ext == ".zarr":
+        if not _ZARR_AVAILABLE:
+            raise ImportError(
+                "zarr is required to save .zarr labels. "
+                "Install it with: pip install zarr"
+            )
+        compressor = Blosc(cname="zstd", clevel=3, shuffle=Blosc.BITSHUFFLE)
+        # allow caller to override, fall back to z-slice chunks
+        chunks = chunks or (1, masks.shape[-2], masks.shape[-1])
+
+        z = zarr.open(
+            str(output_path), mode="w",
+            shape=masks.shape, dtype=masks.dtype,
+            chunks=chunks, compressor=compressor,
+        )
+        z[:] = masks
+
+    elif ext == ".h5":
+        if not _H5PY_AVAILABLE:
+            raise ImportError(
+                "h5py is required to save .h5 labels. "
+                "Install it with: pip install h5py"
+            )
+        import h5py
+        chunks = chunks or (1, masks.shape[-2], masks.shape[-1])
+        with h5py.File(output_path, "w") as f:
+            f.create_dataset(
+                "labels", data=masks,
+                compression="gzip", compression_opts=4,
+                chunks=chunks,
+            )
+
+    else:
+        raise ValueError(f"Unsupported label file extension: {ext!r}")
+
+def load_labels(input_path: Union[str, Path]) -> np.ndarray:
+    """
+    Load an instance-label array from a tif, zarr, or hdf5 file.
+    """
+    input_path = Path(input_path)
+    ext = input_path.suffix.lower()
+
+    if ext in (".tif", ".tiff"):
+        return tiff.imread(str(input_path))
+
+    elif ext == ".zarr":
+        if not _ZARR_AVAILABLE:
+            raise ImportError(
+                "zarr is required to load .zarr labels. "
+                "Install it with: pip install zarr"
+            )
+        return np.array(zarr.open(str(input_path), mode="r"))
+
+    elif ext == ".h5":
+        if not _H5PY_AVAILABLE:
+            raise ImportError(
+                "h5py is required to load .h5 labels. "
+                "Install it with: pip install h5py"
+            )
+        import h5py
+        with h5py.File(input_path, "r") as f:
+            ds = f["labels"]
+            assert isinstance(ds, h5py.Dataset)
+            return np.asarray(ds)
+
+    else:
+        raise ValueError(f"Unsupported label file extension: {ext!r}")
+
 
 class OutputManager:
     """
@@ -32,22 +142,33 @@ class OutputManager:
     masks, visualizations, and metadata with consistent naming conventions.
     """
     
+    #: Supported label formats and their file extensions.
+    LABEL_FORMATS = {"tif": ".tif", "zarr": ".zarr", "hdf5": ".h5"}
+
     def __init__(
         self,
         base_output_dir: Union[str, Path],
         model_name: str = "",
         dataset_name: str = "test",
-        create_subdirs: bool = True
+        create_subdirs: bool = True,
+        label_format: str = "zarr",
     ):
         """
         Initialize output manager.
-        
+
         Args:
             base_output_dir: Base directory for all outputs
             model_name: Name of the model used for predictions
             dataset_name: Name of the dataset being processed
             create_subdirs: Whether to create subdirectories for different output types
+            label_format: Format for saving segmentation labels. One of
+                ``"tif"``, ``"zarr"`` (default), or ``"hdf5"``.
         """
+        if label_format not in self.LABEL_FORMATS:
+            raise ValueError(f"label_format must be one of {list(self.LABEL_FORMATS)}; got {label_format!r}")
+        self.label_format = label_format
+        self._label_ext = self.LABEL_FORMATS[label_format]
+
         self.base_output_dir = Path(base_output_dir)
         self.model_name = model_name
         self.dataset_name = dataset_name
@@ -114,7 +235,7 @@ class OutputManager:
         
         try:
             # Save masks
-            mask_path = self.masks_dir / f"{base_name}{suffix}.tif"
+            mask_path = self.masks_dir / f"{base_name}{suffix}{self._label_ext}"
             self._save_masks(masks, mask_path)
             saved_files['masks'] = mask_path
             
@@ -175,7 +296,7 @@ class OutputManager:
         saved_files = {'stack': {}, 'slices': []}
         
         # Save entire stack
-        stack_path = self.masks_dir / f"{base_name}_stack.tif"
+        stack_path = self.masks_dir / f"{base_name}_stack{self._label_ext}"
         self._save_masks(masks_stack, stack_path)
         saved_files['stack']['masks'] = stack_path
         
@@ -191,7 +312,7 @@ class OutputManager:
                 slice_masks = masks_stack[z_idx]
                 slice_name = f"{base_name}_z{z_idx:03d}"
                 
-                slice_path = self.masks_dir / f"{slice_name}_masks.tif"
+                slice_path = self.masks_dir / f"{slice_name}_masks{self._label_ext}"
                 self._save_masks(slice_masks, slice_path)
                 
                 slice_info = {'z_index': z_idx, 'masks': slice_path}
@@ -262,22 +383,18 @@ class OutputManager:
         return base_name
     
     def _save_masks(self, masks: np.ndarray, output_path: Path) -> None:
-        """Save segmentation masks as TIFF file."""
+        """Save segmentation masks using the configured label format."""
         try:
-            # Ensure masks are in appropriate format
-            if masks.dtype != np.uint16 and masks.dtype != np.uint32:
-                # Convert to uint16 if possible, otherwise uint32
-                max_val = np.max(masks)
-                if max_val <= np.iinfo(np.uint16).max:
-                    masks = masks.astype(np.uint16)
-                else:
-                    masks = masks.astype(np.uint32)
-            
-            tiff.imwrite(output_path, masks, compression='lzw')
-            
+            save_labels(masks, output_path)
+
         except Exception as e:
             logging.error(f"Failed to save masks to {output_path}: {e}")
             raise
+
+    @staticmethod
+    def load_masks(path: Union[str, Path]) -> np.ndarray:
+        """Load segmentation masks from tif, zarr, or hdf5 file."""
+        return load_labels(Path(path))
     
     def _save_overlay(
         self,

@@ -15,6 +15,7 @@ from collections import defaultdict
 from tqdm import tqdm
 from glob import glob
 
+
 def combine_2d_to_3d(
     input_dir: Union[str, Path],
     output_dir: Union[str, Path],
@@ -129,8 +130,9 @@ def split_3d_to_2d(input_path: str, output_dir: Union[str, Path], suffix: Option
             suffix = suffix[:-3]
         suffix = suffix.strip('_')
 
-    # Load 3D TIFF
-    volume = tiff.imread(input_path)
+    # Load 3D volume — support tif, zarr, and hdf5
+    from src.inference.output_manager import load_labels  # local import avoids circular deps
+    volume = load_labels(Path(input_path))
     
     # Get base filename
     base_name = Path(input_path).stem

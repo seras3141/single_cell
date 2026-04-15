@@ -215,6 +215,7 @@ examples/
 
 *.djcache
 *.csv
+*.zip
 
 # venv and uv.lock
 venv/

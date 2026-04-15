@@ -16,6 +16,8 @@ from tqdm import tqdm
 import json
 import time
 
+from src.inference.output_manager import LABEL_FORMATS, save_labels
+
 from .cell_tracking import CellTracker3D
 from .blur_filtering import BlurFilter, blur_intensity_metric
 
@@ -194,7 +196,7 @@ class CellTrackingPipeline:
         # Total time
         total_time = time.time() - start_time
         timing_results['total'] = total_time
-        results['timing'] = timing_results
+        # results['timing'] = timing_results
         
         self.logger.info(f"Total processing time: {total_time:.2f}s")
         self.logger.info(f"Timing breakdown: {json.dumps(timing_results, indent=2)}")
@@ -299,7 +301,7 @@ class CellTrackingPipeline:
         # Total time
         total_time = time.time() - start_time
         timing_results['total'] = total_time
-        results['timing'] = timing_results
+        # results['timing'] = timing_results
         
         self.logger.info(f"Total processing time: {total_time:.2f}s")
         self.logger.info(f"Timing breakdown: {json.dumps(timing_results, indent=2)}")
@@ -360,7 +362,19 @@ class CellTrackingPipeline:
 
 class TrackingOutputManager:
     """Handles saving of intermediate and final outputs for cell tracking pipeline."""
-    def __init__(self, output_dir: Union[str, Path]):
+
+    def __init__(self, output_dir: Union[str, Path], label_format: str = "zarr"):
+        """
+        Args:
+            output_dir: Root directory for all tracking outputs.
+            label_format: Format for saving segmentation labels. One of
+                ``"tif"``, ``"zarr"`` (default), or ``"hdf5"``.
+        """
+        if label_format not in LABEL_FORMATS:
+            raise ValueError(f"label_format must be one of {list(LABEL_FORMATS)}; got {label_format!r}")
+        self.label_format = label_format
+        self._label_ext = LABEL_FORMATS[label_format]
+
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.subdirs = {
@@ -373,25 +387,25 @@ class TrackingOutputManager:
         for subdir in self.subdirs.values():
             subdir.mkdir(parents=True, exist_ok=True)
 
-    def save_blur_filtered(self, arr: np.ndarray, filename_prefix: str):
-        path = self.subdirs['blur_filtered'] / f"{filename_prefix}.tif"
-        tiff.imwrite(str(path), arr)
+    def _save(self, arr: np.ndarray, path: Path) -> str:
+        save_labels(arr, path)
         return str(path)
+
+    def save_blur_filtered(self, arr: np.ndarray, filename_prefix: str):
+        path = self.subdirs['blur_filtered'] / f"{filename_prefix}{self._label_ext}"
+        return self._save(arr, path)
 
     def save_tracked(self, arr: np.ndarray, filename_prefix: str):
-        path = self.subdirs['tracked'] / f"{filename_prefix}.tif"
-        tiff.imwrite(str(path), arr)
-        return str(path)
+        path = self.subdirs['tracked'] / f"{filename_prefix}{self._label_ext}"
+        return self._save(arr, path)
 
     def save_tracked_blur_filtered(self, arr: np.ndarray, filename_prefix: str):
-        path = self.subdirs['tracked_blur_filtered'] / f"{filename_prefix}.tif"
-        tiff.imwrite(str(path), arr)
-        return str(path)
+        path = self.subdirs['tracked_blur_filtered'] / f"{filename_prefix}{self._label_ext}"
+        return self._save(arr, path)
 
     def save_final(self, arr: np.ndarray, filename_prefix: str):
-        path = self.subdirs['final'] / f"{filename_prefix}.tif"
-        tiff.imwrite(str(path), arr)
-        return str(path)
+        path = self.subdirs['final'] / f"{filename_prefix}{self._label_ext}"
+        return self._save(arr, path)
 
     def save_batch_summary(self, results: list, filename: str = "batch_summary.json"):
         summary_path = self.output_dir / filename

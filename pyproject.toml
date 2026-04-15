@@ -35,6 +35,8 @@ dependencies = [
     "matplotlib>=3.4.0",
     "seaborn>=0.11.0",
     "tifffile>=2021.7.2",
+    "zarr>=2.10.0",
+    "numcodecs>=0.9.0",
     "Pillow>=8.3.0",
     "imageio>=2.9.0",
     "trackpy>=0.5.0",
@@ -70,6 +72,9 @@ gpu = [
 ]
 classifier = [
     "threshold-activity-classifier[napari,jupyter] @ file:src/threshold_activity_classifier",
+]
+scportrait = [
+    "scportrait>=1.6"
 ]
 
 [project.urls]
