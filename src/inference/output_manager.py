@@ -15,10 +15,15 @@ from datetime import datetime
 
 try:
     import zarr
-    from numcodecs import Blosc
     _ZARR_AVAILABLE = True
+    _ZARR_MAJOR = int(zarr.__version__.split(".")[0])
+    if _ZARR_MAJOR >= 3:
+        from zarr.codecs import BloscCodec as _BloscCodec  # type: ignore[import-untyped]
+    else:
+        from numcodecs import Blosc as _Blosc  # type: ignore[import-untyped]
 except ImportError:
     _ZARR_AVAILABLE = False
+    _ZARR_MAJOR = 0
 
 import importlib.util as _importlib_util
 _H5PY_AVAILABLE = _importlib_util.find_spec("h5py") is not None
@@ -71,15 +76,25 @@ def save_labels(masks: np.ndarray, output_path: Union[str, Path], chunks: Tuple|
                 "zarr is required to save .zarr labels. "
                 "Install it with: pip install zarr"
             )
-        compressor = Blosc(cname="zstd", clevel=3, shuffle=Blosc.BITSHUFFLE)
-        # allow caller to override, fall back to z-slice chunks
-        chunks = chunks or (1, masks.shape[-2], masks.shape[-1])
+        # allow caller to override, fall back to z-slice chunks for 3D arrays
+        chunks = chunks or ((1, masks.shape[-2], masks.shape[-1]) if masks.ndim == 3 else None)
 
-        z = zarr.open(
-            str(output_path), mode="w",
-            shape=masks.shape, dtype=masks.dtype,
-            chunks=chunks, compressor=compressor,
-        )
+        if _ZARR_MAJOR >= 3:
+            z = zarr.create_array(  # type: ignore[attr-defined]
+                store=str(output_path),
+                shape=masks.shape,
+                dtype=masks.dtype,
+                chunks=chunks,
+                compressors=_BloscCodec(cname="zstd", clevel=3),  # type: ignore[name-defined]
+                overwrite=True,
+            )
+        else:
+            compressor = _Blosc(cname="zstd", clevel=3, shuffle=_Blosc.BITSHUFFLE)  # type: ignore[name-defined]
+            z = zarr.open(
+                str(output_path), mode="w",
+                shape=masks.shape, dtype=masks.dtype,
+                chunks=chunks, compressor=compressor,
+            )
         z[:] = masks
 
     elif ext == ".h5":
@@ -89,7 +104,7 @@ def save_labels(masks: np.ndarray, output_path: Union[str, Path], chunks: Tuple|
                 "Install it with: pip install h5py"
             )
         import h5py
-        chunks = chunks or (1, masks.shape[-2], masks.shape[-1])
+        chunks = chunks or ((1, masks.shape[-2], masks.shape[-1]) if masks.ndim == 3 else None)
         with h5py.File(output_path, "w") as f:
             f.create_dataset(
                 "labels", data=masks,
@@ -116,7 +131,8 @@ def load_labels(input_path: Union[str, Path]) -> np.ndarray:
                 "zarr is required to load .zarr labels. "
                 "Install it with: pip install zarr"
             )
-        return np.array(zarr.open(str(input_path), mode="r"))
+        z = zarr.open_array(str(input_path), mode="r") if _ZARR_MAJOR >= 3 else zarr.open(str(input_path), mode="r")  # type: ignore[attr-defined]
+        return np.asarray(z)
 
     elif ext == ".h5":
         if not _H5PY_AVAILABLE:
