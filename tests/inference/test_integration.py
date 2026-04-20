@@ -134,8 +134,8 @@ def test_output_single_file_validation(temp_dirs, test_files):
     )
     assert result['status'] == 'success'
     expected_base = temp_dirs[1] / "test_model" / "validation_test"
-    # OutputManager defaults to zarr format
-    mask_file = expected_base / "masks" / test_file.name.replace("_BF.tif", "_masks.zarr")
+    # OutputManager defaults to zarr format; pred_mask_suffix="_pred_mask" by default
+    mask_file = expected_base / "masks" / test_file.name.replace("_BF.tif", "_pred_mask.zarr")
     assert mask_file.exists(), "Mask file does not exist : {}".format(mask_file)
 
     masks = load_labels(mask_file)
