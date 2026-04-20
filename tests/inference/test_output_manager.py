@@ -207,6 +207,14 @@ class TestOutputManagerInit:
         assert manager.label_format == fmt
         assert manager._label_ext == ext
 
+    def test_pred_mask_suffix_default(self, temp_output_dir):
+        manager = OutputManager(temp_output_dir)
+        assert manager.pred_mask_suffix == "_pred_mask"
+
+    def test_pred_mask_suffix_custom(self, temp_output_dir):
+        manager = OutputManager(temp_output_dir, pred_mask_suffix="_masks")
+        assert manager.pred_mask_suffix == "_masks"
+
 
 class TestSavePrediction:
     @pytest.mark.parametrize("fmt,ext", FORMAT_CASES)
@@ -281,6 +289,23 @@ class TestSavePrediction:
         assert saved["num_cells"] == 50
         assert "saved_at" in saved
         assert "input_file" in saved
+
+    def test_pred_mask_suffix_in_filename(self, temp_output_dir, masks_2d):
+        """Custom pred_mask_suffix appears in the saved mask filename."""
+        manager = OutputManager(
+            base_output_dir=temp_output_dir,
+            model_name="test_model",
+            dataset_name="test",
+            pred_mask_suffix="_custom_suffix",
+        )
+        result = manager.save_prediction(
+            masks=masks_2d,
+            metadata={"num_cells": 1},
+            input_path=Path("my_image.tif"),
+            save_overlay=False,
+        )
+        assert "_custom_suffix" in result["masks"].name
+        assert result["masks"].exists()
 
     def test_save_prediction_with_overlay(self, temp_output_dir):
         manager = OutputManager(
