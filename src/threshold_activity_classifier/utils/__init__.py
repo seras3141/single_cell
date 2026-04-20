@@ -11,9 +11,6 @@ from .io import (
 # Import validation utilities
 from .validation import validate_folder
 
-# Import batch processing
-from .batch import batch_process
-
 __all__ = [
     # File I/O
     'list_tif_files',
@@ -21,6 +18,4 @@ __all__ = [
     'load_config',
     # Validation
     'validate_folder',
-    # Batch processing
-    'batch_process',
 ]

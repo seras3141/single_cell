@@ -160,6 +160,11 @@ class DefaultFileHandler(AbstractFileHandler):
                 groups=['time', 'row', 'col', 'series', 'wavelength', 'z'],
                 output_format="{row}{col}_z{z}_w{wavelength}.tif"
             ),
+            'processed': FilePattern(
+                pattern=r'p(\d+)_t(\d+)_([A-Z])(\d+)_z(\d+)_(.+)',
+                groups=['plate', 'time', 'row', 'col', 'z', 'type'],
+                output_format="{plate}_{row}{col}_z{z}_w{type}.tif"
+            ),
         }
 
         self.patterns = patterns or DEFAULT_PATTERNS
@@ -263,7 +268,7 @@ class DefaultFileHandler(AbstractFileHandler):
 
 class BF_IF_FileHandler(DefaultFileHandler):
     """
-    Input path contains the plate number, time point, position, well number, and z-stack.
+    Default FileHandler extended to contain plate number, and time point.
     
     Example input/output:
         Image:
@@ -336,9 +341,9 @@ class BF_IF_FileHandler(DefaultFileHandler):
         Returns:
             Plate number as string, or "unknown" if not found
         """
-        # First, try to extract from filename itself (e.g., p2126_A01_z1.tif)
+        # First, try to extract from filename itself (e.g., p2126_A01_z1.tif or pMF5V1_A01_z1.tif)
         filename = Path(filepath).name
-        plate_match = re.search(r'p(\d+)_', filename)
+        plate_match = re.search(r"p([A-Za-z0-9]+)_", filename)
         if plate_match:
             return plate_match.group(1)
         
@@ -415,7 +420,7 @@ class ConfigurableFileHandler(BF_IF_FileHandler):
                 self.wavelength_mappings = load_wavelength_config(config_path)
             except (FileNotFoundError, ValueError):
                 # Fall back to default if config not found
-                self.wavelength_mappings = {1: "BF", 2: "mCherry", 3: "AnnexinV"}
+                self.wavelength_mappings = {1: "AnnexinV", 2: "mCherry", 3: "BF"}
         
         # Store default plate number
         self._default_plate_number = plate_number
@@ -505,80 +510,6 @@ class ConfigurableFileHandler(BF_IF_FileHandler):
         
         return pattern.output_format.format(**values)  # type: ignore
 
-
-class StandardFileHandler(AbstractFileHandler):
-    """Standardized file naming after renaming.
-
-    This class reads various file naming conventions to a standardized format:
-    {plate}_{well}_z{z}_{type}.tif
-    
-    """
-
-    def __init__(self, patterns: Optional[Dict[str, FilePattern]] = None):
-        super().__init__(patterns)
-
-        DEFAULT_PATTERNS = {
-            'file': FilePattern(
-                pattern=r'p(\d+)_t(\d+)_([A-Z])(\d+)_z(\d+)_(.+)',
-                groups=['plate', 'time', 'row', 'col', 'z', 'type'],
-                output_format="{plate}_{row}{col}_z{z}_w{type}.tif"
-            ),
-        }
-
-        self.patterns = patterns or DEFAULT_PATTERNS
-
-    def extract_values(self, filepath: str, file_type: str) -> Dict[str, str]:
-        """Extract values from filename based on pattern."""
-
-        if file_type not in self.patterns:
-            raise ValueError(f"Unknown file type: {file_type}")
-
-        filename = Path(filepath).name
-        pattern = self.patterns[file_type]
-        match = re.search(pattern.pattern, filename)
-        
-        if not match:
-            return {}
-
-        values = dict(zip(pattern.groups, match.groups()))
-        return values
-    
-    def rename_file(self, filepath: str, file_type: str, target_type: Optional[str] = None) -> str:
-        if file_type not in self.patterns:
-            raise ValueError(f"Unknown file type: {file_type}")
-                
-        values = self.extract_values(filepath, file_type)
-
-        if not values:
-            raise ValueError(f"Could not extract values from filepath: {filepath}")
-        
-        if target_type:
-            if target_type not in self.patterns:
-                raise ValueError(f"Unknown target file type: {target_type}")
-            pattern = self.patterns.get(target_type)
-        else:
-            pattern = self.patterns[file_type]
-
-        return pattern.output_format.format(**values) # type: ignore
-
-
-    def extract_unique_id(self, filename: str) -> str:
-        raise NotImplementedError("StandardFileHandler does not implement extract_group_id.")
-
-    def get_files_by_type(self, directory: str, file_type: str) -> List[str]:
-        if not os.path.exists(directory):
-            raise FileNotFoundError(f"Error: Directory {directory} does not exist!")
-        
-        if file_type not in self.patterns:
-            raise ValueError(f"Unknown file type: {file_type}")
-
-        pattern = self.patterns[file_type].pattern
-        regex = re.compile(pattern)
-        
-        files = sorted(glob.glob(f"{directory}/**/*.tif", recursive=True))
-        files = [f for f in files if regex.search(Path(f).name)]
-
-        return files
 
 class BlurFileHandler(BF_IF_FileHandler):
     """

@@ -1,13 +1,13 @@
 """Threshold Activity Classifier - Napari plugin package
 
 A comprehensive Napari plugin for threshold-based image classification and analysis.
-Provides interactive widgets, batch processing capabilities, and flexible configuration options.
+Provides interactive widgets, validation utilities, and flexible configuration options.
 
 Main Components:
     - ThresholdClassifier: Core processing class
     - ThresholdConfig: Configuration management  
     - ThresholdWidget: Interactive Napari widget
-    - Utilities for batch processing and validation
+    - Utilities for file I/O and validation
 
 Quick Start:
     ```python
@@ -61,8 +61,7 @@ from .utils import (
     list_tif_files,
     save_config,
     load_config,
-    validate_folder,
-    batch_process
+    validate_folder
 )
 
 # Version and metadata
@@ -99,7 +98,6 @@ __all__ = [
     "save_config",
     "load_config", 
     "validate_folder",
-    "batch_process",
     
     # Napari integration
     "register_for_napari",

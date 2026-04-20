@@ -38,7 +38,6 @@ class InstanceMetricsExtractor:
         Args:
             percentiles: List of percentile values to compute (0-100).
                         Default: [95, 90, 75, 50]
-            file_handler: Custom file handler. Default: StandardFileHandler()
         """
         self.percentiles = percentiles if percentiles is not None else [95, 90, 75, 50]
         

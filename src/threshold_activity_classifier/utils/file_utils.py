@@ -155,11 +155,6 @@ class DefaultFileHandler(AbstractFileHandler):
                 groups=['row_num', 'col', 'f', 'z', 'time'],
                 output_format="{row}{col}_z{z}_Cells.tif"
             ),
-            'BF': FilePattern(
-                pattern=r't(\d+)_([A-Z])(\d+)_s(\d+)_w(1)_z(\d+)',
-                groups=['time', 'row', 'col', 'series', 'wavelength', 'z'],
-                output_format="{row}{col}_z{z}_BF.tif"
-            ),
             'image': FilePattern(
                 pattern=r't(\d+)_([A-Z])(\d+)_s(\d+)_w([1-9])_z(\d+)',
                 groups=['time', 'row', 'col', 'series', 'wavelength', 'z'],
@@ -216,7 +211,7 @@ class DefaultFileHandler(AbstractFileHandler):
         return pattern.output_format.format(**values)
 
     def rename_image(self, filename: str) -> str:
-        return self.rename_file(filename, 'BF')   # type: ignore
+        return self.rename_file(filename, 'image')   # type: ignore
 
     def rename_mask(self, filename: str) -> str:
         return self.rename_file(filename, 'mask') # type: ignore
@@ -224,9 +219,9 @@ class DefaultFileHandler(AbstractFileHandler):
     def extract_unique_id(self, filename: str) -> str:
         """Extract position grouping from filename."""
         # Try to match standard pattern like "A01_z1_BF.tif"
-        match = re.search(r'([A-Z]\d+)', filename)
-        if match:
-            return match.group(1)
+        sample_id = self.extract_sample_id(filename)
+        if sample_id:
+            return sample_id
             
         # Fallback to filename without extension
         return Path(filename).stem.split('_')[0]
@@ -273,7 +268,7 @@ class DefaultFileHandler(AbstractFileHandler):
 
 class BF_IF_FileHandler(DefaultFileHandler):
     """
-    Input path contains the plate number, time point, position, well number, and z-stack.
+    Default FileHandler extended to contain plate number, and time point.
     
     Example input/output:
         Image:
@@ -287,7 +282,6 @@ class BF_IF_FileHandler(DefaultFileHandler):
 
     def __init__(self, patterns: Dict[str, FilePattern] | None = None):
         super().__init__(patterns)
-        self.patterns['BF'].output_format = "p{plate}_{row}{col}_t{time}_z{z}_BF.tif"
         self.patterns['image'].output_format = "p{plate}_{row}{col}_t{time}_z{z}_w{wavelength}.tif"
         self.patterns['mask'].output_format = "p{plate}_{row}{col}_t{time}_z{z}_Cells.tif"
 
@@ -323,8 +317,10 @@ class BF_IF_FileHandler(DefaultFileHandler):
     def extract_unique_id(self, filename: str) -> str:
         """Extract unique identifier from standardized filename (without z-stack)."""
         parts = filename.split('_')
-        return parts[0] + "_" + parts[1] + "_" + parts[2]  # plate_rowcol_time
-    
+        if len(parts) < 3:
+            raise ValueError(f"Filename does not contain enough parts to extract unique ID: {filename} : p{{plate}}_{{row}}{{col}}_t{{time}}_z{{z}}")
+        return f"{parts[0]}_{parts[1]}_{parts[2]}"  # plate_rowcol_time
+
     def extract_time_point(self, filename: str) -> str:
         """Extract time point from filename."""
         match = re.search(r'_t(\d+)', filename)
@@ -431,7 +427,6 @@ class ConfigurableFileHandler(BF_IF_FileHandler):
         
         # Update 'image' output format to use dynamic channel names
         # The actual channel name will be substituted during rename_file()
-        self.patterns.pop('BF', None)  # Remove BF pattern since it's now handled by 'image' with dynamic mapping
         self.patterns['image'].output_format = "p{plate}_{row}{col}_t{time}_z{z}_{channel_name}.tif"
 
     def get_channel_name(self, wavelength_index: int) -> str:
@@ -516,113 +511,59 @@ class ConfigurableFileHandler(BF_IF_FileHandler):
         return pattern.output_format.format(**values)  # type: ignore
 
 
-class StandardFileHandler(AbstractFileHandler):
-    """Standardized file naming after renaming.
+class BlurFileHandler(BF_IF_FileHandler):
+    """
+    File handler for blur heatmap files, extending BF_IF_FileHandler.
 
-    This class reads various file naming conventions to a standardized format:
-    {plate}_{well}_z{z}_{type}.tif
-    
+    Inherits plate number, time point, sample ID, and z-index extraction from
+    BF_IF_FileHandler, and adds support for converting image filenames (either
+    with z-stack or 3D) into corresponding blur heatmap filenames.
+
+    Input patterns recognised:
+        file (2D/z-stack): p<plate>_<row><col>_t<time>_z<z>_<type>.tif
+                           e.g. p2126_A01_t1_z1_BF.tif
+        file_3D:           p<plate>_<row><col>_t<time>_<type>.tif
+                           e.g. pMF5V1_C09_t11_BF_3d.tif
+
+    Example usage:
+        handler = BlurFileHandler()
+        handler.rename_image('p2126_A01_t1_z1_BF.tif')
+        # -> 'p2126_A01_t1_z1_BF_blur_heatmap.tif'
+        handler.rename_image('pMF5V1_C09_t11_BF_3d.tif')
+        # -> 'pMF5V1_C09_t11_BF_3d_blur_heatmap.tif'
     """
 
+    BLUR_SUFFIX = "_blur_heatmap"
+
     def __init__(self, patterns: Optional[Dict[str, FilePattern]] = None):
-        super().__init__(patterns)
+        super().__init__(None)  # Initialise parent with its defaults
 
-        DEFAULT_PATTERNS = {
-            'file': FilePattern(
-                pattern=r'p(\d+)_t(\d+)_([A-Z])(\d+)_z(\d+)_(.+)',
-                groups=['plate', 'time', 'row', 'col', 'z', 'type'],
-                output_format="{plate}_{row}{col}_z{z}_w{type}.tif"
-            ),
-        }
+        # Add blur-specific patterns on top of the inherited image/mask patterns.
+        # Plate IDs may be alphanumeric (e.g. 'MF5V1') or purely numeric (e.g. '2126').
+        self.patterns['file'] = FilePattern(
+            pattern=r'p([A-Za-z0-9]+)_([A-Z])(\d+)_t(\d+)_z(\d+)_(.+)',
+            groups=['plate', 'row', 'col', 'time', 'z', 'type'],
+            output_format="{plate}_{row}{col}_t{time}_z{z}_{type}.tif"
+        )
+        self.patterns['file_3D'] = FilePattern(
+            pattern=r'p([A-Za-z0-9]+)_([A-Z])(\d+)_t(\d+)_(.+)',
+            groups=['plate', 'row', 'col', 'time', 'type'],
+            output_format="{plate}_{row}{col}_t{time}_{type}.tif"
+        )
 
-        self.patterns = patterns or DEFAULT_PATTERNS
+        # Allow full override via constructor argument
+        if patterns:
+            self.patterns.update(patterns)
 
-    def extract_values(self, filepath: str, file_type: str) -> Dict[str, str]:
-        """Extract values from filename based on pattern."""
+    def rename_file(self, filename: str, file_type: str, target_type: Optional[str] = None, plate_number: Optional[str] = None) -> str:
+        """Rename a blur file using the configured patterns.
 
-        if file_type not in self.patterns:
-            raise ValueError(f"Unknown file type: {file_type}")
-
-        filename = Path(filepath).name
-        pattern = self.patterns[file_type]
-        match = re.search(pattern.pattern, filename)
-        
-        if not match:
-            return {}
-
-        values = dict(zip(pattern.groups, match.groups()))
-        return values
-    
-    def rename_file(self, filepath: str, file_type: str, target_type: Optional[str] = None) -> str:
-        if file_type not in self.patterns:
-            raise ValueError(f"Unknown file type: {file_type}")
-                
-        values = self.extract_values(filepath, file_type)
+        For 'file' and 'file_3D' types the plate number is already embedded in
+        the filename and is extracted from the pattern groups directly.
+        """
+        values = self.extract_values(filename, file_type)
 
         if not values:
-            raise ValueError(f"Could not extract values from filepath: {filepath}")
-        
-        if target_type:
-            if target_type not in self.patterns:
-                raise ValueError(f"Unknown target file type: {target_type}")
-            pattern = self.patterns.get(target_type)
-        else:
-            pattern = self.patterns[file_type]
-
-        return pattern.output_format.format(**values) # type: ignore
-
-
-    def extract_unique_id(self, filename: str) -> str:
-        raise NotImplementedError("StandardFileHandler does not implement extract_group_id.")
-
-    def get_files_by_type(self, directory: str, file_type: str) -> List[str]:
-        if not os.path.exists(directory):
-            raise FileNotFoundError(f"Error: Directory {directory} does not exist!")
-        
-        if file_type not in self.patterns:
-            raise ValueError(f"Unknown file type: {file_type}")
-
-        pattern = self.patterns[file_type].pattern
-        regex = re.compile(pattern)
-        
-        files = sorted(glob.glob(f"{directory}/**/*.tif", recursive=True))
-        files = [f for f in files if regex.search(Path(f).name)]
-
-        return files
-
-class BlurFileHandler(AbstractFileHandler):
-    """
-    Implementation of file renaming for blur maps with configurable patterns.
-    """
-
-    def __init__(self, patterns: Optional[Dict[str, FilePattern]] = None):
-        super().__init__(patterns)
-
-        DEFAULT_PATTERNS = {
-            'file': FilePattern(
-                pattern=r'p(\d+)_([A-Z])(\d+)_z(\d+)_(.+)',
-                groups=['plate', 'row', 'col', 'z', 'type'],
-                output_format="{plate}_{row}{col}_z{z}_w{type}.tif"
-            ),
-            'file_3D': FilePattern(
-                pattern=r'p(\d+)_([A-Z])(\d+)_(.+)',
-                groups=['plate', 'row', 'col', 'type'],
-                output_format="{plate}_{row}{col}_w{type}.tif"
-            ),
-            # 'BF_3d': FilePattern(
-            #     pattern = r'(.+?)(_BF_3d)?\.tif',
-            #     groups=['key', 'image_suffix'],
-            #     output_format="{key}{image_suffix}{blur_suffix}.tif"
-            # ),
-        }
-
-        self.patterns = patterns or DEFAULT_PATTERNS
-
-    def rename_file(self, filename: str, file_type: str, target_type: Optional[str] = None) -> str:
-
-        value = self.extract_values(filename, file_type)
-
-        if not value:
             raise ValueError(f"Could not extract values from filename: {filename}")
 
         if target_type:
@@ -632,61 +573,37 @@ class BlurFileHandler(AbstractFileHandler):
         else:
             pattern = self.patterns[file_type]
 
-        return pattern.output_format.format(**value) # type: ignore
+        return pattern.output_format.format(**values)  # type: ignore
 
+    def rename_image(self, filename: str, suffix: str = BLUR_SUFFIX) -> str:
+        """Convert an image filename to the corresponding blur heatmap filename.
 
-    def rename_image(self, filename: str, suffix: str) -> str:
+        Works for both z-stack (2D) and 3D image filenames by appending
+        *suffix* before the .tif extension.
 
-        values = self.extract_values(filename, 'file_3D')
+        Args:
+            filename: Input image filename, either:
+                      - 2D/z-stack: e.g. 'p2126_A01_t1_z1_BF.tif'
+                      - 3D:         e.g. 'pMF5V1_C09_t11_BF_3d.tif'
+            suffix: String to append to the stem. Defaults to '_blur_heatmap'.
 
-        if not values:
-            raise ValueError(f"Could not extract values from filename: {filename}")
-        
-        if values['type'] != 'BF_3d':
-            raise ValueError(f"Image suffix BF_3d not found in filename '{filename}'")
-        
-        # Add blur suffix to end of filename
-        base = Path(filename).stem
-        filename = f"{base}{suffix}.tif"
+        Returns:
+            Blur heatmap filename with *suffix* inserted before the extension.
 
-        return filename
+        Raises:
+            ValueError: If *filename* does not match the 'file' or 'file_3D' pattern.
+        """
+        # Check 'file' first (more specific — requires z component) then 'file_3D'.
+        for file_type in ('file', 'file_3D'):
+            if self.extract_values(filename, file_type):
+                base = Path(filename).stem
+                return f"{base}{suffix}.tif"
 
-        # values['blur_suffix'] = suffix
-        
-        # return pattern.output_format.format(**values)
-        
-    def extract_unique_id(self, filename: str) -> str:
-        """Extract position grouping from filename."""
-        # Try to match standard pattern like "A01_z1_BF.tif"
-        match = re.search(r'([A-Z]\d+)', filename)
-        if match:
-            return match.group(1)
-            
-        # Fallback to filename without extension
-        return Path(filename).stem.split('_')[0]
-
-    def get_files_by_type(self, directory: str, file_type: str) -> List[str]:
-        if file_type not in self.patterns:
-            raise ValueError(f"Unknown file type: {file_type}")
-        pattern = self.patterns[file_type]
-
-        return sorted(glob.glob(f"{directory}/**/*{pattern.pattern}.tif", recursive=True))
-
-    def extract_values(self, filepath: str, file_type: str) -> Dict[str, str]:
-        """Extract values from filename based on pattern."""
-
-        if file_type not in self.patterns:
-            raise ValueError(f"Unknown file type: {file_type}")
-
-        filename = Path(filepath).stem
-        pattern = self.patterns[file_type]
-        match = re.search(pattern.pattern, filename)
-
-        if not match:
-            return {}
-
-        values = dict(zip(pattern.groups, match.groups()))
-        return values
+        raise ValueError(
+            f"Could not match '{filename}' to any known blur pattern. "
+            f"Expected 'p<plate>_<row><col>_t<time>_z<z>_<type>.tif' "
+            f"or 'p<plate>_<row><col>_t<time>_<type>.tif'."
+        )
 
 def get_groups_from_filenames(file_map: Dict[str, str], file_handler: AbstractFileHandler) -> Dict[str, List[str]]:
     """
@@ -709,7 +626,6 @@ def get_groups_from_filenames(file_map: Dict[str, str], file_handler: AbstractFi
 
 def list_all_files(directory: str, file_handler: AbstractFileHandler) -> Dict[str, List[str]]:
     """List files in a directory using the file handler."""
-        # Find all images and masks
     file_list = {}
     for k, v in file_handler.patterns.items():
         file_list[k] = file_handler.get_files_by_type(directory, k)
@@ -726,7 +642,6 @@ def rename_all_files(file_map: Dict[str, List[str]], file_handler: AbstractFileH
             renamed_file_map[file_type].append((filepath, new_name))
 
     return renamed_file_map
-
 
 def copy_file(
     src_file: Union[str, Path],
@@ -834,7 +749,7 @@ if __name__ == "__main__":
     # Example command
     example_parser = subparsers.add_parser("example", help="Show example file renaming")
     example_parser.add_argument("--file", required=True, help="Path to example file")
-    example_parser.add_argument("--type", choices=["BF", "mask"], required=True, help="File type")
+    example_parser.add_argument("--type", choices=["image", "mask"], required=True, help="File type")
     
     args = parser.parse_args()
     
@@ -842,9 +757,11 @@ if __name__ == "__main__":
         raise NotImplementedError("Standardize dataset functionality not implemented yet.")
     elif args.command == "example":
         handler = BF_IF_FileHandler()
-        if args.type == "BF":
+        if args.type == "image":
             new_name = handler.rename_image(args.file)
-        else:
+        elif args.type == "mask":
             new_name = handler.rename_mask(args.file)
+        else:
+            raise ValueError(f"Unknown file type: {args.type}")
         print(f"Original: {args.file}")
         print(f"Renamed:  {new_name}")

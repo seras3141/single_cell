@@ -17,18 +17,19 @@ def setup_logging(level: str = "INFO", log_file = None, verbose: bool = True, lo
         os.makedirs(log_dir, exist_ok=True)
 
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    formatter = logging.Formatter(log_format)
 
-    # Set up handlers
-    handlers = []
+    root = logging.getLogger()
+    root.setLevel(log_level)
+
     if log_file:
-        handlers.append(logging.FileHandler(log_file))
-    if verbose:
-        handlers.append(logging.StreamHandler(sys.stdout))
+        fh = logging.FileHandler(log_file)
+        fh.setFormatter(formatter)
+        root.addHandler(fh)
 
-    logging.basicConfig(
-        level=log_level,
-        format=log_format,
-        handlers=handlers
-    )
+    if verbose:
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setFormatter(formatter)
+        root.addHandler(sh)
 
 
