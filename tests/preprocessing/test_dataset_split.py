@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import tempfile
 from pathlib import Path
@@ -11,6 +12,7 @@ import pytest
 
 from src.preprocessing.dataset_split import (
     copy_with_split_dict,
+    get_groups_from_filenames,
     split_dataset_dict,
     split_dataset_list,
     train_test_split_directory,
@@ -124,7 +126,7 @@ def test_split_dataset_dict_group_integrity_and_copy(
     train_files, test_files = cast(
         SplitResult,
         split_dataset_dict(
-            file_map={"BF": image_files, "mask": mask_files},
+            file_map={"image": image_files, "mask": mask_files},
             test_size=0.33,
             random_state=42,
             file_handler=file_handler,
@@ -132,13 +134,13 @@ def test_split_dataset_dict_group_integrity_and_copy(
         ),
     )
 
-    assert len(train_files["BF"]) > 0
-    assert len(test_files["BF"]) > 0
+    assert len(train_files["image"]) > 0
+    assert len(test_files["image"]) > 0
     assert len(train_files["mask"]) > 0
     assert len(test_files["mask"]) > 0
 
-    train_groups = _group_ids_from_paths(train_files["BF"], file_handler)
-    test_groups = _group_ids_from_paths(test_files["BF"], file_handler)
+    train_groups = _group_ids_from_paths(train_files["image"], file_handler)
+    test_groups = _group_ids_from_paths(test_files["image"], file_handler)
     assert train_groups
     assert test_groups
     assert train_groups.isdisjoint(test_groups)
@@ -164,7 +166,7 @@ def test_split_dataset_dict_no_split_all_train(
     train_files, test_files = cast(
         SplitResult,
         split_dataset_dict(
-            file_map={"BF": image_files, "mask": mask_files},
+            file_map={"image": image_files, "mask": mask_files},
             test_size=0,
             random_state=42,
             file_handler=BF_IF_FileHandler(),
@@ -172,7 +174,7 @@ def test_split_dataset_dict_no_split_all_train(
         ),
     )
 
-    assert len(train_files["BF"]) == len(image_files)
+    assert len(train_files["image"]) == len(image_files)
     assert len(train_files["mask"]) == len(mask_files)
     assert test_files == {}
 
@@ -197,7 +199,7 @@ def test_split_dataset_dict_all_test(
     train_files, test_files = cast(
         SplitResult,
         split_dataset_dict(
-            file_map={"BF": image_files, "mask": mask_files},
+            file_map={"image": image_files, "mask": mask_files},
             test_size=1,
             random_state=42,
             file_handler=BF_IF_FileHandler(),
@@ -206,7 +208,7 @@ def test_split_dataset_dict_all_test(
     )
 
     assert train_files == {}
-    assert len(test_files["BF"]) == len(image_files)
+    assert len(test_files["image"]) == len(image_files)
     assert len(test_files["mask"]) == len(mask_files)
 
     copied_files = list(output_dir.rglob("*.tif"))
@@ -238,13 +240,13 @@ def test_split_dataset_list(
         ),
     )
 
-    assert len(train_files["BF"]) > 0
-    assert len(test_files["BF"]) > 0
+    assert len(train_files["image"]) > 0
+    assert len(test_files["image"]) > 0
     assert len(train_files["mask"]) > 0
     assert len(test_files["mask"]) > 0
 
-    train_groups = _group_ids_from_paths(train_files["BF"], file_handler)
-    test_groups = _group_ids_from_paths(test_files["BF"], file_handler)
+    train_groups = _group_ids_from_paths(train_files["image"], file_handler)
+    test_groups = _group_ids_from_paths(test_files["image"], file_handler)
     assert train_groups.isdisjoint(test_groups)
 
 
@@ -264,12 +266,10 @@ def test_train_test_split_directory(
     assert "test_files" in result
     assert "train_images" not in result
     assert "test_images" not in result
-    assert "BF" in result["train_files"]
-    assert "BF" in result["test_files"]
     assert "image" in result["train_files"]
     assert "image" in result["test_files"]
-    assert len(result["train_files"]["BF"]) > 0
-    assert len(result["test_files"]["BF"]) > 0
+    assert len(result["train_files"]["image"]) > 0
+    assert len(result["test_files"]["image"]) > 0
     assert (temp_output_dir / "dataset_split.json").exists()
 
 
@@ -324,3 +324,98 @@ def test_copy_with_split_dict_filter_keys(
     assert not (split_output_dir / "train" / "train_mask.tif").exists()
     assert (split_output_dir / "test" / "test_image.tif").exists()
     assert not (split_output_dir / "test" / "test_mask.tif").exists()
+
+
+# ─── get_groups_from_filenames ────────────────────────────────────────────────
+
+def test_get_groups_groups_by_unique_id() -> None:
+    """Files with the same plate/well/time end up in the same group."""
+    handler = BF_IF_FileHandler()
+    tuples = [
+        ("orig/t1_A01_s1_w1_z1.tif", "p2126_A01_t1_z1_w1.tif"),
+        ("orig/t1_A01_s1_w1_z2.tif", "p2126_A01_t1_z2_w1.tif"),
+        ("orig/t1_B02_s1_w1_z1.tif", "p2126_B02_t1_z1_w1.tif"),
+    ]
+    groups = get_groups_from_filenames(tuples, handler)
+
+    assert "p2126_A01_t1" in groups
+    assert len(groups["p2126_A01_t1"]) == 2
+    assert "p2126_B02_t1" in groups
+    assert len(groups["p2126_B02_t1"]) == 1
+
+
+def test_get_groups_empty_input_returns_empty_dict() -> None:
+    groups = get_groups_from_filenames([], BF_IF_FileHandler())
+    assert groups == {}
+
+
+def test_get_groups_preserves_original_src_path() -> None:
+    handler = BF_IF_FileHandler()
+    tuples = [("my/original/path.tif", "p2126_A01_t1_z1_w1.tif")]
+    groups = get_groups_from_filenames(tuples, handler)
+    src, _ = list(groups.values())[0][0]
+    assert src == "my/original/path.tif"
+
+
+# ─── split_dataset_dict / split_dataset_list — error cases ───────────────────
+
+def test_split_dataset_dict_none_handler_raises() -> None:
+    with pytest.raises(ValueError, match="file handler"):
+        split_dataset_dict(
+            file_map={"image": ["a.tif"]},
+            file_handler=None,
+        )
+
+
+def test_split_dataset_list_none_handler_raises() -> None:
+    with pytest.raises(ValueError, match="file handler"):
+        split_dataset_list(file_list=["a.tif"], file_handler=None)
+
+
+def test_split_dataset_dict_empty_map_all_train() -> None:
+    """Empty file_map with test_size=0 should return two empty dicts without error."""
+    train, test = split_dataset_dict({}, test_size=0, file_handler=BF_IF_FileHandler())
+    assert train == {}
+    assert test == {}
+
+
+# ─── train_test_split_directory — JSON content ───────────────────────────────
+
+def test_train_test_split_json_content_matches_result(
+    mock_data_dirs: MockDataDirs, temp_output_dir: Path
+) -> None:
+    """The persisted JSON should be byte-for-byte equivalent to the returned dict."""
+    out = temp_output_dir / "json_content"
+    result = train_test_split_directory(
+        data_dir=str(mock_data_dirs["data_dir"]),
+        output_dir=str(out),
+        test_size=0.33,
+        random_state=42,
+        file_handler=BF_IF_FileHandler(),
+    )
+    with open(out / "dataset_split.json") as f:
+        loaded = json.load(f)
+
+    assert loaded["train_files"] == result["train_files"]
+    assert loaded["test_files"] == result["test_files"]
+
+
+def test_train_test_split_json_image_lists_non_empty(
+    mock_data_dirs: MockDataDirs, temp_output_dir: Path
+) -> None:
+    """JSON should record non-empty image lists for both splits."""
+    out = temp_output_dir / "json_keys"
+    train_test_split_directory(
+        data_dir=str(mock_data_dirs["data_dir"]),
+        output_dir=str(out),
+        test_size=0.33,
+        random_state=42,
+        file_handler=BF_IF_FileHandler(),
+    )
+    with open(out / "dataset_split.json") as f:
+        loaded = json.load(f)
+
+    assert "image" in loaded["train_files"]
+    assert "image" in loaded["test_files"]
+    assert len(loaded["train_files"]["image"]) > 0
+    assert len(loaded["test_files"]["image"]) > 0

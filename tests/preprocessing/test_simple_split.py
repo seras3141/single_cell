@@ -57,8 +57,6 @@ def test_split_keeps_groups_together(mock_data_dir):
     )
     assert "train_files" in result
     assert "test_files" in result
-    assert "BF" in result["train_files"]
-    assert "BF" in result["test_files"]
     assert "image" in result["train_files"]
     assert "image" in result["test_files"]
     assert "mask" in result["train_files"]
@@ -69,7 +67,7 @@ def test_split_keeps_groups_together(mock_data_dir):
     assert train_total > 0, "Should have training files"
     assert test_total > 0, "Should have test files"
 
-    for key in ("BF", "image", "mask"):
+    for key in ("image", "mask"):
         train_groups = _unique_ids_from_paths(result["train_files"][key], file_handler)
         test_groups = _unique_ids_from_paths(result["test_files"][key], file_handler)
         overlap = train_groups & test_groups
@@ -99,13 +97,13 @@ def test_split_with_unpaired_groups_is_supported(tmp_path):
 
     assert "train_files" in result
     assert "test_files" in result
-    assert "BF" in result["train_files"]
+    assert "image" in result["train_files"]
     assert "mask" in result["train_files"]
 
     # All input files should appear in exactly one split for each file type.
-    total_bf = len(result["train_files"]["BF"]) + len(result["test_files"]["BF"])
+    total_image = len(result["train_files"]["image"]) + len(result["test_files"]["image"])
     total_mask = len(result["train_files"]["mask"]) + len(result["test_files"]["mask"])
-    assert total_bf == 2
+    assert total_image == 2
     assert total_mask == 2
 
 def test_split_count_conservation(mock_data_dir):
@@ -118,19 +116,16 @@ def test_split_count_conservation(mock_data_dir):
         file_handler=BF_IF_FileHandler(),
     )
 
-    train_bf = result["train_files"]["BF"]
-    test_bf = result["test_files"]["BF"]
     train_image = result["train_files"]["image"]
     test_image = result["test_files"]["image"]
     train_mask = result["train_files"]["mask"]
     test_mask = result["test_files"]["mask"]
 
     # Fixture has 3 wells x 2 z-slices = 6 files per type.
-    assert len(train_bf) + len(test_bf) == 6
     assert len(train_image) + len(test_image) == 6
     assert len(train_mask) + len(test_mask) == 6
 
-    train_total = len(train_bf) + len(train_image) + len(train_mask)
-    test_total = len(test_bf) + len(test_image) + len(test_mask)
+    train_total = len(train_image) + len(train_mask)
+    test_total = len(test_image) + len(test_mask)
     assert train_total > 0
     assert test_total > 0
