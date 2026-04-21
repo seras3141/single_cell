@@ -28,6 +28,10 @@ This will:
 
 For more control over individual steps, see the detailed pipeline below.
 
+## Demo
+
+Refer the [data_preparation](notebooks/01_data_preparation.ipynb) for data splitting and [data_preprocessing](notebooks/01_data_preprocessing.ipynb) for blur map generation.
+
 ## Detailed Preprocessing Pipeline
 
 Before training models or running analysis, raw datasets need to be preprocessed. This involves three key steps:
@@ -110,16 +114,16 @@ blur_map = measure_patchwise_blur(image, patch_size=32, stride_size=16)
 
 **Dataset Blur Heatmaps:**
 ```python
-from src.preprocessing.blur_analysis import measure_dataset_blur_heatmaps
+from src.preprocessing.blur_analysis import generate_blur_heatmap_batch
 
-measure_dataset_blur_heatmaps(
+generate_blur_heatmap_batch(
     input_dir="data/processed/3d_images",
     output_dir="data/processed/blur_heatmaps",
     pattern="*_BF_3d.tif",
     patch_size=32,
     stride_size=16,
     normalize=True,
-    overwrite=False
+    overwrite=False,
 )
 ```
 
@@ -137,7 +141,8 @@ python -m src.preprocessing.blur_analysis \
 ## 4. Example Workflow
 
 ```python
-from src.preprocessing import train_test_split_directory, measure_dataset_blur_heatmaps
+from src.preprocessing import train_test_split_directory
+from src.preprocessing.blur_analysis import generate_blur_heatmap_batch
 from src.utils.conversion import combine_2d_to_3d
 
 # Split dataset
@@ -147,7 +152,7 @@ train_test_split_directory(...)
 combine_2d_to_3d(...)
 
 # Generate blur heatmaps
-measure_dataset_blur_heatmaps(...)
+generate_blur_heatmap_batch(...)
 ```
 ## Config file
 
@@ -155,7 +160,7 @@ Run the entire preprocessing pipeline using the config file:
 
 ```sh
 python scripts/run_preprocessing.py data/raw data/processed \
-  --conifg config/preprocessing_config.yaml
+  --config config/preprocessing_config.yaml
 ```
 
 
