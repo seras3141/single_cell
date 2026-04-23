@@ -143,11 +143,11 @@ def find_activity_from_mcherry_path(img_path: Path, mcherry_suffix:str = "_mCher
     return None    
 
 
-def get_images_from_mcherry(img_path: Path, activity_dir: Path|None=None) -> Dict[str, Any]:
+def get_images_from_mcherry(img_path: Path, activity_dir: Path|None=None, label_dir: Path|None=None) -> Dict[str, Any]:
     # Load the image
     img = tiff.imread(str(img_path))
 
-    lbl_path = find_label_from_mcherry_path(img_path)
+    lbl_path = find_label_from_mcherry_path(img_path, label_dir=label_dir)
     if lbl_path is not None and lbl_path.exists():
         lbl = tiff.imread(str(lbl_path))
         # print(f"Label found: {lbl_path.name}")
@@ -203,4 +203,46 @@ def ensure_2d(arr: np.ndarray) -> np.ndarray:
         return arr
     return arr[0]
 
-__all__ = ['list_tif_files', 'save_config', 'load_config', 'find_label_from_mcherry_path', 'ensure_2d']
+def filter_paths_by_z_index(
+    paths: List[Path | str],
+    file_handler,
+    min_z: int = 1,
+    max_z: int = 20,
+) -> List[Path | str]:
+    """
+    Filter a list of image file paths to keep only those whose z-index falls
+    within [min_z, max_z].
+
+    z0 is excluded by default (min_z=1).  Paths whose z-index cannot be
+    extracted are silently dropped.
+
+    Parameters
+    ----------
+    paths : list of Path or str
+        Image file paths to filter.
+    file_handler :
+        Object with an ``extract_z_index(filename: str) -> int | None`` method.
+    min_z : int
+        Minimum z-index to keep (inclusive).  Default 1 skips z0.
+    max_z : int
+        Maximum z-index to keep (inclusive).  Default 20.
+
+    Returns
+    -------
+    list
+        Filtered paths in the same type as the inputs.
+    """
+    filtered = []
+    for p in paths:
+        z = file_handler.extract_z_index(Path(p).name)
+        if z is None:
+            continue
+        if min_z <= int(z) <= max_z:
+            filtered.append(p)
+    return filtered
+
+
+__all__ = [
+    'list_tif_files', 'save_config', 'load_config',
+    'find_label_from_mcherry_path', 'ensure_2d', 'filter_paths_by_z_index',
+]

@@ -4,8 +4,8 @@ from .napari_viewer import (
     visualize_image_with_napari,
     visualize_sample_zstack_napari,
     show_sample_images_napari,
-    create_and_display_napari_viewer,
 )
+from .image_viewer_widget import ImageViewer, create_and_display_napari_viewer
 
 __all__ = [
     'ThresholdWidget',
@@ -17,4 +17,5 @@ __all__ = [
     'visualize_sample_zstack_napari',
     'show_sample_images_napari',
     'create_and_display_napari_viewer',
+    'ImageViewer',
 ]
