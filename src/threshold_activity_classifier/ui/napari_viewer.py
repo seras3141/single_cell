@@ -1,7 +1,8 @@
 # Napari visualization module for single-cell analysis
 from pathlib import Path
-import ipywidgets as widgets
-from IPython.display import display
+
+import numpy as np
+import pandas as pd
 import tifffile as tiff
 
 try:
@@ -10,52 +11,19 @@ try:
 except ImportError:
     NAPARI_AVAILABLE = False
 
-import numpy as np
-
-from threshold_activity_classifier.utils.io import find_label_from_mcherry_path, find_brightfield_from_mcherry_path, find_activity_from_mcherry_path, ensure_2d, get_images_from_mcherry
+from threshold_activity_classifier.utils.io import find_label_from_mcherry_path, ensure_2d, get_images_from_mcherry
 from threshold_activity_classifier.core.classifier import create_activity_labeled_image
+from threshold_activity_classifier.utils.df_utils import filter_images_by_sample_id_and_z_index
 
 
 class NapariImageViewer:
     """
-    Unified napari viewer for single-cell analysis.
-    
-    Supports both direct array input and path-based loading with interactive widgets.
-    Can visualize 2D single images and 3D z-stacks.
-    
-    Usage:
-        # Direct array mode (2D)
-        viewer = NapariImageViewer()
-        viewer.open(img, lbl, activity_labels, metrics_df, "image_name")
-        
-        # Path-based mode with widgets
-        viewer = NapariImageViewer(metrics_df, root_path)
-        viewer.display()
+    Napari-only viewer for 2D images and 3D z-stacks.
     """
-    
-    def __init__(self, metrics_df=None, root_path=None):
-        """
-        Initialize the viewer.
-        
-        Parameters
-        ----------
-        metrics_df : pd.DataFrame, optional
-            Classification results DataFrame. Required for widget-based interface.
-        root_path : Path or str, optional
-            Root path for image files. Required for widget-based interface.
-        """
-        self.metrics_df = metrics_df
-        self.root_path = Path(root_path) if root_path is not None else None
-        self.activity_dir = None
-        self.current_viewer = None
-        self._widgets_initialized = False
-        
-        # Initialize widgets only if metrics_df is provided
-        if metrics_df is not None and root_path is not None:
-            self._setup_widgets()
 
-    # ------------------ Direct array mode methods -------------------------
-    
+    def __init__(self):
+        self.current_viewer = None
+
     def open(self, img, lbl=None,
              activity_labels=None,
              brightfield=None,
@@ -98,9 +66,6 @@ class NapariImageViewer:
         img = ensure_2d(img).astype(float)
         lo, hi = np.percentile(img, [0.1, 99.9])
         img = np.clip(img, lo, hi)
-        
-        if metrics_df is not None:
-            self.metrics_df = metrics_df
         
         # Add original intensity image
         self.current_viewer.add_image(img, name=image_name, colormap="yellow", opacity=0.9)
@@ -231,224 +196,6 @@ class NapariImageViewer:
                 pass
             self.current_viewer = None
 
-    # -------------------------------------------------------------------------
-    # Path-based widget interface methods
-    # -------------------------------------------------------------------------
-    
-    def _setup_widgets(self):
-        """Create interactive widgets for image selection."""
-        if self.metrics_df is None:
-            return
-            
-        # Sample selector
-        available_samples = sorted(self.metrics_df['sample'].dropna().unique())
-        self.sample_selector = widgets.Dropdown(
-            options=['All'] + list(available_samples),
-            value='All',
-            description='Sample:',
-            layout=widgets.Layout(width='200px')
-        )
-        
-        # Image selector
-        self.image_selector = widgets.Dropdown(
-            options=[],
-            description='Image:',
-            layout=widgets.Layout(width='300px')
-        )
-        
-        # Display options
-        self.show_original = widgets.Checkbox(value=True, description='Original Image')
-        self.show_labels = widgets.Checkbox(value=True, description='Instance Labels')
-        self.show_activity = widgets.Checkbox(value=True, description='Activity Classification')
-        
-        # Z-stack options
-        self.max_z_slices = widgets.IntSlider(
-            value=20, min=5, max=50, step=5,
-            description='Max Z-slices:',
-            layout=widgets.Layout(width='300px')
-        )
-        
-        # Buttons
-        self.open_napari_btn = widgets.Button(
-            description='Open Single Image',
-            button_style='primary',
-            icon='eye',
-            layout=widgets.Layout(width='150px')
-        )
-        
-        self.open_zstack_btn = widgets.Button(
-            description='Open Z-Stack 3D',
-            button_style='success',
-            icon='cube',
-            layout=widgets.Layout(width='150px')
-        )
-        
-        self.close_napari_btn = widgets.Button(
-            description='Close Napari',
-            button_style='warning',
-            icon='times',
-            layout=widgets.Layout(width='150px')
-        )
-        
-        self.show_multiple_btn = widgets.Button(
-            description='Show Sample (5 images)',
-            button_style='info',
-            icon='images',
-            layout=widgets.Layout(width='180px')
-        )
-        
-        # Output area
-        self.info_output = widgets.Output()
-        
-        # Event handlers
-        self.sample_selector.observe(self._update_image_list, names='value')
-        self.open_napari_btn.on_click(self._on_open_napari)
-        self.open_zstack_btn.on_click(self._on_open_zstack)
-        self.close_napari_btn.on_click(self._on_close_napari)
-        self.show_multiple_btn.on_click(self._on_show_multiple)
-        
-        # Initialize image list
-        self._update_image_list({'new': 'All'})
-        self._widgets_initialized = True
-    
-    def _update_image_list(self, change):
-        """Update available images based on selected sample."""
-        sample = change['new']
-        if self.metrics_df is None:
-            raise RuntimeError("Metrics DataFrame not set. Cannot update image list.")
-        
-        if sample == 'All':
-            available_images = sorted(self.metrics_df['image'].unique())
-        else:
-            available_images = sorted(
-                self.metrics_df[self.metrics_df['sample'] == sample]['image'].unique()
-            )
-        
-        options = []
-        for img in available_images:
-            img_data = self.metrics_df[self.metrics_df['image'] == img]
-            n_cells = len(img_data)
-            n_active = img_data['is_active'].sum()
-            activity_rate = (n_active / n_cells) * 100 if n_cells > 0 else 0
-            z_idx = img_data['z_index'].iloc[0] if len(img_data) > 0 else 'N/A'
-            
-            display_name = f"{img} (z={z_idx}, {n_cells}c, {activity_rate:.0f}% active)"
-            options.append((display_name, img))
-        
-        self.image_selector.options = options
-        if options:
-            self.image_selector.value = options[0][1]
-    
-    def _on_open_napari(self, button):
-        """Handle single image open button click."""
-        with self.info_output:
-            self.info_output.clear_output(wait=True)
-            
-            if not self.image_selector.value:
-                print("Please select an image first.")
-                return
-            
-            self.close()
-            
-            print(f"Opening {self.image_selector.value} in napari...")
-            self.current_viewer = visualize_image_with_napari(
-                self.image_selector.value,
-                self.metrics_df,
-                self.root_path,
-                show_original=self.show_original.value,
-                show_labels=self.show_labels.value,
-                show_activity=self.show_activity.value
-            )
-    
-    def _on_open_zstack(self, button):
-        """Handle z-stack open button click."""
-        with self.info_output:
-            self.info_output.clear_output(wait=True)
-            
-            sample = self.sample_selector.value
-            if sample == 'All':
-                print("Please select a specific sample to view z-stack.")
-                return
-            
-            self.close()
-            
-            print(f"Opening z-stack for sample {sample} in napari...")
-            self.current_viewer = visualize_sample_zstack_napari(
-                sample,
-                self.metrics_df,
-                self.root_path,
-                self.activity_dir,
-                show_original=self.show_original.value,
-                show_labels=self.show_labels.value,
-                show_activity=self.show_activity.value,
-                max_z_slices=self.max_z_slices.value
-            )
-    
-    def _on_close_napari(self, button):
-        """Handle close button click."""
-        with self.info_output:
-            self.info_output.clear_output(wait=True)
-            
-            if self.current_viewer is not None:
-                self.close()
-                print("Napari viewer closed.")
-            else:
-                print("No napari viewer is currently open.")
-    
-    def _on_show_multiple(self, button):
-        """Handle show multiple images button click."""
-        with self.info_output:
-            self.info_output.clear_output(wait=True)
-            
-            sample = self.sample_selector.value
-            if sample == 'All':
-                print("Please select a specific sample to show multiple images.")
-                return
-            
-            print(f"Opening multiple images from sample {sample}...")
-            viewers = show_sample_images_napari(
-                self.metrics_df, sample, self.root_path, max_images=5
-            )
-            if viewers:
-                print(f"Opened {len(viewers)} napari viewers.")
-    
-    def display(self):
-        """Display the interactive widget interface."""
-        if not self._widgets_initialized:
-            if self.metrics_df is None or self.root_path is None:
-                print("Cannot display widgets: metrics_df and root_path required.")
-                return
-            self._setup_widgets()
-        
-        controls_row = widgets.HBox([self.sample_selector, self.image_selector])
-        options_row = widgets.HBox([
-            self.show_original, self.show_labels, self.show_activity
-        ])
-        zstack_row = widgets.HBox([self.max_z_slices])
-        buttons_row1 = widgets.HBox([
-            self.open_napari_btn, self.open_zstack_btn, self.close_napari_btn
-        ])
-        buttons_row2 = widgets.HBox([self.show_multiple_btn])
-        
-        interface = widgets.VBox([
-            widgets.HTML("<h3>Interactive Napari Image Viewer</h3>"),
-            widgets.HTML("<b>Sample and Image Selection:</b>"),
-            controls_row,
-            widgets.HTML("<b>Display Options:</b>"),
-            options_row,
-            widgets.HTML("<b>Z-Stack Options:</b>"),
-            zstack_row,
-            widgets.HTML("<b>Viewer Actions:</b>"),
-            buttons_row1,
-            widgets.HTML("<b>Additional Actions:</b>"),
-            buttons_row2,
-            widgets.HTML("<b>Information:</b>"),
-            self.info_output
-        ])
-        
-        display(interface)
-
-
 
 # -------------------------------------------------------------------------
 # Standalone visualization functions
@@ -546,7 +293,6 @@ def visualize_image_with_napari(image_name, metrics_df, root_path,
         print(f"Error loading image {image_name}: {e}")
         return None
 
-
 def show_sample_images_napari(metrics_df, sample_id, root, z_indices=None, max_images=5):
     """
     Show multiple images from a sample in separate napari windows.
@@ -603,13 +349,134 @@ def show_sample_images_napari(metrics_df, sample_id, root, z_indices=None, max_i
     
     return viewers
 
+def _load_optional(path_val: str | Path | None, label: str) -> np.ndarray | None:
+    """
+    Load a TIFF file, returning ``None`` gracefully if the path is absent.
 
-def visualize_sample_zstack_napari(sample_id, metrics_df, root_path, activity_dir,
+    Parameters
+    ----------
+    path_val : str, Path, or None
+        Path to the TIFF file, or a value that evaluates as missing
+        (``None``, ``NaN``, empty string).
+    label : str
+        Human-readable description used in the warning message when the
+        file is not found.
+
+    Returns
+    -------
+    np.ndarray or None
+        Loaded image array, or ``None`` if the file is missing.
+    """
+    if path_val is None:
+        return None
+    try:
+        if pd.isna(path_val):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if not path_val:
+        return None
+    p = Path(str(path_val))
+    if not p.exists():
+        print(f"  Warning: {label} not found at {p}")
+        return None
+    return tiff.imread(str(p))
+
+def create_napari_3d_from_summary_df(
+    metrics_df: pd.DataFrame,
+    sample_id: str,
+    z_indices: list | None = None,
+) -> NapariImageViewer | None:
+    """
+    Build 3D volumes from paths stored in ``metrics_df`` and open them in napari.
+
+    Reads the ``mcherry_path``, ``bf_path``, ``label_path``, and
+    ``activity_path`` columns for each row that belongs to ``sample_id``.
+    Channels where every slice is missing are silently omitted; channels where
+    only *some* slices are missing are filled with zero arrays of the same
+    shape as the first valid slice.
+
+    Parameters
+    ----------
+    metrics_df : pd.DataFrame
+        DataFrame produced by the activity classifier pipeline.  Must contain
+        at least the columns ``ID``, ``z_index``, and ``mcherry_path``.
+    sample_id : str
+        Sample identifier used to filter ``metrics_df`` (matches the ``ID``
+        column).
+    z_indices : list of int, optional
+        Restrict the volume to these z-indices.  ``None`` (default) includes
+        all z-slices for the sample.
+
+    Returns
+    -------
+    NapariImageViewer or None
+        The open napari viewer, or ``None`` if no images could be loaded.
+    """
+    filtered_df = filter_images_by_sample_id_and_z_index(metrics_df, sample_id=sample_id)
+    if z_indices is not None and 'z_index' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['z_index'].isin(z_indices)]
+    filtered_df = filtered_df.sort_values('z_index')
+
+    if len(filtered_df) == 0:
+        print(f"No images found for sample {sample_id} with specified z-indices.")
+        return None
+
+    mcherry_stack: list[np.ndarray | None] = []
+    bf_stack:      list[np.ndarray | None] = []
+    label_stack:   list[np.ndarray | None] = []
+    activity_stack: list[np.ndarray | None] = []
+
+    for _, row in filtered_df.iterrows():
+        mcherry_stack.append(_load_optional(row.get('mcherry_path'),  "mCherry image"))
+        bf_stack.append(     _load_optional(row.get('bf_path'),       "Brightfield image"))
+        label_stack.append(  _load_optional(row.get('label_path'),    "Label image"))
+        activity_stack.append(_load_optional(row.get('activity_path'), "Activity labels"))
+
+    def _stack_channel(slices: list[np.ndarray | None], name: str) -> np.ndarray | None:
+        """Stack a list of 2-D arrays, filling missing slices with zeros."""
+        valid = [s for s in slices if s is not None]
+        if not valid:
+            return None
+        if len(valid) < len(slices):
+            ref_shape = valid[0].shape
+            slices = [s if s is not None else np.zeros(ref_shape, dtype=valid[0].dtype) for s in slices]
+            print(f"  Warning: {len(slices) - len(valid)} missing {name} slice(s) filled with zeros.")
+        return np.stack(slices, axis=0)
+
+    mcherry_volume  = _stack_channel(mcherry_stack,  "mCherry")
+    bf_volume       = _stack_channel(bf_stack,        "brightfield")
+    label_volume    = _stack_channel(label_stack,     "label")
+    activity_volume = _stack_channel(activity_stack,  "activity")
+
+    if mcherry_volume is None:
+        print(f"No mCherry images could be loaded for sample {sample_id}.")
+        return None
+
+    # create_sample_zstack_statistics(filtered_df, sample_id)
+
+    try:
+        viewer = NapariImageViewer()
+        viewer.open_3d(
+            image_volume=mcherry_volume,
+            label_volume=label_volume,
+            activity_volume=activity_volume,
+            brightfield_volume=bf_volume,
+            title=f"3D Z-Stack: Sample {sample_id}",
+        )
+        return viewer
+
+    except Exception as e:
+        print(f"Error creating napari viewer for sample {sample_id}: {e}")
+        return None
+
+
+def visualize_sample_zstack_napari(sample_id, metrics_df, root_path, activity_dir, label_dir=None,
                                    show_original=True, show_labels=True, show_activity=True, show_brightfield=True,
-                                   max_z_slices=None):
+                                   ) -> NapariImageViewer | None:
     """
     Open napari with all z-stack images from a sample in a single 3D viewer.
-    
+
     Parameters
     ----------
     sample_id : str
@@ -618,6 +485,8 @@ def visualize_sample_zstack_napari(sample_id, metrics_df, root_path, activity_di
         DataFrame with classification results.
     root_path : Path
         Root path to search for images.
+    label_dir : Path, optional
+        Directory to search for label files. If None, looks in the same folder as each image.
     show_original : bool
         Whether to show the original intensity images.
     show_labels : bool
@@ -626,42 +495,44 @@ def visualize_sample_zstack_napari(sample_id, metrics_df, root_path, activity_di
         Whether to show the activity-coded labels.
     show_brightfield : bool
         Whether to show the brightfield image.
-    max_z_slices : int, optional
-        Maximum number of z-slices to load (None for all).
         
     Returns
     -------
-    napari.Viewer or None
+    NapariImageViewer or None
         The napari viewer instance, or None on error.
     """
     if not NAPARI_AVAILABLE:
         print("Napari is not available. Install with: pip install napari[all]")
         return None
-    
-    # Get all images for this sample, sorted by z-index
-    sample_data = metrics_df[metrics_df['ID'] == sample_id].copy()
-    if len(sample_data) == 0:
+
+    filtered_images = filter_images_by_sample_id_and_z_index(metrics_df, sample_id=sample_id)
+    if len(filtered_images) == 0:
         print(f"No images found for sample {sample_id}")
         return None
-    
-    # Sort by z-index and optionally limit
-    sample_images = sample_data.sort_values('z_index')['image'].unique()
-    z_indices = sorted(sample_data['z_index'].unique())
-    
-    if max_z_slices is not None and len(sample_images) > max_z_slices:
-        step = len(sample_images) // max_z_slices
-        sample_images = sample_images[::step][:max_z_slices]
-        z_indices = z_indices[::step][:max_z_slices]
-    
-    print(f"Loading {len(sample_images)} z-slices for sample {sample_id}")
-    
+
+    missing_labels = []
+    for image_name in filtered_images['image']:
+        image_files = list(Path(root_path).rglob(image_name))
+        if not image_files:
+            continue
+        img_path = image_files[0]
+        lbl_path = find_label_from_mcherry_path(img_path, label_dir=label_dir)
+        if lbl_path is None or not lbl_path.exists():
+            missing_labels.append(image_name)
+
+    if missing_labels:
+        print(f"Cannot open 3D viewer: label files missing for {len(missing_labels)} image(s):")
+        for name in missing_labels:
+            print(f"  - {name}")
+        return None
+
     image_stack = []
     label_stack = []
     activity_stack = []
     brightfield_stack = []
-    valid_z_indices = []
-    
-    for i, image_name in enumerate(sample_images):
+    activity_is_bin = True
+
+    for image_name in filtered_images['image']:
         try:
             image_files = list(Path(root_path).rglob(image_name))
             if not image_files:
@@ -669,121 +540,68 @@ def visualize_sample_zstack_napari(sample_id, metrics_df, root_path, activity_di
                 continue
 
             img_path = image_files[0]
-
-            # Load image, labels, and activity in one step
             img_dict = get_images_from_mcherry(
-                img_path, 
-                activity_dir=activity_dir
+                img_path,
+                activity_dir=activity_dir,
+                label_dir=label_dir,
             )
 
             img = img_dict.get('img')
             lbl = img_dict.get('lbl')
             activity_labels = img_dict.get('activity_labels')
             brightfield = img_dict.get('brightfield')
-            activity_is_bin = True  # Assume activity labels are binary if loaded from file
-            # activity_is_bin = img_dict.get('activity_is_bin', False)
 
-            # If activity labels are not already provided, create them from the metrics_df
             if activity_labels is None:
                 print(f"Activity labels not found for {image_name}, creating from metrics_df...")
                 activity_is_bin = False
+                image_classification = metrics_df[metrics_df['image'] == image_name].copy()
+                if len(image_classification) == 0:
+                    print(f"Warning: No classification data found for {image_name}, skipping")
+                    continue
                 try:
-                    image_classification = metrics_df[metrics_df['image'] == image_name].copy()
-                    
-                    if len(image_classification) == 0:
-                        print(f"Warning: No classification data found for {image_name}, skipping")
-                        continue
-                    
                     activity_labels = create_activity_labeled_image(lbl, image_classification)
                 except Exception as e:
                     print(f"Warning: Could not create activity labels for {image_name}: {e}")
                     activity_labels = None
 
             img = ensure_2d(img).astype(float)
-            lbl = ensure_2d(lbl).astype(np.int32)
+            lbl = ensure_2d(lbl).astype(np.int32) if lbl is not None else None
             brightfield = ensure_2d(brightfield).astype(float) if brightfield is not None else None
             activity_labels = ensure_2d(activity_labels).astype(np.int32) if activity_labels is not None else None
 
             image_stack.append(img)
-            label_stack.append(lbl)
+            if lbl is not None:
+                label_stack.append(lbl)
             if activity_labels is not None:
                 activity_stack.append(activity_labels)
             if brightfield is not None:
                 brightfield_stack.append(brightfield)
-            valid_z_indices.append(z_indices[i] if i < len(z_indices) else i)
-            
         except Exception as e:
             print(f"Error processing {image_name}: {e}")
             continue
-    
+
     if len(image_stack) == 0:
         print("No valid images were loaded")
         return None
-    
-    image_volume = np.stack(image_stack, axis=0)
-    label_volume = np.stack(label_stack, axis=0)
-    activity_volume = np.stack(activity_stack, axis=0) if len(activity_stack) > 0 else None
-    brightfield_volume = np.stack(brightfield_stack, axis=0) if len(brightfield_stack) > 0 else None
-    
-    print(f"Created 3D volumes with shape: {image_volume.shape}")
-    
-    viewer = NapariImageViewer()
 
+    image_volume = np.stack(image_stack, axis=0)
+    label_volume = np.stack(label_stack, axis=0) if label_stack else None
+    activity_volume = np.stack(activity_stack, axis=0) if activity_stack else None
+    brightfield_volume = np.stack(brightfield_stack, axis=0) if brightfield_stack else None
+
+    print(f"Created 3D volumes with shape: {image_volume.shape}")
+
+    viewer = NapariImageViewer()
     viewer.open_3d(
         image_volume=image_volume,
         label_volume=label_volume,
         activity_volume=activity_volume,
         brightfield_volume=brightfield_volume,
-        title=f"Sample {sample_id} - Z-Stack ({len(image_stack)} slices)",
+        title=f"3D Z-Stack: Sample {sample_id}",
         show_original=show_original,
         show_labels=show_labels,
         show_activity=show_activity,
         show_brightfield=show_brightfield,
-        activity_is_bin=activity_is_bin
+        activity_is_bin=activity_is_bin,
     )
-    
-    sample_stats = sample_data.groupby('z_index').agg({
-        'is_active': ['count', 'sum'],
-        'metric_value': ['mean', 'median'],
-        'threshold': 'first'
-    }).round(2)
-    
-    total_cells = sample_data.shape[0]
-    total_active = sample_stats['is_active', 'sum'].sum()
-    overall_activity_rate = (total_active / total_cells) * 100 if total_cells > 0 else 0
-    
-    print(f"\nSample {sample_id} Z-Stack Statistics:")
-    print(f"   Total z-slices loaded: {len(image_stack)}")
-    print(f"   Total cells across all slices: {total_cells}")
-    print(f"   Active cells: {total_active} ({overall_activity_rate:.1f}%)")
-    print(f"   Dead cells: {total_cells - total_active} ({100-overall_activity_rate:.1f}%)")
-    
-    # viewer.window.resize(1400, 1000)
     return viewer
-
-
-def create_and_display_napari_viewer(metrics_df, root):
-    """
-    Create and display the interactive napari viewer interface.
-    
-    Parameters
-    ----------
-    metrics_df : pd.DataFrame
-        DataFrame with classification results.
-    root : Path
-        Root path for image files.
-    """
-    if len(metrics_df) > 0 and NAPARI_AVAILABLE:
-        print("Creating Interactive Napari Image Viewer...")
-        viewer = NapariImageViewer(metrics_df, root)
-        viewer.display()
-        print("\nInteractive viewer ready. Use the controls above to:")
-        print("   - Select sample and image")
-        print("   - Choose display options")
-        print("   - Open single images or complete z-stacks in napari")
-        print("   - View 3D z-stacks with interactive navigation")
-    elif not NAPARI_AVAILABLE:
-        print("Napari not available. Install with: pip install napari[all]")
-    else:
-        print("No classification data available. Please run previous cells first.")
-
