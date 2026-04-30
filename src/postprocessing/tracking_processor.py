@@ -17,7 +17,7 @@ import json
 import time
 from joblib import Parallel, delayed
 
-from src.inference.output_manager import LABEL_FORMATS, save_labels
+from src.utils.image_utils import LABEL_FORMATS, save_labels
 
 from .cell_tracking import CellTracker3D
 from .blur_filtering import BlurFilter, blur_intensity_metric

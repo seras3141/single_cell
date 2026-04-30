@@ -10,10 +10,12 @@ import re
 import numpy as np
 import tifffile as tiff
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Union
+from typing import List, Optional, Union
 from collections import defaultdict
 from tqdm import tqdm
 from glob import glob
+
+from src.utils.image_utils import LABEL_FORMATS, save_labels, load_labels
 
 
 def combine_2d_to_3d(
@@ -23,23 +25,29 @@ def combine_2d_to_3d(
     recursive: bool = False,
     z_min: Optional[int] = 1,
     z_max: Optional[int] = None,
+    output_format: str = "tif",
 ):
     """
-    Combine 2D TIFF images into 3D volumetric TIFF files.
+    Combine 2D TIFF images into 3D volumetric files.
 
     Args:
         input_dir: Directory containing 2D TIFF images
-        output_dir: Directory to save 3D TIFF volumes
+        output_dir: Directory to save 3D volumes
         pattern: Regular expression pattern to extract base name, z-index, and suffix
         recursive: Whether to search subdirectories recursively
         z_min: Minimum z-index to include (inclusive). Defaults to 1 to skip z0,
             which is typically a 2D projection rather than an optical section.
         z_max: Maximum z-index to include (inclusive). Defaults to None (no upper limit).
+        output_format: Format for the combined 3D volume. One of ``"tif"`` (default),
+            ``"zarr"``, or ``"hdf5"``.
 
     Example:
         Converts files like "sample_z1_BF.tif", "sample_z2_BF.tif", ...
-        to a single 3D file "sample_BF_3d.tif"
+        to a single 3D file "sample_BF_3d.tif" (or .zarr / .h5)
     """
+    if output_format not in LABEL_FORMATS:
+        raise ValueError(f"output_format must be one of {list(LABEL_FORMATS)}; got {output_format!r}")
+    output_ext = LABEL_FORMATS[output_format]
 
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
@@ -82,7 +90,7 @@ def combine_2d_to_3d(
     for key in list(file_groups.keys())[:5]:  # Show first 5 groups
         print(f"  {key}: {len(file_groups[key])} files")
 
-    # Combine 2D TIFFs into 3D TIFFs
+    # Combine 2D TIFFs into 3D volumes
     for key, files in tqdm(file_groups.items(), desc="Combining to 3D"):
         # Sort files by z-index
         files.sort(key=lambda x: x[0])
@@ -96,12 +104,12 @@ def combine_2d_to_3d(
         if not images:
             continue
 
-        # Ensure consistent dtype with input images
-        output_dtype = images[0].dtype
-
-        # Save as 3D TIFF
-        output_path = os.path.join(output_dir, f"{key}_3d.tif")
-        tiff.imwrite(output_path, np.stack(images, axis=0).astype(output_dtype), photometric='minisblack')
+        volume = np.stack(images, axis=0).astype(images[0].dtype)
+        output_path = output_dir / f"{key}_3d{output_ext}"
+        if output_format == "tif":
+            tiff.imwrite(output_path, volume, photometric='minisblack')
+        else:
+            save_labels(volume, output_path)
 
     print(f"Successfully combined {len(file_groups)} 2D image sets into 3D volumes in {output_dir}")
 
@@ -130,8 +138,6 @@ def split_3d_to_2d(input_path: str, output_dir: Union[str, Path], suffix: Option
             suffix = suffix[:-3]
         suffix = suffix.strip('_')
 
-    # Load 3D volume — support tif, zarr, and hdf5
-    from src.inference.output_manager import load_labels  # local import avoids circular deps
     volume = load_labels(Path(input_path))
     
     # Get base filename

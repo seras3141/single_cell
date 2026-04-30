@@ -6,27 +6,13 @@ with proper directory structure and file naming conventions.
 """
 
 import numpy as np
-from typing import Dict, Any, Optional, Tuple, Union
+from typing import Dict, Any, Optional, Union
 from pathlib import Path
 import logging
 import json
-import tifffile as tiff
 from datetime import datetime
 
-try:
-    import zarr
-    _ZARR_AVAILABLE = True
-    _ZARR_MAJOR = int(zarr.__version__.split(".")[0])
-    if _ZARR_MAJOR >= 3:
-        from zarr.codecs import BloscCodec as _BloscCodec  # type: ignore[import-untyped]
-    else:
-        from numcodecs import Blosc as _Blosc  # type: ignore[import-untyped]
-except ImportError:
-    _ZARR_AVAILABLE = False
-    _ZARR_MAJOR = 0
-
-import importlib.util as _importlib_util
-_H5PY_AVAILABLE = _importlib_util.find_spec("h5py") is not None
+from src.utils.image_utils import LABEL_FORMATS, save_labels, load_labels
 
 try:
     import matplotlib
@@ -38,117 +24,6 @@ except ImportError:
     PLOTTING_AVAILABLE = False
     logging.warning("Plotting libraries not available. Visualization outputs will be skipped.")
 
-#: Supported label formats → file extensions.
-LABEL_FORMATS: Dict[str, str] = {"tif": ".tif", "zarr": ".zarr", "hdf5": ".h5"}
-
-def _optimal_label_dtype(arr):
-    max_val = int(arr.max())
-    if max_val <= np.iinfo(np.uint8).max:
-        return np.uint8
-    elif max_val <= np.iinfo(np.uint16).max:
-        return np.uint16
-    return np.uint32
-
-def _normalize_label_dtype(masks: np.ndarray) -> np.ndarray:
-    """Cast instance-label array to uint16 or uint32 as needed."""
-    return masks.astype(_optimal_label_dtype(masks))
-
-def save_labels(masks: np.ndarray, output_path: Union[str, Path], chunks: Tuple|None = None) -> None:
-    """
-    Save an instance-label array to the output format is determined by the file extension:
-
-    * ``.tif`` / ``.tiff``  LZW-compressed TIFF via tifffile
-    * ``.zarr``             Zarr directory store with Blosc/zstd compression
-    * ``.h5``               HDF5 file with gzip compression via h5py
-
-    The array dtype is normalised to uint16 or uint32 before writing.
-    """
-    output_path = Path(output_path)
-    masks = _normalize_label_dtype(masks)
-    ext = output_path.suffix.lower()
-
-    if ext in (".tif", ".tiff"):
-        tiff.imwrite(output_path, masks, compression="lzw")
-
-    elif ext == ".zarr":
-        if not _ZARR_AVAILABLE:
-            raise ImportError(
-                "zarr is required to save .zarr labels. "
-                "Install it with: pip install zarr"
-            )
-        # allow caller to override, fall back to z-slice chunks for 3D arrays
-        chunks = chunks or ((1, masks.shape[-2], masks.shape[-1]) if masks.ndim == 3 else None)
-
-        if _ZARR_MAJOR >= 3:
-            z = zarr.create_array(  # type: ignore[attr-defined]
-                store=str(output_path),
-                shape=masks.shape,
-                dtype=masks.dtype,
-                chunks=chunks,
-                compressors=_BloscCodec(cname="zstd", clevel=3),  # type: ignore[name-defined]
-                overwrite=True,
-            )
-        else:
-            compressor = _Blosc(cname="zstd", clevel=3, shuffle=_Blosc.BITSHUFFLE)  # type: ignore[name-defined]
-            z = zarr.open(
-                str(output_path), mode="w",
-                shape=masks.shape, dtype=masks.dtype,
-                chunks=chunks, compressor=compressor,
-            )
-        z[:] = masks
-
-    elif ext == ".h5":
-        if not _H5PY_AVAILABLE:
-            raise ImportError(
-                "h5py is required to save .h5 labels. "
-                "Install it with: pip install h5py"
-            )
-        import h5py
-        chunks = chunks or ((1, masks.shape[-2], masks.shape[-1]) if masks.ndim == 3 else None)
-        with h5py.File(output_path, "w") as f:
-            f.create_dataset(
-                "labels", data=masks,
-                compression="gzip", compression_opts=4,
-                chunks=chunks,
-            )
-
-    else:
-        raise ValueError(f"Unsupported label file extension: {ext!r}")
-
-def load_labels(input_path: Union[str, Path]) -> np.ndarray:
-    """
-    Load an instance-label array from a tif, zarr, or hdf5 file.
-    """
-    input_path = Path(input_path)
-    ext = input_path.suffix.lower()
-
-    if ext in (".tif", ".tiff"):
-        return tiff.imread(str(input_path))
-
-    elif ext == ".zarr":
-        if not _ZARR_AVAILABLE:
-            raise ImportError(
-                "zarr is required to load .zarr labels. "
-                "Install it with: pip install zarr"
-            )
-        z = zarr.open_array(str(input_path), mode="r") if _ZARR_MAJOR >= 3 else zarr.open(str(input_path), mode="r")  # type: ignore[attr-defined]
-        return np.asarray(z)
-
-    elif ext == ".h5":
-        if not _H5PY_AVAILABLE:
-            raise ImportError(
-                "h5py is required to load .h5 labels. "
-                "Install it with: pip install h5py"
-            )
-        import h5py
-        with h5py.File(input_path, "r") as f:
-            ds = f["labels"]
-            assert isinstance(ds, h5py.Dataset)
-            return np.asarray(ds)
-
-    else:
-        raise ValueError(f"Unsupported label file extension: {ext!r}")
-
 
 class OutputManager:
     """
@@ -158,9 +33,6 @@ class OutputManager:
     masks, visualizations, and metadata with consistent naming conventions.
     """
     
-    #: Supported label formats and their file extensions.
-    LABEL_FORMATS = {"tif": ".tif", "zarr": ".zarr", "hdf5": ".h5"}
-
     def __init__(
         self,
         base_output_dir: Union[str, Path],
@@ -182,10 +54,10 @@ class OutputManager:
                 ``"tif"``, ``"zarr"`` (default), or ``"hdf5"``.
             pred_mask_suffix: Suffix for prediction mask files
         """
-        if label_format not in self.LABEL_FORMATS:
-            raise ValueError(f"label_format must be one of {list(self.LABEL_FORMATS)}; got {label_format!r}")
+        if label_format not in LABEL_FORMATS:
+            raise ValueError(f"label_format must be one of {list(LABEL_FORMATS)}; got {label_format!r}")
         self.label_format = label_format
-        self._label_ext = self.LABEL_FORMATS[label_format]
+        self._label_ext = LABEL_FORMATS[label_format]
 
         self.base_output_dir = Path(base_output_dir)
         self.model_name = model_name
