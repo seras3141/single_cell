@@ -45,7 +45,7 @@ dependencies = [
     "tqdm>=4.62.0",
     "PyYAML>=5.4.0",
     "omegaconf>=2.3.0",
-    "threshold-activity-classifier",
+    "cell-activity-labeler",
 ]
 
 [project.optional-dependencies]
@@ -71,13 +71,10 @@ gpu = [
     "torchaudio>=2.0.0",
 ]
 classifier = [
-    "threshold-activity-classifier[napari,jupyter]",
+    "cell-activity-labeler[napari,jupyter]",
 ]
 sam = [
     "cellpose>=4.0.0",
-]
-scportrait = [
-    "scportrait>=1.6"
 ]
 
 [project.urls]
@@ -89,8 +86,7 @@ scportrait = [
 single-cell-pipeline = "scripts.run_pipeline:main"
 
 [tool.uv.sources]
-threshold-activity-classifier = { path = "src/threshold_activity_classifier" }
-cellpose = { git = "https://github.com/MouseLand/cellpose", tag = "v4.0.0" }
+cell-activity-labeler = { path = "src/cell_activity_labeler" }
 
 [tool.setuptools.packages.find]
 where = ["."]
