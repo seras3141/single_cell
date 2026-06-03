@@ -1,0 +1,158 @@
+{
+  "plate_id": "MF5v1",
+  "plate_type": "384-well",
+  "dimensions": {
+    "rows": 16,
+    "columns": 24,
+    "row_labels": ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"]
+  },
+  "quadrants": {
+    "description": "Plate is divided into 4 identical quadrants, each spanning 6 columns. The drug panel is replicated across all 4 quadrants.",
+    "count": 4,
+    "columns_per_quadrant": 6,
+    "Q1": {"columns": [1,2,3,4,5,6]},
+    "Q2": {"columns": [7,8,9,10,11,12]},
+    "Q3": {"columns": [13,14,15,16,17,18]},
+    "Q4": {"columns": [19,20,21,22,23,24]}
+  },
+  "column_pattern_within_quadrant": {
+    "description": "Within each 6-column quadrant, column offset 1 is empty; offsets 2-6 carry concentrations 1-5 (high to low).",
+    "offset_1": "empty",
+    "offset_2": "conc_1",
+    "offset_3": "conc_2",
+    "offset_4": "conc_3",
+    "offset_5": "conc_4",
+    "offset_6": "conc_5"
+  },
+  "row_assignments": {
+    "A":  {"content": "empty"},
+    "B":  {"content": "drug",    "drug": "Eprenetapopt", "replicate": 1},
+    "C":  {"content": "drug",    "drug": "Doxorubicin",  "replicate": 1},
+    "D":  {"content": "drug",    "drug": "Doxorubicin",  "replicate": 2},
+    "E":  {"content": "drug",    "drug": "Navitoclax",   "replicate": 1},
+    "F":  {"content": "drug",    "drug": "Navitoclax",   "replicate": 2},
+    "G":  {"content": "drug",    "drug": "Selinexor",    "replicate": 1},
+    "H":  {"content": "drug",    "drug": "Selinexor",    "replicate": 2},
+    "I":  {"content": "drug",    "drug": "Venetoclax",   "replicate": 1},
+    "J":  {"content": "drug",    "drug": "Venetoclax",   "replicate": 2},
+    "K":  {"content": "control", "drug": "Staurosporine","control_type": "positive", "replicate": 1},
+    "L":  {"content": "control", "drug": "Staurosporine","control_type": "positive", "replicate": 2},
+    "M":  {"content": "control", "control_layout": "BenzethoniumChloride_cols2-3__DMSO_cols4-6", "replicate": 1},
+    "N":  {"content": "control", "control_layout": "BenzethoniumChloride_cols2-3__DMSO_cols4-6", "replicate": 2},
+    "O":  {"content": "drug",    "drug": "Eprenetapopt", "replicate": 2},
+    "P":  {"content": "empty"}
+  },
+  "control_column_pattern_within_quadrant": {
+    "description": "In control rows M and N, column offsets 1 is empty, offsets 2-3 are Benzethonium Chloride (positive control), offsets 4-6 are DMSO (vehicle/negative control).",
+    "offset_1": "empty",
+    "offset_2": "Benzethonium Chloride",
+    "offset_3": "Benzethonium Chloride",
+    "offset_4": "DMSO",
+    "offset_5": "DMSO",
+    "offset_6": "DMSO"
+  },
+  "drugs": {
+    "Doxorubicin": {
+      "full_name": "Doxorubicin",
+      "class": "Chemotherapy",
+      "target": "Topoisomerase II",
+      "cmax_uM": 6.73,
+      "concentrations_uM": {
+        "conc_1": 1.0,
+        "conc_2": 0.1,
+        "conc_3": 0.01,
+        "conc_4": 0.001,
+        "conc_5": 0.0001
+      },
+      "range": "D",
+      "rows": ["C", "D"]
+    },
+    "Eprenetapopt": {
+      "full_name": "Eprenetapopt (APR-246)",
+      "alias": "APR-246",
+      "class": "Apoptosis",
+      "target": "p53 activator",
+      "cmax_uM": 286.57,
+      "concentrations_uM": {
+        "conc_1": 100.0,
+        "conc_2": 10.0,
+        "conc_3": 1.0,
+        "conc_4": 0.1,
+        "conc_5": 0.001
+      },
+      "range": "A",
+      "rows": ["B", "O"]
+    },
+    "Navitoclax": {
+      "full_name": "Navitoclax",
+      "class": "Apoptosis",
+      "target": "Bcl-2, Bcl-XL",
+      "cmax_uM": 2.62,
+      "concentrations_uM": {
+        "conc_1": 75.0,
+        "conc_2": 10.0,
+        "conc_3": 1.0,
+        "conc_4": 0.1,
+        "conc_5": 0.01
+      },
+      "range": "R",
+      "rows": ["E", "F"]
+    },
+    "Selinexor": {
+      "full_name": "Selinexor",
+      "class": "Apoptosis",
+      "target": "XPO1",
+      "cmax_uM": 1.534,
+      "concentrations_uM": {
+        "conc_1": 100.0,
+        "conc_2": 10.0,
+        "conc_3": 1.0,
+        "conc_4": 0.1,
+        "conc_5": 0.001
+      },
+      "range": "A",
+      "rows": ["G", "H"]
+    },
+    "Venetoclax": {
+      "full_name": "Venetoclax",
+      "class": "Apoptosis",
+      "target": "Bcl-2",
+      "cmax_uM": 2.41,
+      "concentrations_uM": {
+        "conc_1": 50.0,
+        "conc_2": 10.0,
+        "conc_3": 5.0,
+        "conc_4": 1.0,
+        "conc_5": 0.01
+      },
+      "range": "M",
+      "rows": ["I", "J"]
+    }
+  },
+  "controls": {
+    "Staurosporine": {
+      "type": "positive_control",
+      "description": "Pan-kinase inhibitor; induces broad apoptosis. Used as cytotoxic positive control.",
+      "rows": ["K", "L"]
+    },
+    "Benzethonium Chloride": {
+      "type": "positive_control",
+      "description": "Cytotoxic detergent. Used as positive control for cell death.",
+      "rows": ["M", "N"],
+      "column_offsets_within_quadrant": [2, 3]
+    },
+    "DMSO": {
+      "type": "negative_control",
+      "description": "Vehicle control (solvent used to dissolve drugs). Used as negative/baseline control.",
+      "rows": ["M", "N"],
+      "column_offsets_within_quadrant": [4, 5, 6]
+    }
+  },
+  "notes": {
+    "additional_volume": "10 µL",
+    "dmso_concentration": "100%",
+    "source": "MF Plate Layouts_MF5v1.pdf",
+    "concentration_unit": "µM",
+    "replicates_per_drug": "2 rows per drug × 4 quadrants = 8 wells per concentration per plate"
+  }
+}

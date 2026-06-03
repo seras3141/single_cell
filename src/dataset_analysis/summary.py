@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Sequence, Union
+from typing import Any, Dict, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -38,8 +38,10 @@ def build_dataset_summary(
     expected_channels: Sequence[str],
     expected_z_indices: Sequence[int],
     projection_z_index: int = 0,
+    data_root: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Any]:
     """Build a machine-readable summary for downstream notebooks."""
+    experiment_name = Path(data_root).name if data_root is not None else None
     observed = _observed_groups(inventory)
     expected_files = (
         len(observed) * len(expected_channels) * (len(expected_z_indices) + 1)
@@ -79,6 +81,7 @@ def build_dataset_summary(
             )
 
     summary = {
+        "experiment_name": experiment_name,
         "total_image_files": len(inventory),
         "unique_plates": plate_ids,
         "unique_time_points": time_points,
@@ -109,6 +112,7 @@ def build_summary_table(
     expected_channels: Sequence[str],
     expected_z_indices: Sequence[int],
     projection_z_index: int = 0,
+    data_root: Optional[Union[str, Path]] = None,
 ) -> pd.DataFrame:
     """Build a compact human-readable summary table."""
     summary = build_dataset_summary(
@@ -117,6 +121,7 @@ def build_summary_table(
         expected_channels,
         expected_z_indices,
         projection_z_index=projection_z_index,
+        data_root=data_root,
     )
 
     if inventory.empty:
@@ -145,6 +150,7 @@ def build_summary_table(
         )
 
     rows = [
+        ("Experiment name", summary["experiment_name"] or "unknown"),
         ("Total image files", summary["total_image_files"]),
         ("Unique plates", ", ".join(summary["unique_plates"]) or "none"),
         (

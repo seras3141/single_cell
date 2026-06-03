@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, Union
 
 import pandas as pd
 
@@ -21,6 +22,7 @@ ISSUE_COLUMNS = [
     "channel",
     "z_index",
     "details",
+    "expected_file_path",
 ]
 COMPLETENESS_COLUMNS = [
     "plate_id",
@@ -133,6 +135,7 @@ def _issue(
     details: str,
     channel: Optional[str] = None,
     z_index: Optional[int] = None,
+    expected_file_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     return {
         **keys,
@@ -141,7 +144,60 @@ def _issue(
         "channel": channel,
         "z_index": z_index,
         "details": details,
+        "expected_file_path": expected_file_path,
     }
+
+
+def _extract_projection_subdir(
+    inventory: pd.DataFrame,
+    data_root: Path,
+    projection_z_index: int,
+) -> Optional[str]:
+    """Return the relative subdirectory name for projection (z=0) files, or None."""
+    z0_rows = inventory[inventory["z_index"] == projection_z_index]
+    if z0_rows.empty:
+        return None
+    sample_path = Path(str(z0_rows.iloc[0]["file_path"]))
+    try:
+        rel = sample_path.relative_to(data_root)
+    except ValueError:
+        return None
+    return rel.parts[0] if len(rel.parts) >= 2 else None
+
+
+def _build_channel_wavelength_map(inventory: pd.DataFrame) -> Dict[str, int]:
+    """Map channel name → integer wavelength index from the inventory."""
+    result: Dict[str, int] = {}
+    for _, row in (
+        inventory[["channel", "wavelength"]].dropna().drop_duplicates().iterrows()
+    ):
+        result[str(row["channel"])] = int(row["wavelength"])
+    return result
+
+
+def _expected_rel_path(
+    time_point: int,
+    row: str,
+    col: int,
+    z_index: int,
+    wavelength: Optional[int],
+    projection_z_index: Optional[int],
+    projection_subdir: Optional[str],
+    site: int = 1,
+) -> str:
+    """Construct the expected path relative to data_root for a missing file.
+
+    If *wavelength* is None, uses ``w*`` so the result is a glob pattern.
+    """
+    w_part = str(wavelength) if wavelength is not None else "*"
+    filename = f"t{time_point}_{row}{col:02d}_s{site}_w{w_part}_z{z_index}.tif"
+    if (
+        projection_z_index is not None
+        and z_index == int(projection_z_index)
+        and projection_subdir
+    ):
+        return f"{projection_subdir}/{filename}"
+    return filename
 
 
 def _present_pairs(group: pd.DataFrame) -> Set[Tuple[str, int]]:
@@ -158,8 +214,17 @@ def find_dataset_issues(
     expected_channels: Sequence[str],
     expected_z_indices: Sequence[int] = DEFAULT_EXPECTED_Z_INDICES,
     projection_z_index: Optional[int] = DEFAULT_PROJECTION_Z_INDEX,
+    data_root: Optional[Union[str, Path]] = None,
 ) -> pd.DataFrame:
-    """Create an actionable observed-well issue report."""
+    """Create an actionable observed-well issue report.
+
+    When *data_root* is provided, each issue row that corresponds to a single
+    missing file includes an ``expected_file_path`` column with the path
+    relative to *data_root*.  For issue types that span multiple files
+    (``missing_z``, ``missing_projection_z``), the path uses a ``w*`` glob
+    for the wavelength component.  For issue types that do not map 1-to-1 to
+    a file (``missing_channel``, ``unexpected_*``), the column is ``None``.
+    """
     if inventory.empty:
         return _empty_issue_dataframe()
 
@@ -170,6 +235,31 @@ def find_dataset_issues(
     allowed_z = set(expected_z_set)
     if projection_z_index is not None:
         allowed_z.add(int(projection_z_index))
+
+    # Pre-compute path-construction helpers when data_root is supplied.
+    _data_root: Optional[Path] = Path(data_root) if data_root is not None else None
+    _projection_subdir: Optional[str] = None
+    _ch_wl: Dict[str, int] = {}
+    if _data_root is not None:
+        _ch_wl = _build_channel_wavelength_map(inventory)
+        if projection_z_index is not None:
+            _projection_subdir = _extract_projection_subdir(
+                inventory, _data_root, int(projection_z_index)
+            )
+
+    def _exp_path(z_index: int, channel: Optional[str], keys: Dict[str, Any]) -> Optional[str]:
+        if _data_root is None:
+            return None
+        wavelength = _ch_wl.get(channel) if channel is not None else None
+        return _expected_rel_path(
+            time_point=int(keys["time_point"]),
+            row=str(keys["row"]),
+            col=int(keys["col"]),
+            z_index=z_index,
+            wavelength=wavelength,
+            projection_z_index=projection_z_index,
+            projection_subdir=_projection_subdir,
+        )
 
     issues: List[Dict[str, Any]] = []
     for _, group in inventory.groupby(GROUP_COLUMNS, sort=True):
@@ -210,6 +300,7 @@ def find_dataset_issues(
                         "error",
                         f"Expected core z-slice z{z_index} is absent.",
                         z_index=z_index,
+                        expected_file_path=_exp_path(z_index, None, keys),
                     )
                 )
                 continue
@@ -226,6 +317,7 @@ def find_dataset_issues(
                             f"Expected channel '{channel}' is missing at z{z_index}.",
                             channel=channel,
                             z_index=z_index,
+                            expected_file_path=_exp_path(z_index, channel, keys),
                         )
                     )
 
@@ -239,6 +331,7 @@ def find_dataset_issues(
                         "warning",
                         f"Projection z-slice z{projection_z} is absent.",
                         z_index=projection_z,
+                        expected_file_path=_exp_path(projection_z, None, keys),
                     )
                 )
             else:
@@ -255,6 +348,7 @@ def find_dataset_issues(
                                 f"channel '{channel}'.",
                                 channel=channel,
                                 z_index=projection_z,
+                                expected_file_path=_exp_path(projection_z, channel, keys),
                             )
                         )
 
