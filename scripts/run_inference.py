@@ -147,12 +147,12 @@ def run_inference_from_config_dist(config : Dict[str, Any], input_dir: Optional[
     Merges config file with CLI args, with CLI args taking precedence.
     """
 
-    dist.init_process_group(backend='nccl', init_method='env://')
     local_rank = int(os.environ['LOCAL_RANK'])
-    world_size = dist.get_world_size()
-    rank = dist.get_rank()
     torch_device = torch.device(f'cuda:{local_rank}')
     torch.cuda.set_device(torch_device)
+    dist.init_process_group(backend='nccl', init_method='env://', device_id=torch_device)
+    world_size = dist.get_world_size()
+    rank = dist.get_rank()
 
     pipeline = InferencePipeline.from_config(config=config, device=torch_device)
     validation = pipeline.validate_setup()
