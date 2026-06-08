@@ -14,8 +14,12 @@ The library provides:
 __version__ = "0.1.0"
 
 from . import utils
-# from . import inference
 from . import preprocessing
-# from . import postprocessing
+from . import postprocessing
 
-__all__ = ["utils", "inference", "preprocessing", "postprocessing"]
+try:
+    from . import inference
+except ImportError:
+    inference = None  # type: ignore[assignment]
+
+__all__ = ["utils", "preprocessing", "postprocessing", "inference"]
