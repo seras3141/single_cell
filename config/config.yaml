@@ -43,6 +43,7 @@ segmentation:
     process_z_stacks: false  # Whether to process Z-stacks
     save_overlays: true  # Whether to save overlay images
     save_metadata: true  # Whether to save JSON metadata for predictions
+    label_format: "zarr"  # Segmentation label format: tif, zarr, or hdf5
 
 # Training parameters
 training:

@@ -74,9 +74,9 @@ python -m src.preprocessing.dataset_split \
 
 ---
 
-## 2. Combining 2D to 3D
+## 2. Combining and Splitting 2D/3D Labels
 
-While not directly in `src/preprocessing`, use utility functions (e.g., `src/utils/conversion.py`) to combine 2D slices into 3D TIFFs (to create blur maps).
+While not directly in `src/preprocessing`, use utility functions (e.g., `src/utils/conversion.py`) to combine saved 2D label slices into 3D volumes, or split 3D label volumes back into 2D slices. Supported label formats are `tif`, `zarr`, and `hdf5`.
 
 **API Example:**
 ```python
@@ -85,17 +85,30 @@ from src.utils.conversion import combine_2d_to_3d
 combine_2d_to_3d(
     input_dir="data/processed/split",
     output_dir="data/processed/3d_images",
-    pattern="(.*)_z(\\d+)(?:_(BF|Cells))?\\.(tif|tiff)",
+    pattern="(.+?)_z(\\d+)(?:_(BF|Cells))?",
     recursive=True,
+    output_format="zarr",
 )
 ```
 
-**CLI Command:**
+`combine_2d_to_3d` combines matching input/output formats only. If `--input-format` is omitted, it defaults to `--output-format`.
+
+**CLI Combine:**
 ```sh
 python -m src.utils.conversion combine \
   --input data/processed/split/ \
   --output data/processed/3d_images \
-  --pattern "(.*)_z(\\d+)(?:_(BF|Cells))?\\.(tif|tiff)"
+  --pattern "(.+?)_z(\\d+)(?:_(BF|Cells))?" \
+  --output-format zarr
+```
+
+**CLI Split:**
+```sh
+python -m src.utils.conversion split \
+  --input data/processed/3d_images/sample_Cells_3d.zarr \
+  --output data/processed/split \
+  --suffix Cells \
+  --output-format zarr
 ```
 
 ---

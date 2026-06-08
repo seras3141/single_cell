@@ -15,7 +15,7 @@ quality:
 
 postprocessing:
   image_pattern: "*_BF_3d.tif"
-  mask_pattern: "*_masks_3d.tif"
+  mask_pattern: "*_mask_3d.tif"
   enable_blur_filtering: true
   filter_before_tracking: true
   save_intermediate_results: false

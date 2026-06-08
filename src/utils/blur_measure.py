@@ -347,6 +347,7 @@ def measure_blur_heatmap(
 
 def load_blur_heatmap(blur_path: Union[str, Path]) -> np.ndarray:
     """Load a blur heatmap from disk."""
+    # TODO: support zarr/h5 blur cache formats (currently tif only)
     blur_path = Path(blur_path)
     if not blur_path.exists():
         raise FileNotFoundError(f"Blur heatmap file not found: {blur_path}")
@@ -381,6 +382,7 @@ def generate_blur_heatmap(
         try:
             blur_cache_dir = Path(blur_path).parent
             blur_cache_dir.mkdir(parents=True, exist_ok=True)
+            # TODO: support zarr/h5 blur cache formats (currently tif only)
             tiff.imwrite(str(blur_path), blur_map.astype(np.float32))
 
         except Exception as e:

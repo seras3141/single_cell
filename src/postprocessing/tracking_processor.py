@@ -11,13 +11,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
 import numpy as np
 import pandas as pd
-import tifffile as tiff
 from tqdm import tqdm
 import json
 import time
 from joblib import Parallel, delayed
 
-from src.utils.image_utils import LABEL_FORMATS, save_labels
+from src.utils.image_utils import LABEL_FORMATS, save_labels, load_labels
 
 from .cell_tracking import CellTracker3D
 from .blur_filtering import BlurFilter, blur_intensity_metric
@@ -95,7 +94,7 @@ class CellTrackingPipeline:
                            filename_prefix: Optional[str] = None) -> Dict[str, Any]:
         """ Process a single segmentation file with its corresponding image file.
         Args:
-            segmentation_path: Path to the segmentation file (TIFF format)
+            segmentation_path: Path to the segmentation file (tif, zarr, or h5)
             image_path: Path to the corresponding image file (TIFF format)
             output_dir: Directory to save the output results
             blur_cache_dir: Optional directory to read or cache blur heatmaps
@@ -120,7 +119,7 @@ class CellTrackingPipeline:
 
         # Time: Loading segmentation
         step_start = time.time()
-        segmentation_stack = tiff.imread(str(segmentation_path)).astype(np.uint16)
+        segmentation_stack = load_labels(segmentation_path).astype(np.uint16)
         if not segmentation_stack.ndim == 3:
             raise ValueError(f"Segmentation file {segmentation_path} is not a 3D stack.")
         timing_results['load_segmentation'] = time.time() - step_start
@@ -216,7 +215,7 @@ class CellTrackingPipeline:
             filename_prefix: Optional[str] = None) -> Dict[str, Any]:
         """ Process a single segmentation file with its corresponding image file.
         Args:
-            segmentation_path: Path to the segmentation file (TIFF format)
+            segmentation_path: Path to the segmentation file (tif, zarr, or h5)
             image_path: Path to the corresponding image file (TIFF format)
             output_dir: Directory to save the output results
             blur_cache_dir: Optional directory to read or cache blur heatmaps
@@ -241,7 +240,7 @@ class CellTrackingPipeline:
 
         # Time: Loading segmentation
         t0 = time.time()
-        segmentation_stack = tiff.imread(str(segmentation_path)).astype(np.uint16)
+        segmentation_stack = load_labels(segmentation_path).astype(np.uint16)
         if not segmentation_stack.ndim == 3:
             raise ValueError(f"Segmentation file {segmentation_path} is not a 3D stack.")
         timing_results['load_segmentation'] = time.time() - t0

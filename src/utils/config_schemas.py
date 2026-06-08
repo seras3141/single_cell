@@ -84,6 +84,7 @@ class InferenceConfig:
     process_z_stacks: bool = False  # Whether to process Z-stacks
     save_overlays: bool = True  # Whether to save overlay images
     save_metadata: bool = True  # Whether to save JSON metadata for predictions
+    label_format: str = "zarr"  # Segmentation label format: tif, zarr, or hdf5
 
 @dataclass
 class SegmentationConfig:
@@ -161,7 +162,7 @@ class PostprocessingConfig:
     enable_blur_filtering: bool = True
     filter_before_tracking: bool = True
     save_intermediate_results: bool = False
-    mask_pattern: str = "*_masks_3d.tif"
+    mask_pattern: str = "*_mask_3d.tif"
     image_pattern: str = "*_BF_3d.tif"
     blur_heatmap_suffix: str = "_blur_heatmap"
     output_suffix: str = "_tracked"
