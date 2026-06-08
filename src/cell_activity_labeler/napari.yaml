@@ -1,0 +1,7 @@
+name: cell-activity-labeler
+display_name: Cell Activity Labeler
+contributions:
+  widgets:
+    - command: cell_activity_labeler.ui.widget:threshold_classifier_widget_factory
+      display_name: Cell Activity Labeler
+      autogenerate: false
