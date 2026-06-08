@@ -20,12 +20,12 @@ preprocessing:
   split_folder: "split_data"
   out_3d_folder: "3d_data"
 
-  # Optional: override wavelength-to-channel mappings
-  # Defaults to config/wavelength_config.yaml if omitted
+  # Wavelength-to-channel mappings differ by experiment:
+  #   Ew2-1, Ew2-2:           {1: FlipGFP, 2: mCherry, 3: BF}  ← default
+  #   HD1509, HD1883, SA110:  {1: BF,      2: mCherry, 3: FlipGFP}
+  # Leave null or omit to use the default (Ew2 convention).
+  # Or use --experiment-name CLI flag to select automatically.
   wavelength_mappings:
-    1: "AnnexinV"
-    2: "mCherry"
-    3: "BF"
 
   # Optional: default plate number (overrides auto-detection from filepath)
   # plate_number: "2126"
@@ -87,13 +87,16 @@ postprocessing:
 
 ## Wavelength Configuration
 
-**File:** `config/wavelength_config.yaml`
+**Wavelength mappings** are now hardcoded constants in `src/utils/file_utils.py` — `wavelength_config.yaml` is no longer loaded at runtime.
 
-Maps wavelength indices to channel names. Used by `ConfigurableFileHandler` as the default mapping when `preprocessing.wavelength_mappings` is not set in the preprocessing config.
+Two configurations are defined:
 
-```yaml
-wavelength_mappings:
-  1: "BF"
-  2: "mCherry"
-  3: "AnnexinV"
+```python
+# Ew2-1, Ew2-2 (default)
+WAVELENGTH_MAPPINGS_EW2   = {1: "FlipGFP", 2: "mCherry", 3: "BF"}
+
+# HD1509, HD1883, SA110
+WAVELENGTH_MAPPINGS_HD_SA = {1: "BF", 2: "mCherry", 3: "FlipGFP"}
 ```
+
+Select via `--experiment-name` CLI flag or pass `wavelength_mappings=EXPERIMENT_WAVELENGTH_MAPPINGS[name]` directly.

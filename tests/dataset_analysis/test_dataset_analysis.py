@@ -21,7 +21,6 @@ from src.dataset_analysis import (  # noqa: E402
 )
 
 LAYOUT_PATH = Path("docs/layout/MF5v1_plate_layout.json")
-WAVELENGTH_CONFIG_PATH = Path("config/wavelength_config.yaml")
 
 
 def _touch_image(
@@ -47,11 +46,7 @@ def _build_inventory_for_files(
 ) -> pd.DataFrame:
     for wavelength, z_index in files:
         _touch_image(tmp_path, wavelength=wavelength, z_index=z_index)
-    return build_dataset_inventory(
-        tmp_path,
-        LAYOUT_PATH,
-        wavelength_config_path=WAVELENGTH_CONFIG_PATH,
-    )
+    return build_dataset_inventory(tmp_path, LAYOUT_PATH)
 
 
 def test_layout_annotation_handles_drugs_and_controls() -> None:
@@ -80,7 +75,7 @@ def test_inventory_parses_raw_filenames_and_joins_layout(tmp_path: Path) -> None
     inventory = _build_inventory_for_files(tmp_path, [(1, 1), (2, 1), (3, 1)])
 
     assert len(inventory) == 3
-    assert set(inventory["channel"]) == {"BF", "mCherry", "AnnexinV"}
+    assert set(inventory["channel"]) == {"BF", "mCherry", "FlipGFP"}
     assert set(inventory["wavelength"]) == {1, 2, 3}
     assert inventory["plate_id"].unique().tolist() == ["p2426"]
     assert inventory["time_point"].unique().tolist() == [1]
@@ -90,11 +85,7 @@ def test_inventory_parses_raw_filenames_and_joins_layout(tmp_path: Path) -> None
 
 
 def test_expected_channels_load_in_wavelength_order() -> None:
-    assert load_expected_channels(WAVELENGTH_CONFIG_PATH) == [
-        "BF",
-        "mCherry",
-        "AnnexinV",
-    ]
+    assert load_expected_channels() == ["FlipGFP", "mCherry", "BF"]
 
 
 def test_missing_channel_and_projection_are_reported_for_observed_wells_only(
@@ -103,13 +94,13 @@ def test_missing_channel_and_projection_are_reported_for_observed_wells_only(
     inventory = _build_inventory_for_files(tmp_path, [(1, 1), (2, 1)])
     issues = find_dataset_issues(
         inventory,
-        ["BF", "mCherry", "AnnexinV"],
+        ["BF", "mCherry", "FlipGFP"],
         expected_z_indices=[1],
     )
 
     assert set(issues["well_id"]) == {"B02"}
     missing_channel = issues[issues["issue_type"] == "missing_channel"].iloc[0]
-    assert missing_channel["channel"] == "AnnexinV"
+    assert missing_channel["channel"] == "FlipGFP"
     assert missing_channel["severity"] == "error"
 
     projection = issues[issues["issue_type"] == "missing_projection_z"].iloc[0]
@@ -124,7 +115,7 @@ def test_missing_core_z_and_unexpected_z_are_errors(tmp_path: Path) -> None:
     )
     issues = find_dataset_issues(
         inventory,
-        ["BF", "mCherry", "AnnexinV"],
+        ["BF", "mCherry", "FlipGFP"],
         expected_z_indices=[1, 2],
     )
 
@@ -144,7 +135,7 @@ def test_channel_missing_at_specific_core_z_is_reported(tmp_path: Path) -> None:
     )
     issues = find_dataset_issues(
         inventory,
-        ["BF", "mCherry", "AnnexinV"],
+        ["BF", "mCherry", "FlipGFP"],
         expected_z_indices=[1, 2],
     )
 
@@ -160,7 +151,7 @@ def test_summary_and_plot_helpers_smoke(tmp_path: Path) -> None:
         tmp_path,
         [(1, 0), (2, 0), (3, 0), (1, 1), (2, 1), (3, 1)],
     )
-    expected_channels = ["BF", "mCherry", "AnnexinV"]
+    expected_channels = ["BF", "mCherry", "FlipGFP"]
     completeness = build_completeness_table(
         inventory,
         expected_channels,

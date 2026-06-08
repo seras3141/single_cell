@@ -17,7 +17,6 @@ import re
 import os
 import glob
 from collections import defaultdict
-import yaml
 import shutil
 
 
@@ -29,45 +28,24 @@ class FilePattern:
     output_format: Optional[str]
 
 
-def load_wavelength_config(config_path: Optional[str] = None) -> Dict[int, str]:
-    """Load wavelength to channel mappings from YAML config file.
-    
-    Args:
-        config_path: Path to wavelength config YAML file. If None, uses default location.
-        
-    Returns:
-        Dictionary mapping wavelength indices (int) to channel names (str).
-        Example: {1: "BF", 2: "mCherry", 3: "AnnexinV"}
-        
-    Raises:
-        FileNotFoundError: If config file not found.
-        ValueError: If config format is invalid.
-    """
-    if config_path is None:
-        # Default location relative to this module
-        config_file = Path(__file__).parent.parent.parent / "config" / "wavelength_config.yaml"
-    else:
-        config_file = Path(config_path)
-    
-    if not config_file.exists():
-        raise FileNotFoundError(f"Wavelength config file not found: {config_file}")
-    
-    try:
-        with open(config_file, 'r') as f:
-            config = yaml.safe_load(f)
-    except yaml.YAMLError as e:
-        raise ValueError(f"Invalid YAML format in {config_file}: {e}")
-    
-    if not config or 'wavelength_mappings' not in config:
-        raise ValueError(f"Config must contain 'wavelength_mappings' key: {config_file}")
-    
-    mappings = config['wavelength_mappings']
-    
-    # Convert string keys to integers if needed
-    if not isinstance(mappings, dict):
-        raise ValueError(f"'wavelength_mappings' must be a dict: {config_file}")
-    
-    return {int(k): str(v) for k, v in mappings.items()}
+# Ew2-1, Ew2-2: apoptosis marker (FlipGFP) on w1, brightfield on w3
+WAVELENGTH_MAPPINGS_EW2: Dict[int, str] = {1: "FlipGFP", 2: "mCherry", 3: "BF"}
+
+# HD1509, HD1883, SA110: brightfield on w1, apoptosis marker (FlipGFP) on w3
+WAVELENGTH_MAPPINGS_HD_SA: Dict[int, str] = {1: "BF", 2: "mCherry", 3: "FlipGFP"}
+
+# Default uses the Ew2 convention
+DEFAULT_WAVELENGTH_MAPPINGS: Dict[int, str] = WAVELENGTH_MAPPINGS_EW2
+
+# Lookup by experiment name — pass EXPERIMENT_WAVELENGTH_MAPPINGS[experiment_name]
+# to ConfigurableFileHandler(wavelength_mappings=...) at the call site.
+EXPERIMENT_WAVELENGTH_MAPPINGS: Dict[str, Dict[int, str]] = {
+    "Ew2-1": WAVELENGTH_MAPPINGS_EW2,
+    "Ew2-2": WAVELENGTH_MAPPINGS_EW2,
+    "HD1509": WAVELENGTH_MAPPINGS_HD_SA,
+    "HD1883": WAVELENGTH_MAPPINGS_HD_SA,
+    "SA110": WAVELENGTH_MAPPINGS_HD_SA,
+}
 
 class AbstractFileHandler(ABC):
     """Abstract base class for file renaming operations."""
@@ -359,32 +337,31 @@ class ConfigurableFileHandler(BF_IF_FileHandler):
     """File handler with configurable wavelength-to-channel mappings and flexible plate extraction.
     
     This handler extends BF_IF_FileHandler to support:
-    - Dynamic wavelength mappings (w1->BF, w2->mCherry, w3->AnnexinV, etc.)
+    - Dynamic wavelength mappings (e.g. w1->FlipGFP, w2->mCherry, w3->BF for Ew2 experiments)
     - Flexible plate number extraction from filename or directory
     - Runtime parameter overrides for maximum flexibility
-    
+
     Wavelength Configuration:
-    - Mappings can be loaded from YAML config file (default or custom path)
-    - Mappings can be provided via constructor parameter
-    - Constructor parameter overrides YAML config
-    
+    - Defaults to WAVELENGTH_MAPPINGS_EW2 ({1: FlipGFP, 2: mCherry, 3: BF})
+    - Override per experiment: ConfigurableFileHandler(wavelength_mappings=EXPERIMENT_WAVELENGTH_MAPPINGS["HD1509"])
+
     Plate Number Extraction:
     - Attempts extraction from filename first (e.g., 'p2126_A01_z1.tif')
     - Falls back to directory path (e.g., 'Plate 2126/')
     - Can be explicitly provided to rename_file() to override auto-detection
     
     Example usage:
-        # Default: load from config/wavelength_config.yaml
+        # Default mappings for Ew2 experiments (w1=FlipGFP, w2=mCherry, w3=BF)
         handler = ConfigurableFileHandler()
         renamed = handler.rename_file('Plate 2126/t1_A01_s1_w2_z1.tif', 'image')
         # Output: p2126_A01_z1_mCherry.tif
-        
+
         # Custom mappings at runtime
         custom_mappings = {1: "BF", 2: "GFP", 3: "RFP"}
         handler = ConfigurableFileHandler(wavelength_mappings=custom_mappings)
         renamed = handler.rename_file('Plate 2126/t1_A01_s1_w2_z1.tif', 'image')
         # Output: p2126_A01_z1_GFP.tif
-        
+
         # Explicit plate number override
         renamed = handler.rename_file('Plate 2126/t1_A01_s1_w2_z1.tif', 'image', plate_number='9999')
         # Output: p9999_A01_z1_mCherry.tif
@@ -394,33 +371,21 @@ class ConfigurableFileHandler(BF_IF_FileHandler):
         self,
         wavelength_mappings: Optional[Dict[int, str]] = None,
         patterns: Optional[Dict[str, FilePattern]] = None,
-        config_path: Optional[str] = None,
         plate_number: Optional[str] = None
     ):
         """Initialize ConfigurableFileHandler with optional configuration.
-        
+
         Args:
             wavelength_mappings: Dictionary mapping wavelength indices to channel names.
-                Example: {1: "BF", 2: "mCherry", 3: "AnnexinV"}
-                If provided, overrides config_path settings.
+                Defaults to WAVELENGTH_MAPPINGS_EW2 ({1: "FlipGFP", 2: "mCherry", 3: "BF"}).
+                Use EXPERIMENT_WAVELENGTH_MAPPINGS[experiment_name] for HD/SA experiments.
             patterns: Custom file patterns. If None, uses inherited defaults.
-            config_path: Path to wavelength config YAML file. If None, uses default location.
             plate_number: Default plate number to use if not extracted from filepath.
                 Can be overridden in rename_file() call.
         """
         super().__init__(patterns)
-        
-        # Load wavelength mappings
-        if wavelength_mappings is not None:
-            # Use provided mappings (highest priority)
-            self.wavelength_mappings = wavelength_mappings
-        else:
-            # Load from YAML config
-            try:
-                self.wavelength_mappings = load_wavelength_config(config_path)
-            except (FileNotFoundError, ValueError):
-                # Fall back to default if config not found
-                self.wavelength_mappings = {1: "AnnexinV", 2: "mCherry", 3: "BF"}
+
+        self.wavelength_mappings = wavelength_mappings if wavelength_mappings is not None else DEFAULT_WAVELENGTH_MAPPINGS.copy()
         
         # Store default plate number
         self._default_plate_number = plate_number
@@ -436,7 +401,7 @@ class ConfigurableFileHandler(BF_IF_FileHandler):
             wavelength_index: Wavelength index (e.g., 1, 2, 3)
             
         Returns:
-            Channel name (e.g., "BF", "mCherry", "AnnexinV")
+            Channel name (e.g., "BF", "mCherry", "FlipGFP")
             
         Raises:
             ValueError: If wavelength index not found in mappings

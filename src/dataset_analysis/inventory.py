@@ -8,7 +8,11 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 import pandas as pd
 
 from src.dataset_analysis.layout import build_plate_annotation_dataframe
-from src.utils.file_utils import ConfigurableFileHandler, load_wavelength_config
+from src.utils.file_utils import (
+    ConfigurableFileHandler,
+    DEFAULT_WAVELENGTH_MAPPINGS,
+    EXPERIMENT_WAVELENGTH_MAPPINGS,
+)
 
 TIFF_SUFFIXES = {".tif", ".tiff"}
 
@@ -37,12 +41,15 @@ def normalize_plate_id(plate_number: Optional[str]) -> str:
 
 
 def load_expected_channels(
-    wavelength_config_path: Optional[Union[str, Path]] = None
+    wavelength_mappings: Optional[Dict[int, str]] = None,
 ) -> List[str]:
-    """Load expected channel names in wavelength-index order."""
-    mappings = load_wavelength_config(
-        str(wavelength_config_path) if wavelength_config_path is not None else None
-    )
+    """Return expected channel names in wavelength-index order.
+
+    Args:
+        wavelength_mappings: Mapping to use. Defaults to DEFAULT_WAVELENGTH_MAPPINGS (Ew2 convention).
+            Use EXPERIMENT_WAVELENGTH_MAPPINGS[experiment_name] for other experiments.
+    """
+    mappings = wavelength_mappings if wavelength_mappings is not None else DEFAULT_WAVELENGTH_MAPPINGS
     return [mappings[index] for index in sorted(mappings)]
 
 
@@ -105,15 +112,22 @@ def _empty_inventory_dataframe(annotation_columns: Sequence[str]) -> pd.DataFram
 def build_dataset_inventory(
     data_root: Union[str, Path],
     layout_path: Union[str, Path],
-    wavelength_config_path: Optional[Union[str, Path]] = None,
     plate_number: Optional[str] = None,
+    wavelength_mappings: Optional[Dict[int, str]] = None,
 ) -> pd.DataFrame:
-    """Build a per-image inventory joined to MF5v1 well annotations."""
+    """Build a per-image inventory joined to MF5v1 well annotations.
+
+    Args:
+        data_root: Root directory containing raw TIFF files.
+        layout_path: Path to the plate layout JSON file.
+        plate_number: Default plate number if not extractable from filename.
+        wavelength_mappings: Wavelength-to-channel mapping for this experiment.
+            Defaults to DEFAULT_WAVELENGTH_MAPPINGS (Ew2 convention).
+            Use EXPERIMENT_WAVELENGTH_MAPPINGS[experiment_name] for HD/SA experiments.
+    """
     handler = ConfigurableFileHandler(
-        config_path=(
-            str(wavelength_config_path) if wavelength_config_path is not None else None
-        ),
         plate_number=plate_number,
+        wavelength_mappings=wavelength_mappings,
     )
     annotations = build_plate_annotation_dataframe(layout_path)
     annotation_columns = [

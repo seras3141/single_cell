@@ -27,7 +27,7 @@ success, stdout, stderr = run_preprocessing(
     "data/raw", "data/processed",
     test_size=0.2,
     random_seed=42,
-    wavelengths="1:BF,2:mCherry,3:AnnexinV",
+    wavelengths="1:FlipGFP,2:mCherry,3:BF",
     plate="2126",
 )
 ```
@@ -51,8 +51,17 @@ run_preprocessing_from_config(config_manager.to_dict())
 ```python
 from src.utils.file_utils import ConfigurableFileHandler
 
+from src.utils.file_utils import ConfigurableFileHandler, EXPERIMENT_WAVELENGTH_MAPPINGS
+
+# Use the named lookup for known experiments
 handler = ConfigurableFileHandler(
-    wavelength_mappings={1: "BF", 2: "mCherry", 3: "AnnexinV"},
+    wavelength_mappings=EXPERIMENT_WAVELENGTH_MAPPINGS["HD1509"],
+    plate_number="2126",
+)
+
+# Or pass mappings directly for custom setups
+handler = ConfigurableFileHandler(
+    wavelength_mappings={1: "FlipGFP", 2: "mCherry", 3: "BF"},
     plate_number="2126",
 )
 

@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Union
 
 from src.preprocessing.dataset_split import train_test_split_directory
 from src.utils.config import get_config_manager
-from src.utils.file_utils import BF_IF_FileHandler, ConfigurableFileHandler
+from src.utils.file_utils import BF_IF_FileHandler, ConfigurableFileHandler, EXPERIMENT_WAVELENGTH_MAPPINGS
 from src.utils.conversion import combine_2d_to_3d
 from src.preprocessing.blur_analysis import generate_blur_heatmap_batch
 from src.utils.logging_utils import setup_logging
@@ -24,7 +24,13 @@ def get_preprocessing_args():
     # Input patterns
     parser.add_argument("--combine-pattern", help="Regex for 2D to 3D grouping")
     # File handler
-    parser.add_argument("--wavelengths", type=str, help="Wavelength-to-channel mappings as comma-separated key:value pairs (e.g. '1:BF,2:mCherry,3:AnnexinV')")
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        choices=list(EXPERIMENT_WAVELENGTH_MAPPINGS.keys()),
+        help="Experiment name — automatically sets wavelength mappings (e.g. 'Ew2-1', 'HD1509'). Overridden by --wavelengths if both are provided."
+    )
+    parser.add_argument("--wavelengths", type=str, help="Wavelength-to-channel mappings as comma-separated key:value pairs (e.g. '1:FlipGFP,2:mCherry,3:BF'). Overrides --experiment-name.")
     parser.add_argument("--plate", type=str, help="Default plate number for file renaming (overrides auto-detection from filepath)")
     # Z-range for 2D-to-3D combination
     parser.add_argument("--z-min", type=int, help="Minimum z-index to include when combining 2D to 3D (default: 1, skipping z0 which is the 2D projection)")
@@ -69,8 +75,12 @@ def get_preprocessing_legacy_args(vargs: dict) -> Dict[str, Any]:
         if k in vargs:
             legacy_args[v] = vargs[k]
 
-    # Parse inline wavelength mappings: "1:BF,2:mCherry,3:AnnexinV" -> {1: "BF", 2: "mCherry", 3: "AnnexinV"}
-    if 'wavelengths' in vargs:
+    # --experiment-name sets wavelength mappings from the known-experiment lookup table
+    if vargs.get('experiment_name'):
+        legacy_args['preprocessing.wavelength_mappings'] = EXPERIMENT_WAVELENGTH_MAPPINGS[vargs['experiment_name']]
+
+    # --wavelengths overrides --experiment-name if both are provided
+    if vargs.get('wavelengths'):
         try:
             mappings = {}
             for pair in vargs['wavelengths'].split(','):
@@ -80,7 +90,7 @@ def get_preprocessing_legacy_args(vargs: dict) -> Dict[str, Any]:
         except (ValueError, AttributeError) as e:
             raise ValueError(
                 f"Invalid --wavelengths format '{vargs['wavelengths']}'. "
-                f"Expected '1:BF,2:mCherry,3:AnnexinV'. Error: {e}"
+                f"Expected '1:FlipGFP,2:mCherry,3:BF'. Error: {e}"
             )
 
     return legacy_args

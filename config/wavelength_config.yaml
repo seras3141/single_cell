@@ -1,6 +1,0 @@
-# Wavelength to channel mappings for fluorescence imaging
-# Maps wavelength indices (w1, w2, w3, ...) to channel names
-wavelength_mappings:
-  1: "BF"
-  2: "mCherry"
-  3: "AnnexinV"

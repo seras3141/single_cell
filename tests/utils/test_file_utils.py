@@ -230,10 +230,9 @@ class TestConfigurableFileHandler:
         result = handler.rename_file("Plate 2126/t1_A01_s1_w2_z1.tif", "image")
         assert "GFP" in result
 
-    def test_fallback_defaults_when_no_config(self):
-        # No config file, no explicit mappings → hardcoded fallback {1:"AnnexinV", 2:"mCherry", 3:"BF"}
-        handler = ConfigurableFileHandler(config_path="/nonexistent/path.yaml")
-        assert handler.wavelength_mappings == {1: "AnnexinV", 2: "mCherry", 3: "BF"}
+    def test_default_mappings_are_ew2_convention(self):
+        handler = ConfigurableFileHandler()
+        assert handler.wavelength_mappings == {1: "FlipGFP", 2: "mCherry", 3: "BF"}
 
     def test_explicit_plate_number_override(self):
         handler = ConfigurableFileHandler(wavelength_mappings={1: "BF"})
@@ -255,9 +254,8 @@ class TestConfigurableFileHandler:
         result = handler.rename_file("noplate/t1_A01_s1_w1_z1.tif", "image")
         assert "5555" in result
 
-    def test_wavelength_config_from_yaml(self, tmp_path):
-        p = _write_wavelength_yaml(tmp_path / "wl.yaml", {1: "DAPI", 2: "RFP"})
-        handler = ConfigurableFileHandler(config_path=str(p))
+    def test_explicit_mappings_override_default(self):
+        handler = ConfigurableFileHandler(wavelength_mappings={1: "DAPI", 2: "RFP"})
         result = handler.rename_file("Plate 2126/t1_A01_s1_w1_z1.tif", "image")
         assert "DAPI" in result
 

@@ -22,10 +22,15 @@ python scripts/run_preprocessing.py \
     --patch-size 32 \
     --stride-size 16
 
-# Override wavelength mappings and plate number at runtime
+# Select experiment by name (sets wavelength mappings automatically)
 python scripts/run_preprocessing.py \
     -i data/raw -o data/processed \
-    --wavelengths "1:BF,2:mCherry,3:AnnexinV" \
+    --experiment-name HD1509
+
+# Override wavelength mappings manually at runtime
+python scripts/run_preprocessing.py \
+    -i data/raw -o data/processed \
+    --wavelengths "1:BF,2:mCherry,3:FlipGFP" \
     --plate "2126"
 
 # Override individual config values using dot notation
@@ -46,7 +51,8 @@ python scripts/run_preprocessing.py \
 | `--patch-size` | Patch size for blur detection |
 | `--stride-size` | Stride size for blur detection |
 | `--combine-pattern` | Regex pattern for 2D-to-3D grouping |
-| `--wavelengths` | Wavelength-to-channel mappings as `key:value` pairs (e.g. `1:BF,2:mCherry,3:AnnexinV`) |
+| `--experiment-name` | Experiment name — auto-sets wavelength mappings (e.g. `Ew2-1`, `HD1509`, `SA110`). Overridden by `--wavelengths`. |
+| `--wavelengths` | Wavelength-to-channel mappings as `key:value` pairs (e.g. `1:FlipGFP,2:mCherry,3:BF`). Overrides `--experiment-name`. |
 | `--plate` | Default plate number for file renaming (overrides auto-detection from filepath) |
 | `--z-min` | Minimum z-index to include in 3D stacks (default: `1`; skips z0, the 2D projection) |
 | `--z-max` | Maximum z-index to include in 3D stacks (default: no limit) |

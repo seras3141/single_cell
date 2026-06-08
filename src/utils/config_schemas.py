@@ -38,7 +38,7 @@ class PreprocessingConfig:
     split_folder: str = "split_data"
     out_3d_folder: str = "3d_images"  # Directory for 3D images
     # File handler options
-    wavelength_mappings: Any = None  # Dict mapping wavelength index (int) to channel name (str), e.g. {1: "BF", 2: "mCherry"}
+    wavelength_mappings: Any = None  # Per-experiment override. Use EXPERIMENT_WAVELENGTH_MAPPINGS[experiment_name] from file_utils.py. Ew2: {1:"FlipGFP",2:"mCherry",3:"BF"}; HD/SA: {1:"BF",2:"mCherry",3:"FlipGFP"}.
     plate_number: Optional[str] = None  # Default plate number; overrides auto-detection from filepath
     # Z-range filtering for 2D-to-3D combination
     z_min: Optional[int] = 1  # Skip z-indices below this value (z0 is typically the 2D projection)
