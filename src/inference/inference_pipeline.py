@@ -7,6 +7,7 @@ on datasets using various segmentation models with organized output.
 from __future__ import annotations
 
 import os
+import re
 import numpy as np
 from typing import Dict, Any, Optional, Union, List, Callable
 from pathlib import Path
@@ -160,6 +161,7 @@ class InferencePipeline:
         inference_config = segmentation_config.get("inference", {})
         paths_config = resolved_config.get("paths", {})
         results_folder = inference_config.get("results_folder", "results")
+        label_format = inference_config.get("label_format", "zarr")
 
         model_name = cellpose_cfg.get("model_type", "cyto3")
         output_dir = output_dir or Path(paths_config.get("output_dir", "results")) / results_folder        
@@ -169,7 +171,8 @@ class InferencePipeline:
         output_manager = OutputManager(
             base_output_dir=output_dir,     # type: ignore
             model_name=model_name,          # type: ignore
-            dataset_name=dataset_name       # type: ignore
+            dataset_name=dataset_name,      # type: ignore
+            label_format=label_format
         )
 
         log_config = resolved_config.get("logging", {})
@@ -300,8 +303,21 @@ class InferencePipeline:
         mask_dir = self.output_manager.masks_dir
         output_dir = self.output_manager.masks_dir.parent / (self.output_manager.masks_dir.name + "_3d")
 
-        pattern = r"(.+?)_z(\d+)(?:_(masks))?\.(tif|tiff)"
-        combine_2d_to_3d(str(mask_dir), str(output_dir), pattern=pattern)
+        pred_mask_suffix = self.output_manager.pred_mask_suffix
+        if pred_mask_suffix.startswith("_"):
+            suffix_pattern = rf"(?:_({re.escape(pred_mask_suffix[1:])}))?"
+        elif pred_mask_suffix:
+            suffix_pattern = rf"(?:({re.escape(pred_mask_suffix)}))?"
+        else:
+            suffix_pattern = ""
+        pattern = rf"(.+?)_z(\d+){suffix_pattern}"
+
+        combine_2d_to_3d(
+            str(mask_dir),
+            str(output_dir),
+            pattern=pattern,
+            output_format=self.output_manager.label_format,
+        )
     
     def run_inference_single(
         self,

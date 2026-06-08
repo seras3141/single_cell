@@ -24,6 +24,7 @@ segmentation:
     process_z_stacks: false  # Whether to process Z-stacks
     save_overlays: false  # Whether to save overlay images
     save_metadata: true  # Whether to save JSON metadata for predictions
+    label_format: "zarr"  # Segmentation label format: tif, zarr, or hdf5
 #   # save_individual_slices: true  # For Z-stacks, save individual slices
 #   # create_subdirs: true  # Create organized subdirectories
 
