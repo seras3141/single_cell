@@ -226,3 +226,5 @@ uv.lock
 # Notebook outputs and archives
 notebooks/output*
 notebooks/archive/
+
+demo_files/

@@ -168,11 +168,13 @@ class InferencePipeline:
         dataset_name = dataset_name or inference_config.get("dataset_name", "test")
         
         # Initialize output manager
+        overwrite = inference_config.get("overwrite", False)
         output_manager = OutputManager(
             base_output_dir=output_dir,     # type: ignore
             model_name=model_name,          # type: ignore
             dataset_name=dataset_name,      # type: ignore
-            label_format=label_format
+            label_format=label_format,
+            overwrite=overwrite,
         )
 
         log_config = resolved_config.get("logging", {})
@@ -245,12 +247,13 @@ class InferencePipeline:
         # Process files
         results = {
             'processed_files': [],
+            'skipped_files': [],
             'failed_files': [],
             'total_cells': 0,
             'total_files': len(input_files),
             '2d_files': 0,
         }
-        
+
         for idx, file_path in enumerate(tqdm(input_files, desc="Processing files")):
             try:
                 # Process single file
@@ -260,16 +263,23 @@ class InferencePipeline:
                     save_overlays=save_overlays,
                     save_metadata=save_metadata
                 )
-                
+
+                # Empty dict means the output already existed and was skipped
+                if not file_result:
+                    results['skipped_files'].append(str(file_path))
+                    if progress_callback:
+                        progress_callback(idx + 1, len(input_files), file_path)
+                    continue
+
                 results['processed_files'].append(file_result)
                 results['total_cells'] += file_result.get('num_cells', 0)
                 if file_result.get('is_2d', False):
                     results['2d_files'] += 1
-                
+
                 # Call progress callback if provided
                 if progress_callback:
                     progress_callback(idx + 1, len(input_files), file_path)
-                
+
             except Exception as e:
                 logging.error(f"Failed to process {file_path}: {e}")
                 results['failed_files'].append({

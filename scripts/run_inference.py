@@ -57,6 +57,7 @@ def get_inference_args():
     optional_arg("--config", type=str, help="Path to YAML config file")
     optional_arg("--log-level", type=str, choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging level")
     optional_arg("--override", "-O", action="append", help="Config overrides in dot notation")
+    optional_arg("--overwrite", action="store_true", help="Overwrite existing output files")
     
     return parser.parse_args()
 
@@ -92,6 +93,8 @@ def get_legacy_args(cli_args):
         legacy_overrides['segmentation.cellpose.diameter'] = cli_args['diameter']
     if 'model_name' in cli_args:
         legacy_overrides['segmentation.cellpose.model_type'] = cli_args['model_name']
+    if 'overwrite' in cli_args:
+        legacy_overrides['segmentation.inference.overwrite'] = cli_args['overwrite']
 
     return legacy_overrides
 
@@ -129,6 +132,7 @@ def run_inference_from_config(config : Dict[str, Any], input_dir: Optional[str] 
     print("INFERENCE COMPLETED")
     print("="*50)
     print(f"Total files processed: {len(results['processed_files'])}")
+    print(f"Total files skipped (already exist): {len(results.get('skipped_files', []))}")
     print(f"Total cells detected: {results['total_cells']}")
     print(f"Failed files: {len(results['failed_files'])}")
     # print(f"Results saved to: {output_manager.output_dir}")

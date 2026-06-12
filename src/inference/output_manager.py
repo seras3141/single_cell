@@ -40,7 +40,8 @@ class OutputManager:
         dataset_name: str = "test",
         create_subdirs: bool = True,
         label_format: str = "zarr",
-        pred_mask_suffix: str = "_pred_mask"
+        pred_mask_suffix: str = "_pred_mask",
+        overwrite: bool = False,
     ):
         """
         Initialize output manager.
@@ -53,6 +54,7 @@ class OutputManager:
             label_format: Format for saving segmentation labels. One of
                 ``"tif"``, ``"zarr"`` (default), or ``"hdf5"``.
             pred_mask_suffix: Suffix for prediction mask files
+            overwrite: If False (default), skip files whose mask already exists.
         """
         if label_format not in LABEL_FORMATS:
             raise ValueError(f"label_format must be one of {list(LABEL_FORMATS)}; got {label_format!r}")
@@ -64,6 +66,7 @@ class OutputManager:
         self.dataset_name = dataset_name
         self.create_subdirs = create_subdirs
         self.pred_mask_suffix = pred_mask_suffix
+        self.overwrite = overwrite
         
         # Create main output directory: {out_dir}/{model_name}/{dataset}
         self.output_dir = self.base_output_dir / model_name / dataset_name
@@ -121,12 +124,16 @@ class OutputManager:
         input_path = Path(input_path)
         base_name = self._get_output_filename(input_path)
         suffix = self.pred_mask_suffix
-        
+
         saved_files = {}
-        
+
+        mask_path = self.masks_dir / f"{base_name}{suffix}{self._label_ext}"
+        if mask_path.exists() and not self.overwrite:
+            logging.info(f"Skipping {input_path.name} — mask already exists at {mask_path}")
+            return {}
+
         try:
             # Save masks
-            mask_path = self.masks_dir / f"{base_name}{suffix}{self._label_ext}"
             self._save_masks(masks, mask_path)
             saved_files['masks'] = mask_path
             
@@ -183,11 +190,15 @@ class OutputManager:
         """
         input_path = Path(input_path)
         base_name = self._get_output_filename(input_path)
-        
-        saved_files = {'stack': {}, 'slices': []}
-        
-        # Save entire stack
+
         stack_path = self.masks_dir / f"{base_name}_stack{self._label_ext}"
+        if stack_path.exists() and not self.overwrite:
+            logging.info(f"Skipping {input_path.name} — z-stack mask already exists at {stack_path}")
+            return {'stack': {}, 'slices': []}
+
+        saved_files = {'stack': {}, 'slices': []}
+
+        # Save entire stack
         self._save_masks(masks_stack, stack_path)
         saved_files['stack']['masks'] = stack_path
         

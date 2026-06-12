@@ -67,6 +67,7 @@ def get_preprocessing_legacy_args(vargs: dict) -> Dict[str, Any]:
         'skip_split': 'preprocessing.skip_split',
         'skip_3d': 'preprocessing.skip_3d',
         'skip_blur': 'preprocessing.skip_blur',
+        'overwrite': 'preprocessing.overwrite',
     }
 
     legacy_args = {}
@@ -115,7 +116,8 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
     run_split = not preprocessing_config.get('skip_split', False)
     run_3d    = not preprocessing_config.get('skip_3d', False)
     run_blur  = not preprocessing_config.get('skip_blur', False)
-    logger.info(f"Steps enabled — split: {run_split}, 3d: {run_3d}, blur: {run_blur}")
+    overwrite = preprocessing_config.get('overwrite', False)
+    logger.info(f"Steps enabled — split: {run_split}, 3d: {run_3d}, blur: {run_blur}, overwrite: {overwrite}")
 
     # Step 1: Split dataset
     split_dir = output_dir / preprocessing_config.get('split_folder', 'split_data')
@@ -135,6 +137,7 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
             test_size=preprocessing_config.get('test_size', 0.2),
             random_state=preprocessing_config.get('random_state', 42),
             file_handler=file_handler,
+            overwrite=overwrite,
         )
     else:
         logger.info("Skipping split step.")
@@ -155,6 +158,7 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
             recursive=True,
             z_min=z_min,
             z_max=z_max,
+            overwrite=overwrite,
         )
     else:
         logger.info("Skipping 2D-to-3D combination step.")
@@ -178,7 +182,7 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
             patch_size=patch_size,
             stride_size=stride_size,
             normalize=True,
-            overwrite=True,
+            overwrite=overwrite,
         )
     else:
         logger.info("Skipping blur heatmap generation step.")

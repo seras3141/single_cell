@@ -16,6 +16,7 @@ from typing import List, Dict, Optional, Union, Tuple
 import re
 import os
 import glob
+import logging
 from collections import defaultdict
 import shutil
 
@@ -611,6 +612,7 @@ def rename_all_files(file_map: Dict[str, List[str]], file_handler: AbstractFileH
 def copy_file(
     src_file: Union[str, Path],
     dest_file: Union[str, Path],
+    overwrite: bool = False,
 ) -> None:
     """
     Copy a file from src_file to dest_file with metadata preservation.
@@ -618,6 +620,7 @@ def copy_file(
     Args:
         src_file: Source file to copy
         dest_file: Destination file path
+        overwrite: If False (default), skip files that already exist at dest_file.
     """
 
     src = Path(src_file).resolve()
@@ -630,7 +633,10 @@ def copy_file(
         raise FileNotFoundError(f"Source file '{src}' does not exist")
 
     if dst.exists() or dst.is_symlink():
-        dst.unlink()  # Remove existing file
+        if not overwrite:
+            logging.debug(f"Skipping {dst} — file already exists")
+            return
+        dst.unlink()  # Remove existing file before overwriting
 
     try:
         dst.symlink_to(src, target_is_directory=False)
@@ -642,6 +648,7 @@ def copy_file(
 def copy_without_split_dict(
         file_tuple : Dict[str, List[Tuple[str, str]]],
         output_dir: Union[str, Path],
+        overwrite: bool = False,
     ):
     """
     Copy image and mask files without splitting into train/test sets.
@@ -649,6 +656,7 @@ def copy_without_split_dict(
     Args:
         file_tuple: Dictionary containing file tuples {file_type: [(src_path, dest_path)]}
         output_dir: Directory to copy the files to
+        overwrite: If False (default), skip files that already exist.
     """
     if isinstance(output_dir, str):
         output_dir = Path(output_dir)
@@ -658,7 +666,7 @@ def copy_without_split_dict(
     for k, v in file_tuple.items():
         for file_pair in v:
             src, dst = file_pair
-            copy_file(src, output_dir / dst)
+            copy_file(src, output_dir / dst, overwrite=overwrite)
             count += 1
     return count
 
@@ -667,6 +675,7 @@ def copy_with_split_dict(
         test_file_tuple : Dict[str, List[Tuple[str, str]]],
         output_dir: Union[str, Path],
         filter_file_keys: Optional[List[str]] = None,
+        overwrite: bool = False,
     ):
     """
     Copy image and mask files into train and test subdirectories.
@@ -675,6 +684,8 @@ def copy_with_split_dict(
         train_file_tuple: Dictionary containing train file tuples {"images": [...], "masks": [...]}
         test_file_tuple: Dictionary containing test file tuples {"images": [...], "masks": [...]}
         output_dir: Directory to copy the files to
+        filter_file_keys: Optional list of file type keys to copy (copies all if None)
+        overwrite: If False (default), skip files that already exist.
     """
     if isinstance(output_dir, str):
         output_dir = Path(output_dir)
@@ -692,11 +703,11 @@ def copy_with_split_dict(
     # TODO : Handle masks separately into mask subdirs
     for k, v in test_file_tuple.items():
         for src, dst in v:
-            copy_file(src, test_dir / dst)
+            copy_file(src, test_dir / dst, overwrite=overwrite)
 
     for k, v in train_file_tuple.items():
         for src, dst in v:
-            copy_file(src, train_dir / dst)
+            copy_file(src, train_dir / dst, overwrite=overwrite)
 
 
 if __name__ == "__main__":

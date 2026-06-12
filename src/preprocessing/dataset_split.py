@@ -44,6 +44,7 @@ def split_dataset_dict(
         random_state: int = 42,
         file_handler: DefaultFileHandler = DefaultFileHandler(),
         output_dir: Optional[Union[str, Path]] = None,
+        overwrite: bool = False,
     ) -> Dict[str, List[str]]:
     """
     Split a dataset of images and masks into train and test sets, keeping groups together.
@@ -76,7 +77,7 @@ def split_dataset_dict(
         logger.info("Test size is 0 or >=1, no splitting will be performed.")
 
         if output_dir:
-            copy_without_split_dict(file_tuples, output_dir)
+            copy_without_split_dict(file_tuples, output_dir, overwrite=overwrite)
 
         all_files = {k: [dst for src, dst in v] for k, v in file_tuples.items()}
 
@@ -128,7 +129,7 @@ def split_dataset_dict(
                     train_files[file_type].extend(files)
 
         if output_dir:
-            copy_with_split_dict(train_files, test_files, output_dir)
+            copy_with_split_dict(train_files, test_files, output_dir, overwrite=overwrite)
 
         train_files = {file_type: list(map(lambda x: x[1], files)) for file_type, files in train_files.items()}
         test_files = {file_type: list(map(lambda x: x[1], files)) for file_type, files in test_files.items()}
@@ -165,6 +166,7 @@ def train_test_split_directory(
     test_size: float = 0.2,
     random_state: int = 42,
     file_handler: DefaultFileHandler = DefaultFileHandler(),
+    overwrite: bool = False,
 ) -> Dict[str, Any]:
     """
     Split data in a directory into train and test sets and organize into subdirectories.
@@ -194,7 +196,8 @@ def train_test_split_directory(
     # Split the dataset
 
     train_files, test_files = split_dataset_dict(
-        file_list, test_size, random_state, file_handler=file_handler, output_dir=output_dir, 
+        file_list, test_size, random_state, file_handler=file_handler, output_dir=output_dir,
+        overwrite=overwrite,
     )
     
     result = {

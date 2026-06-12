@@ -47,6 +47,7 @@ class PreprocessingConfig:
     skip_split: bool = False
     skip_3d: bool = False
     skip_blur: bool = False
+    overwrite: bool = False
 
 
 @dataclass
@@ -85,6 +86,7 @@ class InferenceConfig:
     save_overlays: bool = True  # Whether to save overlay images
     save_metadata: bool = True  # Whether to save JSON metadata for predictions
     label_format: str = "zarr"  # Segmentation label format: tif, zarr, or hdf5
+    overwrite: bool = False
 
 @dataclass
 class SegmentationConfig:

@@ -111,7 +111,7 @@ class CellTrackingPipeline:
 
         if output_manager is None:
             assert output_dir is not None, "output_dir must be provided if output_manager is not set"
-            output_manager = TrackingOutputManager(output_dir)
+            output_manager = TrackingOutputManager(output_dir, overwrite=self.config.overwrite_existing)
 
         if filename_prefix is None:
             filename_prefix = segmentation_path.stem
@@ -232,7 +232,7 @@ class CellTrackingPipeline:
 
         if output_manager is None:
             assert output_dir is not None, "output_dir must be provided if output_manager is not set"
-            output_manager = TrackingOutputManager(output_dir)
+            output_manager = TrackingOutputManager(output_dir, overwrite=self.config.overwrite_existing)
 
         if filename_prefix is None:
             filename_prefix = segmentation_path.stem
@@ -318,6 +318,11 @@ class CellTrackingPipeline:
         output_manager: "TrackingOutputManager",
     ) -> Optional[Dict[str, Any]]:
         """Error-handling wrapper around process_single_file_opt for parallel execution."""
+        filename_prefix = seg_file.stem
+        if output_manager.final_exists(filename_prefix) and not output_manager.overwrite:
+            self.logger.info(f"Skipping {seg_file.name} — final output already exists")
+            return {'input_segmentation': str(seg_file), 'skipped': True}
+
         image_file = self._get_candidate_image_for_segmentation(seg_file, image_dir, mask_suffix, image_suffix)
         if image_file is None:
             return None
@@ -354,7 +359,7 @@ class CellTrackingPipeline:
         image_dir = Path(image_dir)
         mask_dir = Path(mask_dir)
 
-        output_manager = TrackingOutputManager(output_dir)
+        output_manager = TrackingOutputManager(output_dir, overwrite=self.config.overwrite_existing)
 
         image_pattern = image_pattern or self.config.image_pattern
         mask_pattern = mask_pattern or self.config.mask_pattern
@@ -392,17 +397,19 @@ class CellTrackingPipeline:
 class TrackingOutputManager:
     """Handles saving of intermediate and final outputs for cell tracking pipeline."""
 
-    def __init__(self, output_dir: Union[str, Path], label_format: str = "zarr"):
+    def __init__(self, output_dir: Union[str, Path], label_format: str = "zarr", overwrite: bool = False):
         """
         Args:
             output_dir: Root directory for all tracking outputs.
             label_format: Format for saving segmentation labels. One of
                 ``"tif"``, ``"zarr"`` (default), or ``"hdf5"``.
+            overwrite: If False (default), skip files whose final output already exists.
         """
         if label_format not in LABEL_FORMATS:
             raise ValueError(f"label_format must be one of {list(LABEL_FORMATS)}; got {label_format!r}")
         self.label_format = label_format
         self._label_ext = LABEL_FORMATS[label_format]
+        self.overwrite = overwrite
 
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -431,6 +438,10 @@ class TrackingOutputManager:
     def save_tracked_blur_filtered(self, arr: np.ndarray, filename_prefix: str):
         path = self.subdirs['tracked_blur_filtered'] / f"{filename_prefix}{self._label_ext}"
         return self._save(arr, path)
+
+    def final_exists(self, filename_prefix: str) -> bool:
+        path = self.subdirs['final'] / f"{filename_prefix}{self._label_ext}"
+        return path.exists()
 
     def save_final(self, arr: np.ndarray, filename_prefix: str):
         path = self.subdirs['final'] / f"{filename_prefix}{self._label_ext}"

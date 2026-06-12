@@ -5,6 +5,7 @@ This module provides functions to convert between 2D slice-based image datasets
 and 3D volumetric image datasets, supporting both raw images and segmentation masks.
 """
 
+import logging
 import re
 import numpy as np
 import tifffile as tiff
@@ -43,6 +44,7 @@ def combine_2d_to_3d(
     z_max: Optional[int] = None,
     output_format: str = "tif",
     input_format: Optional[str] = None,
+    overwrite: bool = False,
 ):
     """
     Combine saved 2D label slices into 3D volumetric files.
@@ -59,6 +61,7 @@ def combine_2d_to_3d(
             ``"zarr"``, or ``"hdf5"``.
         input_format: Format of the input 2D label slices. Defaults to
             ``output_format``. Cross-format conversion is not supported.
+        overwrite: If False (default), skip groups whose 3D output file already exists.
 
     Example:
         Converts files like "sample_z1_BF.tif", "sample_z2_BF.tif", ...
@@ -130,8 +133,11 @@ def combine_2d_to_3d(
         if not images:
             continue
 
-        volume = np.stack(images, axis=0).astype(images[0].dtype)
         output_path = output_dir / f"{key}_3d{output_ext}"
+        if output_path.exists() and not overwrite:
+            logging.debug(f"Skipping {output_path.name} — 3D stack already exists")
+            continue
+        volume = np.stack(images, axis=0).astype(images[0].dtype)
         save_labels(volume, output_path)
 
     print(f"Successfully combined {len(file_groups)} 2D image sets into 3D volumes in {output_dir}")

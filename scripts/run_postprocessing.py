@@ -145,6 +145,7 @@ def get_postprocessing_args():
     optional_arg("--save-intermediate", action="store_true", default=True, help="Save intermediate processing results")
     # General options
     optional_arg("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging level")
+    optional_arg("--overwrite", action="store_true", help="Overwrite existing output files")
     return parser.parse_args(), parser
 
 
@@ -183,6 +184,8 @@ def get_postprocessing_legacy_args(vargs: dict) -> Dict[str, Any]:
         'save_intermediate': 'postprocessing.save_intermediate_results',
         # Logging options
         'log_level': 'log_level',
+        # Overwrite flag
+        'overwrite': 'postprocessing.overwrite_existing',
     }
 
     legacy_args = {}
