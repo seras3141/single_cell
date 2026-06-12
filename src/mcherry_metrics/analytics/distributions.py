@@ -33,11 +33,15 @@ def plot_metric_distributions(metrics_df: pd.DataFrame, save_dir: Path) -> list[
         if "sample_id" in metrics_df.columns and metrics_df["sample_id"].nunique() > 1:
             hue = "sample_id"
 
+        lo, hi = metrics_df[metric].quantile([0.001, 0.999])
+        plot_df = metrics_df.copy()
+        plot_df[metric] = plot_df[metric].clip(lower=lo, upper=hi)
+
         sns.histplot(
-            data=metrics_df,
+            data=plot_df,
             x=metric,
             hue=hue,
-            kde=metrics_df[metric].nunique() > 1,
+            kde=plot_df[metric].nunique() > 1,
             ax=ax,
             stat="count",
             common_norm=False,

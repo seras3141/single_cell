@@ -22,6 +22,12 @@ preprocessing:
   split_by_group: true
   split_folder: "split_data"
   out_3d_folder: "3d_images"
+
+  # Wavelength-to-channel mappings differ by experiment — set the correct one here or via --experiment-name CLI.
+  # Ew2-1, Ew2-2:          {1: FlipGFP, 2: mCherry, 3: BF}
+  # HD1509, HD1883, SA110: {1: BF,      2: mCherry, 3: FlipGFP}
+  # Leave null to use the default (Ew2 convention).
+  wavelength_mappings:
   
 # Segmentation parameters
 segmentation:
