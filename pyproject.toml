@@ -64,6 +64,20 @@ jupyter = [
     "plotly>=5.0.0",
     "bokeh>=2.3.0",
     "voila>=0.5.0",
+    "opencv-python>=4.5.0",
+    "bqplot>=0.12.0",
+    "ipympl>=0.8.0",
+    "papermill>=2.4.0",
+]
+gui = [
+    "PyQt5>=5.15.0",
+    "PyQt5-Qt5>=5.15.0",
+    "qtpy>=2.3.0",
+    "dask[array]>=2023.1.0",
+]
+visualization = [
+    "umap-learn>=0.5.0",
+    "tensorboard>=2.7.0",
 ]
 gpu = [
     "torch>=2.0.0",
@@ -118,11 +132,22 @@ extend-exclude = '''
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-python_classes = ["Test*"]  
+python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = [
     "--verbose",
     "--tb=short",
+    "--strict-markers",
+]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "slow: Slow tests that require significant resources",
+    "gpu: Tests that require GPU",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
 ]
 
 [tool.mypy]

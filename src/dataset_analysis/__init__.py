@@ -1,5 +1,11 @@
 """Dataset-level QC helpers for raw microscopy plate inventories."""
 
+from .image_quality_metrics import (
+    get_image_quality_metrics,
+    get_percentile_images,
+    get_quality_metrics,
+    max_intensity_projection_metrics,
+)
 from .inventory import (
     build_dataset_inventory,
     discover_image_files,
@@ -28,6 +34,10 @@ from .summary import build_dataset_summary, build_summary_table, write_summary_j
 
 __all__ = [
     "DEFAULT_EXPECTED_Z_INDICES",
+    "get_image_quality_metrics",
+    "get_percentile_images",
+    "get_quality_metrics",
+    "max_intensity_projection_metrics",
     "DEFAULT_PROJECTION_Z_INDEX",
     "build_completeness_table",
     "build_dataset_inventory",
