@@ -8,6 +8,7 @@ pipeline on segmentation results.
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Dict, Any
@@ -19,6 +20,7 @@ from src.postprocessing.tracking_processor import CellTrackingPipeline
 from src.utils.config_schemas import PostprocessingConfig, TrackingConfig, FilterConfig
 from src.utils.config import get_config_manager
 from src.utils.logging_utils import setup_logging
+from src.utils.run_manifest import create_or_load_manifest
 
 def get_tracking_config(tracking_kwargs: dict) -> TrackingConfig:
     """Extract tracking arguments from config or CLI args."""
@@ -146,6 +148,7 @@ def get_postprocessing_args():
     # General options
     optional_arg("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging level")
     optional_arg("--overwrite", action="store_true", help="Overwrite existing output files")
+    optional_arg("--run-dir", type=str, help="Experiment root directory where manifest.json lives. If omitted, manifest is not updated.")
     return parser.parse_args(), parser
 
 
@@ -275,6 +278,18 @@ def run_batch_postprocessing(pipeline, image_dir, mask_dir, blur_dir, output_dir
     successful = len([r for r in results if 'error' not in r])
     logger.info(f"Batch processing completed: {successful}/{len(results)} files successful")
 
+def _get_track_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
+    tracking_config = config.get("postprocessing", {}).get("tracking", {})
+    return {k: v for k, v in {
+        "search_range": tracking_config.get("search_range"),
+        "memory": tracking_config.get("memory"),
+        "min_track_length": tracking_config.get("min_track_length"),
+        "min_area": tracking_config.get("min_area"),
+        "max_area": tracking_config.get("max_area"),
+        "overwrite": config.get("postprocessing", {}).get("overwrite_existing", False),
+    }.items() if v is not None}
+
+
 def main():
     """Main CLI function."""
     args, parser = get_postprocessing_args()
@@ -291,24 +306,37 @@ def main():
     config_dict = validate_and_prepare_args(config_dict, cli_args)
 
     postprocessing_config = create_postprocessing_config(config_dict)
-
     pipeline = CellTrackingPipeline(postprocessing_config)
+
+    run_dir = cli_args.get("run_dir")
+    manifest = None
+    if run_dir is not None:
+        os.makedirs(run_dir, exist_ok=True)
+        paths_config = config_dict.get("paths", {})
+        manifest = create_or_load_manifest(run_dir, paths_config.get("image_dir", ""), config_dict)
+        snapshot = _get_track_snapshot(config_dict)
+        manifest.start_stage("track", config=snapshot)
 
     try:
         if config_dict["batch_mode"]:
             paths_config = config_dict.get("paths", {})
-            # Use paths from config or CLI args
             image_dir = Path(paths_config.get("image_dir", "."))
             mask_dir = Path(paths_config.get("mask_dir", "."))
             blur_dir = Path(paths_config.get("blur_dir", "."))
             output_dir = Path(paths_config.get("output_dir", "."))
-            # TODO : Add checks for directories
             run_batch_postprocessing(pipeline, image_dir, mask_dir, blur_dir, output_dir)
+            if manifest is not None:
+                manifest.complete_stage("track", output_dir=str(output_dir))
         else:
             run_single_file_postprocessing(pipeline, config_dict)
     except Exception as e:
         logger.error(f"Pipeline execution failed: {e}")
+        if manifest is not None:
+            manifest.fail_stage("track", error=str(e))
+            logger.info(manifest.summary())
         sys.exit(1)
+    if manifest is not None:
+        logger.info(manifest.summary())
     logger.info("Pipeline execution completed successfully")
 
 

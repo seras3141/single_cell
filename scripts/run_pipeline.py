@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from src.utils.logging_utils import setup_logging
 from src.utils.config import get_config_manager
+from src.utils.run_manifest import create_or_load_manifest
 
 
 def run_data_preparation(input_dir: str, output_dir: str, config) -> None:
@@ -139,7 +140,7 @@ def get_pipeline_args():
     parser.add_argument("--input-dir", type=str, required=False, help="Input directory containing raw microscopy data")
     parser.add_argument("--output-dir", type=str, required=False, help="Output directory for all results")
     parser.add_argument("--config", type=str, help="Path to configuration file (YAML)")
-    parser.add_argument("--steps", type=str, nargs="+", choices=["prepare", "segment-2d", "segment-3d", "track", "extract"], default=None, help="Pipeline steps to run")
+    parser.add_argument("--steps", type=str, nargs="+", choices=["prepare", "segment-2d", "segment-3d", "track", "mcherry", "extract"], default=None, help="Pipeline steps to run")
     parser.add_argument("--log-level", type=str, default=None, choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument("--override", type=str, action="append", help="Override config values using dot notation (e.g., model.diameter=30)")
     
@@ -185,25 +186,41 @@ def main():
 
     os.makedirs(output_dir, exist_ok=True)
 
+    manifest = create_or_load_manifest(output_dir, input_dir, config)
+    logger.info(f"Manifest for '{manifest.experiment_id}'")
+
     try:
         # Step 1: Data preparation
         if "prepare" in steps:
-            run_data_preparation(input_dir, output_dir, config)
+            manifest.start_stage("prepare")
+            try:
+                run_data_preparation(input_dir, output_dir, config)
+                manifest.complete_stage("prepare", output_dir=output_dir)
+            except Exception as e:
+                manifest.fail_stage("prepare", error=str(e))
+                raise
 
         # Step 2: 2D Segmentation
         if "segment-2d" in steps:
             split_folder = config.get("preprocessing", {}).get("split_folder", "split_data")
             split_dir = os.path.join(output_dir, split_folder)
             mask_dir = output_dir
-            run_2d_segmentation(split_dir, mask_dir, config)
+            seg_config_snapshot = {
+                "model_type": config.get("segmentation", {}).get("cellpose", {}).get("model_type"),
+                "flow_threshold": config.get("segmentation", {}).get("cellpose", {}).get("flow_threshold"),
+            }
+            manifest.start_stage("segment-2d", config=seg_config_snapshot)
+            try:
+                run_2d_segmentation(split_dir, mask_dir, config)
+                manifest.complete_stage("segment-2d", output_dir=mask_dir)
+            except Exception as e:
+                manifest.fail_stage("segment-2d", error=str(e))
+                raise
 
-        # Step 3: 3D Segmentation
+        # Step 3: 3D Segmentation (not yet implemented)
         if "segment-3d" in steps:
-            # TODO : Will be implemented in a future update
-            raise NotImplementedError("3D segmentation is not implemented in this Cellpose-only version of the pipeline.")
-            test_dir = os.path.join(output_dir, "split", "test")
-            seg_output = os.path.join(output_dir, "segmentation_3d")
-            run_3d_segmentation(test_dir, seg_output, config)
+            manifest.skip_stage("segment-3d", reason="Not implemented in Cellpose-only environment")
+            logger.info("3D segmentation skipped (not implemented).")
 
         # Step 4: Cell tracking (postprocessing)
         if "track" in steps:
@@ -219,10 +236,37 @@ def main():
             mask_dir = os.path.join(mask_base_dir, "masks_3d")
             track_dir = os.path.join(mask_base_dir, "tracking")
 
-            # Use new postprocessing pipeline
-            run_cell_tracking(image_dir, mask_dir, blur_dir, track_dir, config)
+            manifest.start_stage("track")
+            try:
+                run_cell_tracking(image_dir, mask_dir, blur_dir, track_dir, config)
+                manifest.complete_stage("track", output_dir=track_dir)
+            except Exception as e:
+                manifest.fail_stage("track", error=str(e))
+                raise
 
-        # Step 5: Feature extraction
+        # Step 5: mCherry metrics
+        if "mcherry" in steps:
+            mcherry_dir = paths_config.get("mcherry_dir")
+            if not mcherry_dir:
+                manifest.skip_stage("mcherry", reason="paths.mcherry_dir not set in config — run run_mcherry_metrics.py directly")
+                logger.info("mCherry metrics skipped: paths.mcherry_dir not configured.")
+            else:
+                from src.mcherry_metrics.config import ExtractionConfig
+                from src.mcherry_metrics.core.batch import run_extraction
+                mcherry_output = os.path.join(output_dir, "mcherry_metrics")
+                manifest.start_stage("mcherry")
+                try:
+                    run_extraction(
+                        mcherry_dir=Path(mcherry_dir),
+                        output_dir=Path(mcherry_output),
+                        config=ExtractionConfig(),
+                    )
+                    manifest.complete_stage("mcherry", output_dir=mcherry_output)
+                except Exception as e:
+                    manifest.fail_stage("mcherry", error=str(e))
+                    raise
+
+        # Step 6: Feature extraction
         if "extract" in steps:
             split_folder = config.get("preprocessing", {}).get("split_folder", "split_data")
 
@@ -234,12 +278,20 @@ def main():
             dataset_name = config["segmentation"]["inference"]["dataset_name"]
             inference_dir = os.path.join(output_dir, results_folder, model_type, dataset_name, "tracking", "final_2d")
 
-            run_feature_extraction(image_dir, ground_truth_dir, inference_dir, config=config)
+            manifest.start_stage("extract")
+            try:
+                run_feature_extraction(image_dir, ground_truth_dir, inference_dir, config=config)
+                manifest.complete_stage("extract", output_dir=inference_dir)
+            except Exception as e:
+                manifest.fail_stage("extract", error=str(e))
+                raise
 
         logger.info("Pipeline completed successfully!")
+        logger.info(manifest.summary())
 
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
+        logger.info(manifest.summary())
         sys.exit(1)
 
 if __name__ == "__main__":

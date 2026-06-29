@@ -28,6 +28,7 @@ from src.inference.inference_pipeline import InferencePipeline
 
 from src.utils.logging_utils import setup_logging
 from src.utils.config import get_config_manager
+from src.utils.run_manifest import create_or_load_manifest
 
 def get_inference_args():
     parser = argparse.ArgumentParser(description="Run inference on cell segmentation test dataset")
@@ -213,6 +214,16 @@ def run_inference_from_config_dist(config : Dict[str, Any], input_dir: Optional[
     logging.info("Inference completed successfully")
 
 
+def _get_segment_2d_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
+    cellpose_config = config.get("segmentation", {}).get("cellpose", {})
+    return {k: v for k, v in {
+        "model_type": cellpose_config.get("model_type"),
+        "flow_threshold": cellpose_config.get("flow_threshold"),
+        "cellprob_threshold": cellpose_config.get("cellprob_threshold"),
+        "diameter": cellpose_config.get("diameter"),
+    }.items() if v is not None}
+
+
 def main():
     """Main inference function with OmegaConf configuration support."""
     args = get_inference_args()
@@ -228,6 +239,14 @@ def main():
     logging.info("Final merged configuration:")
     logging.info(merged_config)
 
+    paths_config = merged_config.get("paths", {})
+    output_dir = paths_config.get("output_dir", "")
+    input_dir = paths_config.get("input_dir", "")
+    os.makedirs(output_dir, exist_ok=True)
+
+    manifest = create_or_load_manifest(output_dir, input_dir, merged_config)
+    snapshot = _get_segment_2d_snapshot(merged_config)
+    manifest.start_stage("segment-2d", config=snapshot)
     try:
         if merged_config.get('distributed', {}).get('enabled', False):
             logging.info("Starting distributed inference...")
@@ -235,10 +254,13 @@ def main():
         else:
             logging.info("Starting inference...")
             run_inference_from_config(merged_config)
-
+        manifest.complete_stage("segment-2d", output_dir=output_dir)
     except Exception as e:
         logging.error(f"Inference failed: {e}")
+        manifest.fail_stage("segment-2d", error=str(e))
+        logging.info(manifest.summary())
         sys.exit(1)
+    logging.info(manifest.summary())
 
 
 if __name__ == "__main__":

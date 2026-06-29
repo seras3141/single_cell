@@ -1,11 +1,13 @@
 import argparse
 import logging
+import os
 from pathlib import Path
 import sys
 from typing import Any, Dict, Optional, Union
 
 from src.preprocessing.dataset_split import train_test_split_directory
 from src.utils.config import get_config_manager
+from src.utils.run_manifest import create_or_load_manifest
 from src.utils.file_utils import BF_IF_FileHandler, ConfigurableFileHandler, EXPERIMENT_WAVELENGTH_MAPPINGS
 from src.utils.conversion import combine_2d_to_3d
 from src.preprocessing.blur_analysis import generate_blur_heatmap_batch
@@ -203,6 +205,16 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
             #     symlink_path.symlink_to(image_path)
             #     logger.info(f"Created symlink: {symlink_path} -> {image_path}")
     
+def _get_prepare_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
+    preprocessing_config = config.get("preprocessing", {})
+    return {k: v for k, v in {
+        "split_folder": preprocessing_config.get("split_folder"),
+        "test_size": preprocessing_config.get("test_size"),
+        "overwrite": preprocessing_config.get("overwrite", False),
+        "experiment_name": preprocessing_config.get("experiment_name"),
+    }.items() if v is not None}
+
+
 def main():
     args = get_preprocessing_args()
     cli_args = vars(args)
@@ -218,13 +230,25 @@ def main():
     logger.info("Final merged configuration:")
     logger.info(merged_config)
     
+    paths_config = merged_config.get("paths", {})
+    output_dir = paths_config.get("output_dir", "")
+    input_dir = paths_config.get("input_dir", "")
+    os.makedirs(output_dir, exist_ok=True)
+
+    manifest = create_or_load_manifest(output_dir, input_dir, merged_config)
+
+    snapshot = _get_prepare_snapshot(merged_config)
+    manifest.start_stage("prepare", config=snapshot)
     try:
         logger.info("Starting preprocessing...")
         run_preprocessing_from_config(merged_config)
-
+        manifest.complete_stage("prepare", output_dir=output_dir)
     except Exception as e:
         logger.error(f"Preprocessing failed: {e}")
+        manifest.fail_stage("prepare", error=str(e))
+        logger.info(manifest.summary())
         sys.exit(1)
+    logger.info(manifest.summary())
 
 
 if __name__ == "__main__":

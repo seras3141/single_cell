@@ -18,6 +18,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import sys
 import time
 from typing import Dict, Any, Optional, List, Tuple
@@ -28,6 +29,7 @@ from tqdm import tqdm
 from src.feature_extraction.feature_extraction_pipeline import FeatureExtractionPipeline
 from src.utils.logging_utils import setup_logging
 from src.utils.config import ConfigManager
+from src.utils.run_manifest import create_or_load_manifest
 
 def get_args():
     """Parse command line arguments."""
@@ -55,7 +57,9 @@ def get_args():
     parser.add_argument("--log-level", type=str, default="INFO",
                        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                        help="Logging level")
-    
+    parser.add_argument("--run-dir", type=str, default=None,
+                       help="Experiment root directory where manifest.json lives. If omitted, manifest is not updated.")
+
     return parser.parse_args()
 
 
@@ -156,21 +160,50 @@ def run_feature_extraction_from_config(config: Dict[str, Any]) -> pd.DataFrame:
     return features_df
 
 
+def _get_extract_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
+    feature_config = config.get("feature_extraction", {})
+    return {k: v for k, v in {
+        "n_jobs": feature_config.get("n_jobs"),
+        "image_dir": config.get("paths", {}).get("image_dir"),
+        "mask_dir": config.get("paths", {}).get("mask_dir"),
+    }.items() if v is not None}
+
+
 def main():
     """Main function."""
     args = get_args()
     config = load_config(args)
-    
-    # Initialize and run pipeline
-    features_df = run_feature_extraction_from_config(config)
+
+    manifest = None
+    if args.run_dir is not None:
+        output_dir = config.get("paths", {}).get("output_dir", "")
+        os.makedirs(args.run_dir, exist_ok=True)
+        manifest = create_or_load_manifest(args.run_dir, output_dir, config)
+        snapshot = _get_extract_snapshot(config)
+        manifest.start_stage("extract", config=snapshot)
+
+    try:
+        features_df = run_feature_extraction_from_config(config)
+    except Exception as e:
+        logging.error(f"Feature extraction failed: {e}")
+        if manifest is not None:
+            manifest.fail_stage("extract", error=str(e))
+            logging.info(manifest.summary())
+        sys.exit(1)
 
     if not features_df.empty:
         print(f"Feature extraction completed successfully!")
         print(f"Total instances: {len(features_df)}")
         print(f"Features per instance: {len([col for col in features_df.columns if col not in ['instance_id', 'image_filename', 'mask_filename', 'processing_timestamp', 'feature_extraction_version', 'dataset_name']])}")
-        # print(f"Output directory: {pipeline.output_dir}")
+        if manifest is not None:
+            output_dir = config.get("paths", {}).get("output_dir", "")
+            manifest.complete_stage("extract", output_dir=output_dir)
+            logging.info(manifest.summary())
     else:
         print("No features were extracted. Check logs for errors.")
+        if manifest is not None:
+            manifest.fail_stage("extract", error="No features extracted")
+            logging.info(manifest.summary())
         sys.exit(1)
 
 

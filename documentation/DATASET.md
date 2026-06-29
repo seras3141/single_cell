@@ -13,7 +13,7 @@ This document covers the dataset used with this pipeline: its experimental desig
 | Plate ID | pMF5V1 |
 | Plate format | 384-well |
 | Duration | 0–72 h |
-| Channels | BF (w1), mCherry (w2), AnnexinV (w3) |
+| Channels | BF, mCherry, FlipGFP (see channel mapping below) |
 | Z-slices per well per timepoint | 20 core (z1–z20) + 1 projection (z0) |
 
 ---
@@ -31,18 +31,29 @@ t{timepoint}_{wellID}_s1_w{wavelength}_z{zslice}.tif
 | `t{n}` | Timepoint index | `t1`, `t11`, `t21` |
 | `{wellID}` | Plate well (row + column) | `C09`, `D07` |
 | `s1` | Site — always 1 | `s1` |
-| `w{n}` | Wavelength / channel | `w1` = BF, `w2` = mCherry, `w3` = AnnexinV |
+| `w{n}` | Wavelength / channel | see channel mapping below |
 | `z{n}` | Z-slice | `z0` = projection, `z1`–`z20` = core slices |
 
-**Example:** `t21_C09_s1_w1_z05.tif` → timepoint 21, well C09, brightfield channel, z-slice 5.
+**Example:** `t21_C09_s1_w1_z05.tif` → timepoint 21, well C09, z-slice 5.
 
 Each experiment folder also contains a `{name}_Projection/` subfolder with maximum-intensity projections (`z0` files).
+
+### Channel mapping
+
+The assignment of channels to wavelength slots (`w1`, `w2`, `w3`) differs between experiment groups. mCherry is always `w2`; BF and FlipGFP swap:
+
+| Experiment group | w1 | w2 | w3 |
+|---|---|---|---|
+| HD1509, HD1883, SA110 | BF | mCherry | FlipGFP |
+| Ew2-1 PMU421 | FlipGFP | mCherry | BF |
+
+In code, these are the named constants `WAVELENGTH_MAPPINGS_HD_SA` and `WAVELENGTH_MAPPINGS_EW2` in `src/utils/file_utils.py`. All pipeline entry points accept an `--experiment-name` flag that resolves the correct mapping automatically.
 
 ---
 
 ## Plate Layout
 
-Full machine-readable layout: `config/MF5V1_plate_layout.json`.
+Full machine-readable layout: `config/MF5v1_plate_layout.json`.
 
 ### Quadrant structure
 
@@ -126,6 +137,6 @@ TBD
 
 | Channel | Label | Purpose | Status |
 |---|---|---|---|
-| w1 | BF | Cell segmentation (Cellpose-SAM) | In progress |
-| w2 | mCherry | Cell activity labelling (Otsu / Percentile / Manual threshold) | Not started |
-| w3 | AnnexinV | Apoptosis detection | Deferred |
+| w1 or w3 (experiment-dependent) | BF | Cell segmentation (Cellpose-SAM) | In progress (3 of 5 experiments) |
+| w2 | mCherry | Cell activity labelling (Otsu / Percentile / Manual threshold) | Partial — HD1509 and HD1883 done, needs rerun once full timepoints available |
+| w1 or w3 (experiment-dependent) | FlipGFP | GFP-based cell death reporter | Out of scope for current voucher |
