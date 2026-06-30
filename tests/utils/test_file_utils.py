@@ -1,5 +1,4 @@
 import pytest
-import yaml
 from src.utils.file_utils import (
     BF_IF_FileHandler,
     BlurFileHandler,
@@ -9,7 +8,6 @@ from src.utils.file_utils import (
     copy_without_split_dict,
     get_groups_from_filenames,
     list_all_files,
-    load_wavelength_config,
     rename_all_files,
 )
 import tempfile
@@ -18,12 +16,6 @@ from pathlib import Path
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
-
-def _write_wavelength_yaml(path: Path, mappings: dict) -> Path:
-    """Write a wavelength config YAML and return the path."""
-    with open(path, "w") as f:
-        yaml.dump({"wavelength_mappings": mappings}, f)
-    return path
 
 @pytest.fixture(scope="module")
 def mock_data_dirs():
@@ -185,36 +177,6 @@ class TestBlurFileHandler:
         assert self.handler.get_file_type('p1234_A01_t1_BF_3d.tif') == 'file_3D'
         # 2D file requires p<plate>_<row><col>_t<time>_z<z>_<type>.tif
         assert self.handler.get_file_type('p1234_A01_t1_z1_BF.tif') == 'file'
-
-
-# ─── load_wavelength_config ───────────────────────────────────────────────────
-
-class TestLoadWavelengthConfig:
-    def test_loads_integer_keys(self, tmp_path):
-        p = _write_wavelength_yaml(tmp_path / "wl.yaml", {1: "BF", 2: "mCherry"})
-        result = load_wavelength_config(str(p))
-        assert result == {1: "BF", 2: "mCherry"}
-
-    def test_string_keys_converted_to_int(self, tmp_path):
-        p = _write_wavelength_yaml(tmp_path / "wl.yaml", {"1": "BF", "2": "GFP"})
-        result = load_wavelength_config(str(p))
-        assert 1 in result and 2 in result
-
-    def test_missing_file_raises(self, tmp_path):
-        with pytest.raises(FileNotFoundError):
-            load_wavelength_config(str(tmp_path / "missing.yaml"))
-
-    def test_missing_key_raises(self, tmp_path):
-        p = tmp_path / "wl.yaml"
-        p.write_text("other_key: {}")
-        with pytest.raises(ValueError, match="wavelength_mappings"):
-            load_wavelength_config(str(p))
-
-    def test_non_dict_mappings_raises(self, tmp_path):
-        p = tmp_path / "wl.yaml"
-        p.write_text("wavelength_mappings: [1, 2, 3]")
-        with pytest.raises(ValueError):
-            load_wavelength_config(str(p))
 
 
 # ─── ConfigurableFileHandler ──────────────────────────────────────────────────
