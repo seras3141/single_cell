@@ -4,6 +4,7 @@ Basic tests for the segmentation visualization GUI.
 Tests the core functionality without requiring actual image files.
 """
 
+import os
 import pytest
 import tempfile
 import shutil
@@ -13,6 +14,13 @@ import tifffile as tiff
 
 # Skip tests if PyQt5 is not available
 pytest_pyqt5 = pytest.importorskip("PyQt5")
+
+# Skip entire module on headless systems — napari.Viewer() issues a C-level
+# abort when no display is present, which cannot be caught by except Exception.
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("DISPLAY"),
+    reason="requires a display (DISPLAY not set)"
+)
 
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QTimer

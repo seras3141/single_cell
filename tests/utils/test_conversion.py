@@ -52,9 +52,9 @@ class TestCombine2DTo3D:
             img_data = np.random.randint(0, 255, (64, 64), dtype=np.uint8) + z * 10
             tiff.imwrite(str(input_dir / f"sample_A_z{z}_BF.tif"), img_data)
         
-        # Sample A with Cells suffix (3 z-slices)
+        # Sample A with Cells suffix (3 z-slices) — values > 255 to require uint16 after dtype normalisation
         for z in range(1, 4):
-            img_data = np.random.randint(0, 100, (64, 64), dtype=np.uint16) + z * 5
+            img_data = np.random.randint(256, 1000, (64, 64), dtype=np.uint16) + z * 5
             tiff.imwrite(str(input_dir / f"sample_A_z{z}_Cells.tif"), img_data)
         
         # Sample B with BF suffix (2 z-slices)

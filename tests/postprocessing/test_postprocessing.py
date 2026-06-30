@@ -178,7 +178,7 @@ def test_batch_processing(pipeline, tmp_path):
     test_files = []
     for i in range(3):
         seg, img = create_test_files(tmp_path)
-        new_seg = seg.parent / f"test_{i}_masks_3d.tif"
+        new_seg = seg.parent / f"test_{i}_mask_3d.tif"
         new_img = img.parent / f"test_{i}_BF_3d.tif"
         seg.rename(new_seg)
         img.rename(new_img)

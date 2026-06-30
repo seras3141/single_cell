@@ -100,7 +100,7 @@ def test_missing_channel_and_projection_are_reported_for_observed_wells_only(
 
     assert set(issues["well_id"]) == {"B02"}
     missing_channel = issues[issues["issue_type"] == "missing_channel"].iloc[0]
-    assert missing_channel["channel"] == "FlipGFP"
+    assert missing_channel["channel"] == "BF"
     assert missing_channel["severity"] == "error"
 
     projection = issues[issues["issue_type"] == "missing_projection_z"].iloc[0]

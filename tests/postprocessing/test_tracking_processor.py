@@ -201,7 +201,7 @@ class TestCellTrackingPipeline:
         input_dir = tmp_path / "input"
         input_dir.mkdir()
         for i in range(2):
-            tifffile.imwrite(str(input_dir / f"sample_{i}_masks_3d.tif"), mock_segmentation_stack)
+            tifffile.imwrite(str(input_dir / f"sample_{i}_mask_3d.tif"), mock_segmentation_stack)
             tifffile.imwrite(str(input_dir / f"sample_{i}_BF_3d.tif"), mock_image_stack)
         output_dir = tmp_path / "output"
 
