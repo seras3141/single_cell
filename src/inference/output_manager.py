@@ -12,7 +12,7 @@ import logging
 import json
 from datetime import datetime
 
-from src.utils.image_utils import LABEL_FORMATS, save_labels, load_labels
+from src.utils.image_utils import LABEL_FORMATS, save_labels, load_labels, _optimal_label_dtype
 
 try:
     import matplotlib

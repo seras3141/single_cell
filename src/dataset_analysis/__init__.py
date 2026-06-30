@@ -40,6 +40,7 @@ from .qc import (
 )
 from .summary import build_dataset_summary, build_summary_table, write_summary_json
 from .processed_inventory import (
+    annotate_with_raw_issues,
     build_processed_inventory,
     build_processed_summary,
     print_summary_table,
@@ -78,6 +79,7 @@ __all__ = [
     "plot_z_completeness",
     "write_summary_json",
     # Processed inventory
+    "annotate_with_raw_issues",
     "build_processed_inventory",
     "build_processed_summary",
     "print_summary_table",

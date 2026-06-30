@@ -7,7 +7,7 @@ paths:
 # Segmentation model configuration
 segmentation:
   cellpose:
-    model_type: "cellpose-sam"  # Options: cyto, cyto2, cyto3, nuclei, or custom model path
+    model_type: "cellpose_sam"  # Options: cyto, cyto2, cyto3, nuclei, or custom model path
     gpu: true
     channels: [0, 0]  # [cytoplasm, nucleus] - [0,0] for grayscale
     diameter: null  # Auto-diameter detection, or specify in pixels

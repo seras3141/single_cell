@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pandas as pd
 
 from src.dataset_analysis.processed_inventory import (
+    annotate_with_raw_issues,
     build_processed_inventory,
     build_processed_summary,
     print_summary_table,
@@ -54,6 +55,12 @@ def main() -> None:
     raw_inventory = pd.read_csv(args.raw_inventory)
     print(f"Loaded raw inventory: {len(raw_inventory)} rows from {args.raw_inventory}")
 
+    issues_csv = args.raw_inventory.parent / "dataset_issues.csv"
+    issues_df = None
+    if issues_csv.exists():
+        issues_df = pd.read_csv(issues_csv)
+        print(f"Loaded raw issues: {len(issues_df)} rows from {issues_csv}")
+
     print("Building processed inventory...")
     inventory = build_processed_inventory(
         raw_inventory=raw_inventory,
@@ -62,13 +69,14 @@ def main() -> None:
     )
 
     issues = inventory[~inventory["found"]]
-    summary = build_processed_summary(inventory)
+    summary = build_processed_summary(inventory, issues_df=issues_df)
 
     inventory_path = output_dir / "processed_inventory.csv"
     issues_path = output_dir / "processed_issues.csv"
     summary_path = output_dir / "processed_summary.json"
 
-    inventory.to_csv(inventory_path, index=False)
+    out_inventory = annotate_with_raw_issues(inventory, issues_df) if issues_df is not None else inventory
+    out_inventory.to_csv(inventory_path, index=False)
     print(f"Written: {inventory_path}  ({len(inventory)} rows)")
 
     issues.to_csv(issues_path, index=False)

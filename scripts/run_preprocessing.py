@@ -34,6 +34,19 @@ def _count_unique_timepoints(directory: Path, pattern: str) -> int:
     return len(timepoints)
 
 
+def _count_groups_with_valid_z(directory: Path, z_min: int) -> int:
+    """Count unique BF prefix groups in split_data that have at least one z >= z_min."""
+    if not directory.exists():
+        return 0
+    groups: dict[str, set[int]] = {}
+    for p in directory.glob("*_BF.tif"):
+        m = re.search(r"_z(\d+)_BF\.tif$", p.name)
+        if m:
+            prefix = p.name[: m.start()]
+            groups.setdefault(prefix, set()).add(int(m.group(1)))
+    return sum(1 for zs in groups.values() if any(z >= z_min for z in zs))
+
+
 def get_preprocessing_args():
     parser = argparse.ArgumentParser(description="Run preprocessing pipeline for single cell datasets.")
     parser.add_argument("-i", "--input-dir", help="Path to the raw dataset directory (input)")
@@ -189,10 +202,20 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir: Optional[Un
             z_max=z_max,
             overwrite=overwrite,
         )
+        found_3d = _count_files(output_3d_dir, "*_BF_3d.tif")
+        expected_3d = _count_groups_with_valid_z(split_dir, z_min)
         metadata["prepare_3d"] = {
-            "files_found": _count_files(output_3d_dir, "*_BF_3d.tif"),
+            "files_found": found_3d,
             "timepoints_found": _count_unique_timepoints(output_3d_dir, "*_BF_3d.tif"),
+            "expected_groups": expected_3d,
         }
+        if found_3d < expected_3d:
+            logger.warning(
+                f"3D combine: produced {found_3d} stacks but {expected_3d} BF groups "
+                f"have valid z-slices (z >= {z_min}). "
+                f"{expected_3d - found_3d} group(s) missing. "
+                "Check raw dataset_issues.csv for missing_z entries."
+            )
     else:
         logger.info("Skipping 2D-to-3D combination step.")
 

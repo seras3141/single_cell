@@ -105,7 +105,7 @@ class InferencePipeline:
         config: Optional[Dict[str, Any]] = None,
         config_path: Optional[Union[str, Path]]=None,
         output_dir: Optional[Union[str, Path]]=None,
-        dataset_name: Optional[str] = "test",
+        dataset_name: Optional[str] = None,
         model_name: Optional[str]=None,
         device: Optional[Union[str, Any]]=None,
         **kwargs
@@ -165,7 +165,7 @@ class InferencePipeline:
 
         model_name = cellpose_cfg.get("model_type", "cyto3")
         output_dir = output_dir or Path(paths_config.get("output_dir", "results")) / results_folder        
-        dataset_name = dataset_name or inference_config.get("dataset_name", "test")
+        dataset_name = dataset_name if dataset_name is not None else inference_config.get("dataset_name", "")
         
         # Initialize output manager
         overwrite = inference_config.get("overwrite", False)

@@ -170,15 +170,36 @@ def build_processed_inventory(
     return pd.DataFrame(rows)
 
 
-def build_processed_summary(inventory: pd.DataFrame) -> Dict[str, Any]:
+def annotate_with_raw_issues(
+    inventory: pd.DataFrame,
+    issues_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Add raw_issue_type column: dominant issue_type from dataset_issues.csv
+    for this (well_id, time_point) pair, or NaN if no raw issue exists."""
+    per_group = (
+        issues_df.groupby(["well_id", "time_point"])["issue_type"]
+        .first()
+        .reset_index()
+        .rename(columns={"issue_type": "raw_issue_type"})
+    )
+    return inventory.merge(per_group, on=["well_id", "time_point"], how="left")
+
+
+def build_processed_summary(
+    inventory: pd.DataFrame,
+    issues_df: Optional[pd.DataFrame] = None,
+) -> Dict[str, Any]:
     """Aggregate inventory into a per-stage summary with missing entry details.
 
     Returns:
         Dict mapping stage name to {expected, found, missing, missing_entries}.
     """
+    annotated = annotate_with_raw_issues(inventory, issues_df) if issues_df is not None else inventory
+    has_raw_issue_col = "raw_issue_type" in annotated.columns
+
     summary: Dict[str, Any] = {}
     for stage in STAGE_ORDER:
-        group = inventory[inventory["stage"] == stage]
+        group = annotated[annotated["stage"] == stage]
         if group.empty:
             continue
         missing = group[~group["found"]]
@@ -192,18 +213,26 @@ def build_processed_summary(inventory: pd.DataFrame) -> Dict[str, Any]:
             if row.z_index is not None and not (isinstance(row.z_index, float) and pd.isna(row.z_index)):
                 entry["z_index"] = int(row.z_index)
             missing_entries.append(entry)
-        summary[stage] = {
+        stage_summary: Dict[str, Any] = {
             "expected": len(group),
             "found": int(group["found"].sum()),
             "missing": int((~group["found"]).sum()),
             "missing_entries": missing_entries,
         }
+        if has_raw_issue_col:
+            explained = int(missing["raw_issue_type"].notna().sum())
+            stage_summary["explained_by_raw_issues"] = explained
+        summary[stage] = stage_summary
     return summary
 
 
 def print_summary_table(summary: Dict[str, Any]) -> None:
     """Print a human-readable per-stage completeness table."""
-    header = f"{'Stage':<16} {'Expected':>10} {'Found':>10} {'Missing':>10}"
+    show_explained = any(s.get("explained_by_raw_issues", 0) > 0 for s in summary.values())
+    if show_explained:
+        header = f"{'Stage':<16} {'Expected':>10} {'Found':>10} {'Missing':>10} {'Explained':>10}"
+    else:
+        header = f"{'Stage':<16} {'Expected':>10} {'Found':>10} {'Missing':>10}"
     print(header)
     print("-" * len(header))
     for stage in STAGE_ORDER:
@@ -211,6 +240,13 @@ def print_summary_table(summary: Dict[str, Any]) -> None:
             continue
         s = summary[stage]
         gap_marker = "  <- gap" if s["missing"] > 0 else ""
-        print(
-            f"{stage:<16} {s['expected']:>10} {s['found']:>10} {s['missing']:>10}{gap_marker}"
-        )
+        if show_explained:
+            explained = s.get("explained_by_raw_issues", 0)
+            explained_str = f" {explained:>10}" if s["missing"] > 0 else f" {'':>10}"
+            print(
+                f"{stage:<16} {s['expected']:>10} {s['found']:>10} {s['missing']:>10}{explained_str}{gap_marker}"
+            )
+        else:
+            print(
+                f"{stage:<16} {s['expected']:>10} {s['found']:>10} {s['missing']:>10}{gap_marker}"
+            )

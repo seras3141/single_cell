@@ -114,6 +114,23 @@ def combine_2d_to_3d(
                 key = f"{base_name}_{suffix.strip('_')}"
             file_groups[key].append((z_index, file_name))
 
+    if z_min is not None and z_max is not None:
+        expected_slices = z_max - z_min + 1
+        bad_groups = {
+            key: len(files)
+            for key, files in file_groups.items()
+            if len(files) != expected_slices
+        }
+        if bad_groups:
+            lines = "\n".join(
+                f"  {k}: {v} slices (expected {expected_slices})"
+                for k, v in bad_groups.items()
+            )
+            raise ValueError(
+                f"z-slice count mismatch for {len(bad_groups)} group(s) "
+                f"(expected {expected_slices} slices each, z_min={z_min}, z_max={z_max}):\n{lines}"
+            )
+
     print(f"Found {len(file_groups)} groups of 2D images to combine into 3D volumes.")
     print("Example groups:")
     for key in list(file_groups.keys())[:5]:  # Show first 5 groups
