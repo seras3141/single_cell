@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import pandas as pd
 
@@ -15,7 +16,7 @@ STAGE_ORDER = [
     "prepare-3d",
     "prepare-blur",
     "segment-2d",
-    "segment-3d",
+    "track",
     "mcherry",
 ]
 
@@ -24,9 +25,30 @@ _STAGE_DIRS = {
     "prepare-3d": "3d_data",
     "prepare-blur": "blur_heatmaps",
     "segment-2d": "inference/cellpose_sam/test/masks",
-    "segment-3d": "inference_tracked/cellpose_sam/test/final",
+    "track": "inference_tracked/cellpose_sam/test/final",
     "mcherry": "mcherry_metrics/cellpose_sam",
 }
+
+# Stages that have per-sample files and are checked for phantom samples.
+_PHANTOM_STAGES = [s for s in STAGE_ORDER if s != "mcherry"]
+
+# Sub-directories (relative to processed_dir) and glob pattern to enumerate
+# candidate files for phantom detection. Each stage may have multiple output
+# subdirectories (e.g. segment-2d produces both masks/ and masks_3d/; track
+# produces both final/ and final_2d/).
+_PHANTOM_SCAN: Dict[str, tuple] = {
+    "prepare-split": (["split_data"], "*.tif"),
+    "prepare-3d":    (["3d_data"], "*.tif"),
+    "prepare-blur":  (["blur_heatmaps"], "*.tif"),
+    "segment-2d":    (["inference/cellpose_sam/test/masks",
+                       "inference/cellpose_sam/test/masks_3d"], "*.zarr"),
+    "track":         (["inference_tracked/cellpose_sam/test/final",
+                       "inference_tracked/cellpose_sam/test/final_2d"], "*.zarr"),
+}
+
+# Matches well_id and time_point in pipeline filenames of the form
+# {plate_id}_{well_id}_t{time_point}_...
+_STEM_RE = re.compile(r"_([A-Z]\d{2,3})_t(\d+)")
 
 
 def _check_stage_dir(processed_dir: Path, stage: str) -> Path:
@@ -136,13 +158,13 @@ def build_processed_inventory(
             "file_size_mb": _file_size_mb(expected),
         })
 
-    # --- segment-3d: one pred_mask_3d.zarr per (well, tp) ---
-    _check_stage_dir(processed_dir, "segment-3d")
-    tracked_dir = processed_dir / _STAGE_DIRS["segment-3d"]
+    # --- track: one pred_mask_3d.zarr per (well, tp) ---
+    _check_stage_dir(processed_dir, "track")
+    tracked_dir = processed_dir / _STAGE_DIRS["track"]
     for _, row in raw_inventory[["plate_id", "well_id", "time_point"]].drop_duplicates().iterrows():
         expected = tracked_dir / f"{row.plate_id}_{row.well_id}_t{row.time_point}_pred_mask_3d.zarr"
         rows.append({
-            "stage": "segment-3d",
+            "stage": "track",
             "well_id": row.well_id,
             "time_point": row.time_point,
             "z_index": None,
@@ -224,6 +246,81 @@ def build_processed_summary(
             stage_summary["explained_by_raw_issues"] = explained
         summary[stage] = stage_summary
     return summary
+
+
+def parse_sample_stem(filename: str) -> Optional[str]:
+    """Extract 'WELL_tTP' from a pipeline filename, or None if not parseable.
+
+    Handles names like pMF5V1_E07_t101_z0_BF.tif → 'E07_t101'.
+    """
+    m = _STEM_RE.search(Path(filename).name)
+    if m:
+        return f"{m.group(1)}_t{m.group(2)}"
+    return None
+
+
+def _build_ground_truth_stems(raw_inventory: pd.DataFrame) -> Set[str]:
+    pairs = raw_inventory[["well_id", "time_point"]].drop_duplicates()
+    return {f"{row.well_id}_t{int(row.time_point)}" for _, row in pairs.iterrows()}
+
+
+def detect_phantom_samples(
+    raw_inventory: pd.DataFrame,
+    processed_dir: Path,
+) -> Dict[str, List[Path]]:
+    """Detect files in pipeline stage directories whose sample stem is absent from raw ground truth.
+
+    Scans all sub-directories associated with each stage (e.g. both masks/ and
+    masks_3d/ for segment-2d; both final/ and final_2d/ for track). Does not
+    scan the mcherry stage, which has no per-sample files.
+
+    Args:
+        raw_inventory: DataFrame with at least well_id and time_point columns.
+        processed_dir: Root directory of processed outputs for this experiment.
+
+    Returns:
+        Dict mapping stage name to sorted list of phantom file/directory paths.
+    """
+    ground_truth = _build_ground_truth_stems(raw_inventory)
+    processed_dir = Path(processed_dir)
+    result: Dict[str, List[Path]] = {}
+
+    for stage in _PHANTOM_STAGES:
+        subdirs, glob_pattern = _PHANTOM_SCAN[stage]
+        phantoms: List[Path] = []
+        for subdir in subdirs:
+            stage_dir = processed_dir / subdir
+            if not stage_dir.exists():
+                continue
+            for item in sorted(stage_dir.glob(glob_pattern)):
+                stem = parse_sample_stem(item.name)
+                if stem is not None and stem not in ground_truth:
+                    phantoms.append(item)
+        result[stage] = phantoms
+
+    return result
+
+
+def print_phantom_report(phantoms: Dict[str, List[Path]]) -> None:
+    """Print phantom sample counts per stage; list files when any are found."""
+    total = sum(len(v) for v in phantoms.values())
+    if total == 0:
+        print("Phantom sample check: no phantoms detected.")
+        return
+
+    affected = sum(1 for v in phantoms.values() if v)
+    print(f"Phantom sample check: {total} phantom file(s) across {affected} stage(s).")
+    print("  NOTE: these files have no corresponding sample in the raw input directory.")
+    print("  Suggested action: identify the first stage where phantoms appear, delete")
+    print("  that stage directory, and re-run from there with the correct input.")
+    print()
+    for stage in STAGE_ORDER:
+        files = phantoms.get(stage, [])
+        if not files:
+            continue
+        print(f"  {stage}: {len(files)} phantom file(s)")
+        for f in files:
+            print(f"    {f}")
 
 
 def print_summary_table(summary: Dict[str, Any]) -> None:

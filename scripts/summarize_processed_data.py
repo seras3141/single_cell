@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -13,11 +14,31 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pandas as pd
 
 from src.dataset_analysis.processed_inventory import (
+    STAGE_ORDER,
     annotate_with_raw_issues,
     build_processed_inventory,
     build_processed_summary,
+    detect_phantom_samples,
+    print_phantom_report,
     print_summary_table,
 )
+
+_PHANTOM_STAGES = [s for s in STAGE_ORDER if s != "mcherry"]
+
+
+def _delete_phantoms(phantoms: dict, stages: list) -> None:
+    for stage in stages:
+        files = phantoms.get(stage, [])
+        if not files:
+            print(f"  {stage}: no phantoms to delete.")
+            continue
+        for path in files:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+            print(f"  Deleted: {path}")
+        print(f"  {stage}: {len(files)} phantom(s) deleted.")
 
 
 def main() -> None:
@@ -46,6 +67,18 @@ def main() -> None:
         type=Path,
         default=None,
         help="Where to write outputs (default: <processed-dir>/processed_summary/)",
+    )
+    parser.add_argument(
+        "--delete",
+        nargs="+",
+        choices=_PHANTOM_STAGES,
+        metavar="STAGE",
+        default=None,
+        help=(
+            "Delete phantom files for the given stage(s) after detection. "
+            f"Valid stages: {', '.join(_PHANTOM_STAGES)}. "
+            "Example: --delete prepare-3d segment-2d"
+        ),
     )
     args = parser.parse_args()
 
@@ -86,8 +119,23 @@ def main() -> None:
         json.dump(summary, f, indent=2)
     print(f"Written: {summary_path}")
 
+    phantoms = detect_phantom_samples(raw_inventory, args.processed_dir)
+    phantom_path = output_dir / "phantom_samples.json"
+    phantom_data = {stage: [str(p) for p in paths] for stage, paths in phantoms.items()}
+    with open(phantom_path, "w") as f:
+        json.dump(phantom_data, f, indent=2)
+    print(f"Written: {phantom_path}")
+
     print()
     print_summary_table(summary)
+    print()
+    print_phantom_report(phantoms)
+
+    if args.delete:
+        print()
+        print(f"Deleting phantoms for stage(s): {', '.join(args.delete)}")
+        _delete_phantoms(phantoms, args.delete)
+        print("Done. Re-run the script without --delete to confirm removal.")
 
 
 if __name__ == "__main__":

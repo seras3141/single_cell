@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-STAGE_ORDER = ["prepare", "segment-2d", "segment-3d", "track", "mcherry", "extract"]
+STAGE_ORDER = ["prepare", "segment-2d", "track", "mcherry", "extract"]
 TERMINAL_STATUSES = {"completed", "failed", "skipped"}
 MANIFEST_FILENAME = "manifest.json"
 

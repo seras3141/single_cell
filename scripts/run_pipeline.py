@@ -147,7 +147,7 @@ def get_pipeline_args():
     parser.add_argument("--input-dir", type=str, required=False, help="Input directory containing raw microscopy data")
     parser.add_argument("--output-dir", type=str, required=False, help="Output directory for all results")
     parser.add_argument("--config", type=str, help="Path to configuration file (YAML)")
-    parser.add_argument("--steps", type=str, nargs="+", choices=["prepare", "segment-2d", "segment-3d", "track", "mcherry", "extract"], default=None, help="Pipeline steps to run")
+    parser.add_argument("--steps", type=str, nargs="+", choices=["prepare", "segment-2d", "track", "mcherry", "extract"], default=None, help="Pipeline steps to run")
     parser.add_argument("--experiment-name", type=str, choices=list(EXPERIMENT_WAVELENGTH_MAPPINGS.keys()), help="Experiment name — automatically sets preprocessing wavelength mappings (e.g. 'Ew2-1', 'HD1509')")
     parser.add_argument("--plate", type=str, help="Plate number for file renaming (overrides auto-detection from filepath, e.g. 'MF5V1')")
     parser.add_argument("--log-level", type=str, default=None, choices=["DEBUG", "INFO", "WARNING", "ERROR"])
@@ -226,12 +226,7 @@ def main():
                 manifest.fail_stage("segment-2d", error=str(e))
                 raise
 
-        # Step 3: 3D Segmentation (not yet implemented)
-        if "segment-3d" in steps:
-            manifest.skip_stage("segment-3d", reason="Not implemented in Cellpose-only environment")
-            logger.info("3D segmentation skipped (not implemented).")
-
-        # Step 4: Cell tracking (postprocessing)
+        # Step 3: Cell tracking (postprocessing)
         if "track" in steps:
             # TODO : Update hardcoded paths
             results_folder = config["segmentation"]["inference"]["results_folder"]
