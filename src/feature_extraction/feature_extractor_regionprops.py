@@ -1,71 +1,14 @@
 # Python script to extract PyRadiomics features from a brightfield image and segmentation image
 
-from glob import glob
+import logging
 import os
-import radiomics
 
 import numpy as np
 import pandas as pd
 from skimage.measure import regionprops_table
-import tifffile as tiff
-import umap
-from tqdm import tqdm
-import matplotlib.pyplot as plt
 
-logger = radiomics.logging.getLogger("radiomics")
-logger.setLevel(radiomics.logging.ERROR)
-
-
-def visualize_region_properties(region_props, drop: list = ['label'], labels=None, out_name=None):
-    # Drop the 'label' column and use it as color
-    if labels:
-        col = region_props[labels]
-        region_props_features = region_props.drop(columns=labels)
-    else:
-        region_props_features = region_props
-        col = None
-
-    for c in drop:
-        if c in region_props_features.columns:
-            region_props_features = region_props_features.drop(columns=c)
-
-    print("Labels:", labels)
-    print("Region Properties Columns:", region_props.columns)
-
-    # Convert categorical values to color values if labels are provided
-    if labels and col is not None:
-        unique_labels = col.unique()
-        label_to_color = {label: idx for idx, label in enumerate(unique_labels)}
-        col = col.map(label_to_color)
-
-    # Perform UMAP dimensionality reduction
-
-    if region_props_features.shape[1] == 0:
-        xlabel, ylabel = region_props_features.columns
-        embedding = region_props_features.to_numpy()
-    else:
-        reducer = umap.UMAP()
-        embedding = reducer.fit_transform(region_props_features)
-        xlabel = "UMAP Dimension 1"
-        ylabel = "UMAP Dimension 2"
-
-    # Visualize the UMAP embedding
-    plt.figure(figsize=(10, 8))
-    scatter = plt.scatter(embedding[:, 0], embedding[:, 1], c=col, cmap='Spectral', s=5)
-    plt.title('UMAP Visualization of Region Properties')
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-
-    # Add a color bar with labels
-    if labels and col is not None:
-        cbar = plt.colorbar(scatter, ticks=range(len(unique_labels)))
-        cbar.ax.set_yticklabels(unique_labels)
-        cbar.set_label('Labels')
-
-    if out_name:
-        plt.savefig(out_name)
-
-    plt.show()
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.ERROR)
 
 
 def get_region_properties(segmentation_mask, intensity_image=None):
@@ -129,6 +72,7 @@ def get_region_properties(segmentation_mask, intensity_image=None):
 
 
 def extract_regionprops_features(brightfield_image_path, segmentation_image_path, output_csv_path=None, visualize=False):
+    from src.feature_visualization.regionprops_plots import visualize_region_properties
     """
     Extract PyRadiomics features from a brightfield image and segmentation image.
 
@@ -171,6 +115,7 @@ def extract_regionprops_features(brightfield_image_path, segmentation_image_path
 
 
 def test_feature_extractor():
+    from src.feature_visualization.regionprops_plots import visualize_region_properties
     data_dir = "/Users/serenasritharan/Projects/single-cell"
 
     brightfield_image_path = os.path.join(data_dir, "data/BF+IF Experiments_3D_train_test_dataset/train/p2126_J03_BF.tif")

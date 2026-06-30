@@ -10,7 +10,10 @@ from tqdm import tqdm
 import cv2
 
 from src.feature_extraction.feature_extractor_incarta import extract_all_instance_features
-from src.feature_extraction.feature_extractor_pyradiomics import get_radiomics_features
+try:
+    from src.feature_extraction.feature_extractor_pyradiomics import get_radiomics_features
+except ImportError:
+    get_radiomics_features = None
 from src.feature_extraction.feature_extractor_regionprops import get_region_properties
 
 class FeatureExtractionPipeline:
@@ -71,8 +74,9 @@ class FeatureExtractionPipeline:
 
         feature_config = config.get('feature_extraction', {})
         log_config = config.get('logging', {})
+        output_dir = config.get('paths', {}).get('output_dir')
 
-        return cls(config=feature_config, log_config=log_config)
+        return cls(config=feature_config, output_dir=output_dir, log_config=log_config)
     
     def setup_logging(self):
         """Setup logging configuration."""
@@ -319,6 +323,10 @@ class FeatureExtractionPipeline:
             elif self.method == 'regionprops':
                 features_df = get_region_properties(mask, intensity_image=image)
             elif self.method == 'pyradiomics':
+                if get_radiomics_features is None:
+                    raise RuntimeError(
+                        "pyradiomics is not installed. Install it with 'pip install pyradiomics' to use this method."
+                    )
                 features_df = get_radiomics_features(image, mask)
             else:
                 raise ValueError(f"Unknown feature extraction method: {self.method}")

@@ -2,29 +2,23 @@
 """
 Feature Extraction Script for Single Cell Analysis
 
-This script extracts comprehensive features from 2D indef run_feature_extraction_from_config(config: Dict[str, Any]) -> pd.DataFrame:
-    pipeline = FeatureExtractionPipeline(config=config)
-    features_df = pipeline.process_batch()
-
-    return features_dfions using
-the feature_extractor_2d module. It processes entire datasets and saves
+Extracts comprehensive features from 2D segmentation masks using the
+feature_extractor_2d module. Processes entire datasets and saves
 features to CSV files with configurable options.
 
 Usage:
     python scripts/run_feature_extraction.py --config config/feature_extraction_config.yaml
     python scripts/run_feature_extraction.py --image-dir data/sample_data --mask-dir data/sample_data --output-dir data/features_output
     python scripts/run_feature_extraction.py --image-dir data/sample_data --mask-dir data/sample_data/mask --mask-pattern "Cells_*.tif" --image-pattern "t1_*_w1_*.tif"
+    python scripts/run_feature_extraction.py --image-dir data/sample_data --mask-dir data/sample_data --output-dir data/features_output --method regionprops
 """
 
 import argparse
 import logging
 import os
 import sys
-import time
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any
 import pandas as pd
-from pathlib import Path
-from tqdm import tqdm
 
 from src.feature_extraction.feature_extraction_pipeline import FeatureExtractionPipeline
 from src.utils.logging_utils import setup_logging
@@ -54,6 +48,10 @@ def get_args():
                        help="Number of parallel jobs")
     parser.add_argument("--batch-size", type=int, default=50,
                        help="Batch size for processing")
+    parser.add_argument("--method", type=str, default=None,
+                       choices=["incarta", "regionprops", "pyradiomics"],
+                       help="Feature extraction method (overrides config). "
+                            "Options: incarta, regionprops, pyradiomics")
     parser.add_argument("--log-level", type=str, default="INFO",
                        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                        help="Logging level")
@@ -97,45 +95,16 @@ def load_config(args) -> Dict[str, Any]:
         config['paths']['output_dir'] = args.output_dir
     if args.n_jobs:
         config['feature_extraction']['n_jobs'] = args.n_jobs
-    
+    if args.method:
+        config['feature_extraction']['method'] = args.method
+    if args.image_pattern:
+        config['feature_extraction']['image_pattern'] = args.image_pattern
+    if args.mask_pattern:
+        config['feature_extraction']['mask_pattern'] = args.mask_pattern
+
     config['logging']['level'] = args.log_level
     
     return config
-
-
-def run_feature_extraction_pipeline(image_dir: Path, mask_dir: Path) -> pd.DataFrame:
-    """Run the feature extraction pipeline with the given configuration.
-    
-    Args:
-        image_dir: Directory containing images
-        mask_dir: Directory containing masks
-        
-    Returns:
-        Combined features DataFrame
-    """
-
-    pipeline = FeatureExtractionPipeline(method='incarta')
-
-    # Find image-mask pairs
-    pairs = pipeline.find_image_mask_pairs(image_dir, mask_dir)
-
-    # Process pairs
-    all_features = []
-        
-    for image_path, mask_path in tqdm(pairs, desc="Processing files"):
-        features_df = pipeline.extract_features_from_path(image_path, mask_path)
-
-        if features_df is not None:
-            # batch_features.append(features_df)
-            all_features.append(features_df)
-            
-            # Save individual file if configured
-            if pipeline.output_config.get('save_individual_files', True):
-                pipeline.save_image_features(features_df, image_path)
-
-    combined_df = pd.concat(all_features, ignore_index=True)
-
-    return combined_df
 
 
 def run_feature_extraction_from_config(config: Dict[str, Any]) -> pd.DataFrame:
@@ -150,11 +119,16 @@ def run_feature_extraction_from_config(config: Dict[str, Any]) -> pd.DataFrame:
     pipeline = FeatureExtractionPipeline.from_config(config)
 
     paths_config = config.get('paths', {})
+    feature_config = config.get('feature_extraction', {})
     image_dir = paths_config.get('image_dir', 'data/sample_data')
     mask_dir = paths_config.get('mask_dir', 'data/sample_data')
+    image_pattern = feature_config.get('image_pattern')
+    mask_pattern = feature_config.get('mask_pattern')
     features_df = pipeline.process_batch(
         image_dir=image_dir,
-        mask_dir=mask_dir
+        mask_dir=mask_dir,
+        image_patterns=[image_pattern] if image_pattern else None,
+        mask_patterns=[mask_pattern] if mask_pattern else None,
     )
 
     return features_df
@@ -163,6 +137,7 @@ def run_feature_extraction_from_config(config: Dict[str, Any]) -> pd.DataFrame:
 def _get_extract_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
     feature_config = config.get("feature_extraction", {})
     return {k: v for k, v in {
+        "method": feature_config.get("method"),
         "n_jobs": feature_config.get("n_jobs"),
         "image_dir": config.get("paths", {}).get("image_dir"),
         "mask_dir": config.get("paths", {}).get("mask_dir"),

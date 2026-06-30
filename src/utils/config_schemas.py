@@ -211,13 +211,14 @@ class FeatureExtractionConfig:
     n_jobs: int = -1  # Use all available cores (or set to 0)
 
     method: str = "incarta"
+    image_pattern: str = "*_BF.tif"
+    mask_pattern: str = "*_pred_mask.tif"
             
     preprocessing: Dict[str, Any] = field(default_factory=lambda: {
         "normalize_intensity": True,
         "clip_percentiles": [1, 99]
     })
     output: Dict[str, Any] = field(default_factory=lambda: {
-        "folder_name": "features",  # Subdirectory for features
         "save_individual_files": True,
         "save_combined_file": True,
         "include_metadata": True,
