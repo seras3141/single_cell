@@ -15,7 +15,7 @@ if str(REPO_ROOT) not in sys.path:
 from src.mcherry_metrics.__main__ import build_parser
 from src.mcherry_metrics.config import ExtractionConfig
 from src.mcherry_metrics.core.batch import run_extraction
-from src.utils.run_manifest import create_or_load_manifest
+from src.dataset_analysis.run_manifest import create_or_load_manifest
 
 
 def _get_mcherry_snapshot(args) -> Dict[str, Any]:

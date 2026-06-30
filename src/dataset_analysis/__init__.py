@@ -1,5 +1,13 @@
-"""Dataset-level QC helpers for raw microscopy plate inventories."""
+"""Dataset-level analysis, QC helpers, and pipeline run tracking for raw microscopy plate inventories."""
 
+from .run_manifest import (
+    RunManifest,
+    StageRecord,
+    create_or_load_manifest,
+    find_manifests,
+    STAGE_ORDER,
+    MANIFEST_FILENAME,
+)
 from .image_quality_metrics import (
     get_image_quality_metrics,
     get_percentile_images,
@@ -31,8 +39,21 @@ from .qc import (
     find_dataset_issues,
 )
 from .summary import build_dataset_summary, build_summary_table, write_summary_json
+from .processed_inventory import (
+    build_processed_inventory,
+    build_processed_summary,
+    print_summary_table,
+)
 
 __all__ = [
+    # Run manifest
+    "RunManifest",
+    "StageRecord",
+    "create_or_load_manifest",
+    "find_manifests",
+    "STAGE_ORDER",
+    "MANIFEST_FILENAME",
+    # QC
     "DEFAULT_EXPECTED_Z_INDICES",
     "get_image_quality_metrics",
     "get_percentile_images",
@@ -56,4 +77,8 @@ __all__ = [
     "plot_plate_coverage",
     "plot_z_completeness",
     "write_summary_json",
+    # Processed inventory
+    "build_processed_inventory",
+    "build_processed_summary",
+    "print_summary_table",
 ]

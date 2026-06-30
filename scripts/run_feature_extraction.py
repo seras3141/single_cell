@@ -29,7 +29,7 @@ from tqdm import tqdm
 from src.feature_extraction.feature_extraction_pipeline import FeatureExtractionPipeline
 from src.utils.logging_utils import setup_logging
 from src.utils.config import ConfigManager
-from src.utils.run_manifest import create_or_load_manifest
+from src.dataset_analysis.run_manifest import create_or_load_manifest
 
 def get_args():
     """Parse command line arguments."""

@@ -75,6 +75,27 @@ Scatter plots, distribution plots, and dimensionality reduction visualisation.
 
 ---
 
+## Dataset Analysis (`src/dataset_analysis/`)
+
+Everything that answers "what is the state of the data?" — from raw input to processed outputs.
+
+| Module | Answers |
+|---|---|
+| `inventory.py` | What raw TIFF files exist? (discovers and annotates input files) |
+| `qc.py` | Are any raw files missing? (channel and z-slice completeness) |
+| `summary.py` | What are the aggregate statistics? (counts, sizes, issue rates) |
+| `layout.py` | What is in each well? (maps well IDs to drugs, controls, concentrations) |
+| `image_quality_metrics.py` | How sharp/usable are the raw images? (Laplacian variance, FFT sharpness, Shannon entropy) |
+| `plotting.py` | Plate heatmaps and QC visualisations |
+| `run_manifest.py` | Did each pipeline stage run and succeed? (execution state, timestamps, config hash) |
+| `processed_inventory.py` | Are the processed output files present? (file-level completeness per stage) |
+
+**Boundaries:** read-only with respect to data — inspects and reports, never writes image files or masks. Depends on `src/utils/file_utils.py` only.
+
+**CLI entry points:** `scripts/summarize_processed_data.py`, `scripts/pipeline_status.py`, `scripts/run_dataset_summary.py`
+
+---
+
 ## Utils (`src/utils/`)
 
 Core utilities shared across modules.

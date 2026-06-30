@@ -20,7 +20,7 @@ from src.postprocessing.tracking_processor import CellTrackingPipeline
 from src.utils.config_schemas import PostprocessingConfig, TrackingConfig, FilterConfig
 from src.utils.config import get_config_manager
 from src.utils.logging_utils import setup_logging
-from src.utils.run_manifest import create_or_load_manifest
+from src.dataset_analysis.run_manifest import create_or_load_manifest
 
 def get_tracking_config(tracking_kwargs: dict) -> TrackingConfig:
     """Extract tracking arguments from config or CLI args."""
@@ -81,7 +81,7 @@ def get_postprocessing_arguments(postprocessing_kwargs: dict = {}):
 
 def create_postprocessing_config(config : dict) -> PostprocessingConfig:
     """Create pipeline configuration from command line arguments or merged config."""
-    print("XXX Creating postprocessing config", config) # DEBUG
+
 
     postprocessing_kwargs = config.get('postprocessing', {})
 
@@ -277,6 +277,7 @@ def run_batch_postprocessing(pipeline, image_dir, mask_dir, blur_dir, output_dir
     )
     successful = len([r for r in results if 'error' not in r])
     logger.info(f"Batch processing completed: {successful}/{len(results)} files successful")
+    return results
 
 def _get_track_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
     tracking_config = config.get("postprocessing", {}).get("tracking", {})
@@ -324,9 +325,16 @@ def main():
             mask_dir = Path(paths_config.get("mask_dir", "."))
             blur_dir = Path(paths_config.get("blur_dir", "."))
             output_dir = Path(paths_config.get("output_dir", "."))
-            run_batch_postprocessing(pipeline, image_dir, mask_dir, blur_dir, output_dir)
+            results = run_batch_postprocessing(pipeline, image_dir, mask_dir, blur_dir, output_dir)
             if manifest is not None:
-                manifest.complete_stage("track", output_dir=str(output_dir))
+                track_meta = {
+                    "track": {
+                        "files_processed": len(results),
+                        "files_successful": len([r for r in results if "error" not in r]),
+                        "files_failed": len([r for r in results if "error" in r]),
+                    }
+                }
+                manifest.complete_stage("track", output_dir=str(output_dir), metadata=track_meta)
         else:
             run_single_file_postprocessing(pipeline, config_dict)
     except Exception as e:

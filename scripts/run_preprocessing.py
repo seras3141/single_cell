@@ -1,17 +1,38 @@
 import argparse
 import logging
 import os
+import re
 from pathlib import Path
 import sys
 from typing import Any, Dict, Optional, Union
 
 from src.preprocessing.dataset_split import train_test_split_directory
 from src.utils.config import get_config_manager
-from src.utils.run_manifest import create_or_load_manifest
+from src.dataset_analysis.run_manifest import create_or_load_manifest
 from src.utils.file_utils import BF_IF_FileHandler, ConfigurableFileHandler, EXPERIMENT_WAVELENGTH_MAPPINGS
 from src.utils.conversion import combine_2d_to_3d
 from src.preprocessing.blur_analysis import generate_blur_heatmap_batch
 from src.utils.logging_utils import setup_logging
+
+
+def _count_files(directory: Path, pattern: str) -> int:
+    """Count files matching a glob pattern in directory."""
+    if not directory.exists():
+        return 0
+    return sum(1 for _ in directory.glob(pattern))
+
+
+def _count_unique_timepoints(directory: Path, pattern: str) -> int:
+    """Count unique timepoints (parsed from _t<N>_ in filenames) matching a glob pattern."""
+    if not directory.exists():
+        return 0
+    timepoints = set()
+    for p in directory.glob(pattern):
+        m = re.search(r"_t(\d+)_", p.name)
+        if m:
+            timepoints.add(int(m.group(1)))
+    return len(timepoints)
+
 
 def get_preprocessing_args():
     parser = argparse.ArgumentParser(description="Run preprocessing pipeline for single cell datasets.")
@@ -98,7 +119,7 @@ def get_preprocessing_legacy_args(vargs: dict) -> Dict[str, Any]:
 
     return legacy_args
 
-def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[Union[str, Path]] = None, output_dir: Optional[Union[str, Path]] = None):
+def run_preprocessing_from_config(config: Dict[str, Any], input_dir: Optional[Union[str, Path]] = None, output_dir: Optional[Union[str, Path]] = None) -> Dict[str, Any]:
     paths_config = config.get('paths', {})
     preprocessing_config = config.get('preprocessing', {})
 
@@ -121,6 +142,8 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
     overwrite = preprocessing_config.get('overwrite', False)
     logger.info(f"Steps enabled — split: {run_split}, 3d: {run_3d}, blur: {run_blur}, overwrite: {overwrite}")
 
+    metadata: Dict[str, Any] = {}
+
     # Step 1: Split dataset
     split_dir = output_dir / preprocessing_config.get('split_folder', 'split_data')
     if run_split:
@@ -141,6 +164,10 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
             file_handler=file_handler,
             overwrite=overwrite,
         )
+        metadata["prepare_split"] = {
+            "files_found": _count_files(split_dir, "*.tif"),
+            "timepoints_found": _count_unique_timepoints(split_dir, "*.tif"),
+        }
     else:
         logger.info("Skipping split step.")
 
@@ -162,6 +189,10 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
             z_max=z_max,
             overwrite=overwrite,
         )
+        metadata["prepare_3d"] = {
+            "files_found": _count_files(output_3d_dir, "*_BF_3d.tif"),
+            "timepoints_found": _count_unique_timepoints(output_3d_dir, "*_BF_3d.tif"),
+        }
     else:
         logger.info("Skipping 2D-to-3D combination step.")
 
@@ -186,12 +217,16 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
             normalize=True,
             overwrite=overwrite,
         )
+        metadata["prepare_blur"] = {
+            "files_found": _count_files(blur_dir, "*_blur_heatmap.tif"),
+        }
     else:
         logger.info("Skipping blur heatmap generation step.")
 
     logger.info("Preprocessing complete.")
 
     # Step 4 : Optional - Create symlinks for images from input directory to output_dir
+    # (symlink creation intentionally left incomplete — see commented-out block below)
     if preprocessing_config.get('create_symlinks', False):
         symlink_dir = output_dir / "input_data_symlinks"
         logger.info("Creating symlinks for images in output directory...")
@@ -204,7 +239,10 @@ def run_preprocessing_from_config(config: Dict[str, Any], input_dir : Optional[U
             # if not symlink_path.exists():
             #     symlink_path.symlink_to(image_path)
             #     logger.info(f"Created symlink: {symlink_path} -> {image_path}")
-    
+
+    return metadata
+
+
 def _get_prepare_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
     preprocessing_config = config.get("preprocessing", {})
     return {k: v for k, v in {
@@ -241,8 +279,8 @@ def main():
     manifest.start_stage("prepare", config=snapshot)
     try:
         logger.info("Starting preprocessing...")
-        run_preprocessing_from_config(merged_config)
-        manifest.complete_stage("prepare", output_dir=output_dir)
+        meta = run_preprocessing_from_config(merged_config)
+        manifest.complete_stage("prepare", output_dir=output_dir, metadata=meta)
     except Exception as e:
         logger.error(f"Preprocessing failed: {e}")
         manifest.fail_stage("prepare", error=str(e))

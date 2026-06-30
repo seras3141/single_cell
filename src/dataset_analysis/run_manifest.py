@@ -204,6 +204,11 @@ class RunManifest:
             with open(tmp, "w") as f:
                 json.dump(self.to_dict(), f, indent=2)
             os.replace(tmp, path)
+        except FileNotFoundError:
+            # Another process won the race and already renamed the tmp file.
+            tmp.unlink(missing_ok=True)
+            if not path.exists():
+                raise
         except Exception:
             tmp.unlink(missing_ok=True)
             raise

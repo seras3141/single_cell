@@ -28,7 +28,7 @@ from src.inference.inference_pipeline import InferencePipeline
 
 from src.utils.logging_utils import setup_logging
 from src.utils.config import get_config_manager
-from src.utils.run_manifest import create_or_load_manifest
+from src.dataset_analysis.run_manifest import create_or_load_manifest
 
 def get_inference_args():
     parser = argparse.ArgumentParser(description="Run inference on cell segmentation test dataset")
@@ -106,17 +106,17 @@ def run_inference_from_config(config : Dict[str, Any], input_dir: Optional[str] 
     Merges config file with CLI args, with CLI args taking precedence.
     """
 
-    pipeline = InferencePipeline.from_config(config=config)
-    validation = pipeline.validate_setup()
-    if not validation['overall']:
-        raise ValueError("Pipeline validation failed")
-
     inference_config = config.get('segmentation', {}).get('inference', {})
 
     if input_dir is None:
         input_dir = config.get('paths', {}).get('input_dir', 'data/test')
     if dataset_name is None:
         dataset_name = inference_config.get('dataset_name', 'test')
+
+    pipeline = InferencePipeline.from_config(config=config, dataset_name=dataset_name)
+    validation = pipeline.validate_setup()
+    if not validation['overall']:
+        raise ValueError("Pipeline validation failed")
 
     model_info = pipeline.get_model_info()
     logging.info(f"Model information: {model_info}")
@@ -159,17 +159,17 @@ def run_inference_from_config_dist(config : Dict[str, Any], input_dir: Optional[
     world_size = dist.get_world_size()
     rank = dist.get_rank()
 
-    pipeline = InferencePipeline.from_config(config=config, device=torch_device)
-    validation = pipeline.validate_setup()
-    if not validation['overall']:
-        raise ValueError("Pipeline validation failed")
-
     inference_config = config.get('segmentation', {}).get('inference', {})
 
     if input_dir is None:
         input_dir = config.get('paths', {}).get('input_dir', 'data/test')
     if dataset_name is None:
         dataset_name = inference_config.get('dataset_name', 'test')
+
+    pipeline = InferencePipeline.from_config(config=config, dataset_name=dataset_name, device=torch_device)
+    validation = pipeline.validate_setup()
+    if not validation['overall']:
+        raise ValueError("Pipeline validation failed")
 
     model_info = pipeline.get_model_info()
     logging.info(f"Model information: {model_info}")

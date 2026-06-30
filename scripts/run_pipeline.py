@@ -21,7 +21,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from src.utils.logging_utils import setup_logging
 from src.utils.config import get_config_manager
-from src.utils.run_manifest import create_or_load_manifest
+from src.dataset_analysis.run_manifest import create_or_load_manifest
+from src.utils.file_utils import EXPERIMENT_WAVELENGTH_MAPPINGS
 
 
 def run_data_preparation(input_dir: str, output_dir: str, config) -> None:
@@ -131,7 +132,13 @@ def get_pipeline_legacy_args(args):
 
     if args.get("log_level"):
         legacy_overrides["logging.level"] = args["log_level"]
-    
+
+    if args.get("experiment_name"):
+        legacy_overrides["preprocessing.wavelength_mappings"] = EXPERIMENT_WAVELENGTH_MAPPINGS[args["experiment_name"]]
+
+    if args.get("plate"):
+        legacy_overrides["preprocessing.plate_number"] = args["plate"]
+
     return legacy_overrides
 
 def get_pipeline_args():
@@ -141,6 +148,8 @@ def get_pipeline_args():
     parser.add_argument("--output-dir", type=str, required=False, help="Output directory for all results")
     parser.add_argument("--config", type=str, help="Path to configuration file (YAML)")
     parser.add_argument("--steps", type=str, nargs="+", choices=["prepare", "segment-2d", "segment-3d", "track", "mcherry", "extract"], default=None, help="Pipeline steps to run")
+    parser.add_argument("--experiment-name", type=str, choices=list(EXPERIMENT_WAVELENGTH_MAPPINGS.keys()), help="Experiment name — automatically sets preprocessing wavelength mappings (e.g. 'Ew2-1', 'HD1509')")
+    parser.add_argument("--plate", type=str, help="Plate number for file renaming (overrides auto-detection from filepath, e.g. 'MF5V1')")
     parser.add_argument("--log-level", type=str, default=None, choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument("--override", type=str, action="append", help="Override config values using dot notation (e.g., model.diameter=30)")
     
@@ -234,7 +243,7 @@ def main():
 
             mask_base_dir = os.path.join(output_dir, results_folder, model_type, dataset_name)
             mask_dir = os.path.join(mask_base_dir, "masks_3d")
-            track_dir = os.path.join(mask_base_dir, "tracking")
+            track_dir = os.path.join(output_dir, "inference_tracked")
 
             manifest.start_stage("track")
             try:
