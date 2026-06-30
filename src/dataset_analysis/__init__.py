@@ -43,6 +43,9 @@ from .processed_inventory import (
     annotate_with_raw_issues,
     build_processed_inventory,
     build_processed_summary,
+    detect_phantom_samples,
+    parse_sample_stem,
+    print_phantom_report,
     print_summary_table,
 )
 
@@ -82,5 +85,8 @@ __all__ = [
     "annotate_with_raw_issues",
     "build_processed_inventory",
     "build_processed_summary",
+    "detect_phantom_samples",
+    "parse_sample_stem",
+    "print_phantom_report",
     "print_summary_table",
 ]
