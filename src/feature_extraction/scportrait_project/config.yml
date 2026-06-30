@@ -1,0 +1,53 @@
+name: "BF-only single-cell featurization"
+
+# CytosolOnlySegmentationCellpose: whole-image (non-sharded) Cellpose segmentation.
+# cyto3 is the latest Cellpose model with improved cytosol detection over cyto2;
+# it handles brightfield images well without requiring a nuclear marker.
+# filter_masks_size is disabled to retain small cells that may otherwise be dropped.
+CytosolOnlySegmentationCellpose:
+  # model: cyto3
+  filter_masks_size: false
+  cache: "."
+  cytosol_segmentation:
+    model: "cyto3"
+
+# HDF5CellExtraction: crops individual cells from the segmented image into an
+# HDF5 archive. image_size=128 gives enough context around each cell for the
+# encoder while keeping memory usage manageable. compression reduces disk usage
+# at negligible CPU cost. threads=4 balances throughput on a standard workstation.
+HDF5CellExtraction:
+  image_size: 128
+  compression: true
+  threads: 4
+  cache: "."
+  normalize_output: true
+  normalization_range: [0.01, 0.99]
+
+# MLClusterClassifier: encoder-based featurization of single-cell crops.
+# channel_selection=0 selects the brightfield channel (index 0 of the extracted
+# HDF5 crops), which is the only channel present in this BF-only workflow.
+# encoders=[forward] runs only the forward encoder pass, producing a latent
+# embedding per cell without contrastive or reconstruction heads.
+# inference_device=cpu ensures reproducibility and portability; set to "cuda"
+# if a GPU is available for faster inference.
+# MLClusterClassifier:
+#   channel_selection: 0
+#   batch_size: 256
+#   dataloader_worker_number: 0  # must be 0 when inference_device is cpu
+#   inference_device: cpu
+#   label: brightfield_run1
+#   encoders:
+#     - forward
+#   network: "autophagy_classifier"
+#   inference_device: "cpu"   # or "cuda" if GPU available
+#   label: "brightfield_features"
+#   encoders:
+#     - forward
+
+CellFeaturizer:
+  channel_selection: 2            # index 2 = first image channel after the 2 masks
+  dataloader_worker_number: 0     # must be 0 when inference_device is cpu
+  batch_size: 256
+  inference_device: "cpu"
+  label: "brightfield_ch_features"
+  
