@@ -19,17 +19,14 @@ paths:
 feature_extraction:
   # Feature extraction method
   method: "incarta"  # Options: "incarta", "regionprops", "pyradiomics"
-  
+
+  # File matching patterns
+  image_pattern: "*_BF.tif"
+  mask_pattern: "*_pred_mask.tif"
+
   # Processing options
   n_jobs: -1  # Number of parallel jobs (-1 uses all cores)
   
-  # Feature types to compute
-  features:
-    morphology: true      # Area, perimeter, elongation, etc.
-    intensity: true       # Mean, std, CV, total intensity
-    spatial: true         # Centroids, center of mass
-    texture: true         # Gabor, skewness, kurtosis, entropy
-    
   # Image preprocessing (optional)
   preprocessing:
     normalize_intensity: false  # Normalize image intensity 
@@ -37,8 +34,6 @@ feature_extraction:
 
   # File organization
   output:
-    folder_name: "features"  # Subdirectory for features
-
     # Output options
     save_individual_files: true   # Save features for each image separately
     save_combined_file: false      # Save all features in one CSV
