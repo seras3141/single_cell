@@ -221,6 +221,8 @@ examples/
 venv/
 uv.lock
 */uv.lock
+# dedicated scportrait environment (cellpose<4)
+.venv-scportrait/
 
 
 # Notebook outputs and archives

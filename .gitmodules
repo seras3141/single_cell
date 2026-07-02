@@ -1,6 +1,3 @@
-[submodule "omnipose"]
-	path = github/omnipose
-	url = https://github.com/kevinjohncutler/omnipose
 [submodule "github/cellpose"]
 	path = github/cellpose
 	url = https://github.com/MouseLand/cellpose

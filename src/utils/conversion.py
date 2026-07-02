@@ -259,6 +259,11 @@ if __name__ == "__main__":
         default="tif",
         help="Output volume format. Cross-format combine is not supported.",
     )
+    combine_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing 3D volumes if they already exist.",
+    )
     
     # Split 3D to 2D command
     split_parser = subparsers.add_parser("split", help="Split 3D label volumes into 2D slices")
@@ -284,6 +289,7 @@ if __name__ == "__main__":
             z_max=args.z_max,
             output_format=args.output_format,
             input_format=args.input_format,
+            overwrite=args.overwrite,
         )
     elif args.command == "split":
         split_3d_to_2d(

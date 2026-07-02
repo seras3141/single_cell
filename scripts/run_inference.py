@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from src.inference.inference_pipeline import InferencePipeline
 
-from src.utils.logging_utils import setup_logging
+from src.utils.logging_utils import setup_logging, add_file_handler
 from src.utils.config import get_config_manager
 from src.dataset_analysis.run_manifest import create_or_load_manifest
 
@@ -114,6 +114,11 @@ def run_inference_from_config(config : Dict[str, Any], input_dir: Optional[str] 
         dataset_name = inference_config.get('dataset_name', 'test')
 
     pipeline = InferencePipeline.from_config(config=config, dataset_name=dataset_name)
+
+    # Attach a per-run log file now that the output directory is resolved.
+    log_filename = config.get('logging', {}).get('filename', 'inference.log')
+    add_file_handler(pipeline.output_manager.output_dir / log_filename)
+
     validation = pipeline.validate_setup()
     if not validation['overall']:
         raise ValueError("Pipeline validation failed")
@@ -167,6 +172,11 @@ def run_inference_from_config_dist(config : Dict[str, Any], input_dir: Optional[
         dataset_name = inference_config.get('dataset_name', 'test')
 
     pipeline = InferencePipeline.from_config(config=config, dataset_name=dataset_name, device=torch_device)
+
+    # Attach a per-run log file now that the output directory is resolved.
+    log_filename = config.get('logging', {}).get('filename', 'inference.log')
+    add_file_handler(pipeline.output_manager.output_dir / log_filename)
+
     validation = pipeline.validate_setup()
     if not validation['overall']:
         raise ValueError("Pipeline validation failed")
