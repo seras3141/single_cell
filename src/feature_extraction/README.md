@@ -10,6 +10,9 @@ src/feature_extraction/
 ├── feature_extractor_incarta.py     # Custom 2D extractor: morphology, intensity, texture
 ├── feature_extractor_regionprops.py # scikit-image regionprops (2D and 3D)
 ├── feature_extractor_pyradiomics.py # PyRadiomics via SimpleITK (optional dependency)
+├── feature_extractor_scportrait.py  # ConvNeXt deep features via scPortrait (optional dependency)
+├── scportrait_project/              # scPortrait project config and helpers
+│   └── config.yml                   # CytosolOnlySegmentationCellpose + ConvNeXtFeaturizer
 ├── feature_list_2d.txt              # Full description of the 2D feature set
 ├── feature_list_3d.txt              # Full description of the 3D feature set
 └── __init__.py
@@ -24,8 +27,9 @@ The method is set via `feature_extraction.method` in `config/feature_extraction_
 | `incarta` *(default)* | 25 handcrafted 2D features across four groups (see below) | `scikit-image`, `scipy` |
 | `regionprops` | Standard skimage `regionprops_table` properties for 2D and 3D masks | `scikit-image` |
 | `pyradiomics` | Radiomic texture and shape features | `pyradiomics`, `SimpleITK` *(optional)* |
+| `scportrait` | ConvNeXt encoder embeddings per cell via scPortrait's segment→extract→featurize pipeline | `scportrait` *(optional, requires Python ≥ 3.11)* |
 
-`pyradiomics` is imported with a try/except — the pipeline falls back gracefully if the package is not installed.
+`pyradiomics` and `scportrait` are imported with a try/except — the pipeline falls back gracefully if either package is not installed. `scportrait` cannot share the primary environment (it pins `cellpose<4`); install it into a separate Python 3.11 environment from [`requirements-scportrait.txt`](requirements-scportrait.txt) — see [scPortrait method](#scportrait-method) below.
 
 ## Feature groups (`incarta`, 2D)
 
@@ -53,11 +57,29 @@ features_df = pipeline.run(image_dirs=[...], mask_dirs=[...])
 
 **From the command line:**
 
+`scripts/run_feature_extraction.py` supports three input modes; direct options override the config.
+
 ```bash
+# 1. Config-driven batch (image/mask dirs from the config file)
 python scripts/run_feature_extraction.py --config config/feature_extraction_config.yaml
+
+# 2. Batch over a directory (mask dir optional — not needed for scportrait)
+python scripts/run_feature_extraction.py \
+  --method scportrait \
+  --image-dir data/sample_data/HD1883 \
+  --image-pattern "*_BF.tif" \
+  --output-dir tmp/scportrait_sample/HD1883
+
+# 3. Single image (--mask-file required for non-scportrait methods)
+python scripts/run_feature_extraction.py \
+  --method scportrait \
+  --image-file "data/.../pMF5V1_E07_t1_z10_BF.tif" \
+  --output-dir tmp/scportrait_single
 ```
 
-Output is written to the path set in `paths.output_dir`. Per-image CSVs and an optional combined CSV are saved depending on the `output` settings in config.
+Output is written to `--output-dir` (or `paths.output_dir` from config). Per-image CSVs and a combined CSV are saved depending on the `output` settings in config.
+
+> **scPortrait needs its own environment.** It pins `cellpose<4`, which conflicts with the cellpose-sam (cellpose 4.x) stack used elsewhere, and it requires Python 3.11. Install it into a separate environment from [`requirements-scportrait.txt`](requirements-scportrait.txt) (see the header of that file for setup steps), and run on a GPU node (via SLURM) for ConvNeXt featurization.
 
 ## Adding a new extractor
 
@@ -68,25 +90,27 @@ Output is written to the path set in `paths.output_dir`. Per-image CSVs and an o
 
 ---
 
-## Planned: scportrait extractor
+## scportrait method
 
-> **Status: not yet implemented**
+`method: scportrait` runs scPortrait's full segment→extract→featurize workflow on each brightfield image, returning a DataFrame of ConvNeXt encoder embeddings (one row per cell).
 
-A `feature_extractor_scportrait.py` extractor is planned for this module. [scportrait](https://github.com/MannLabs/scPortrait) is an open-source framework for single-cell image analysis that provides standardised HDF5-based data structures (SPARCSpy format) and integrates directly with segmentation outputs.
+The pipeline internally duplicates the single BF image to satisfy the two-channel requirement of `CytosolOnlySegmentationCellpose`. A per-image project directory is created under `feature_extraction.scportrait.project_location/<image_stem>/`.
 
-**Motivation:** scportrait enables direct access to single-cell crops stored in its HDF5 project format, removing the need to pair raw images with masks manually. This makes it a better fit for datasets already processed through a scportrait/SPARCSpy pipeline.
+**Config reference** (`config/feature_extraction_config.yaml`):
 
-**Planned interface** (subject to change):
-
-```python
-# feature_extractor_scportrait.py
-def get_scportrait_features(scportrait_project_path: str | Path, ...) -> pd.DataFrame:
-    ...
+```yaml
+feature_extraction:
+  method: "scportrait"
+  scportrait:
+    project_location: "tmp/scportrait_projects"
+    config_path: "src/feature_extraction/scportrait_project/config.yml"
+    channel_names: ["brightfield", "brightfield_ch1"]
+    overwrite: true
+    debug: false
+    save_plots: true   # saves segmentation/extraction/featurization PNGs per image
 ```
 
-**Integration steps when implementing:**
-
-1. Implement `feature_extractor_scportrait.py` following the interface above.
-2. Register `scportrait` as a valid method in `FeatureExtractionPipeline`.
-3. Add `scportrait` config section to `config/feature_extraction_config.yaml`.
-4. Add tests under `tests/feature_extraction/test_feature_extractor_scportrait.py`.
+The scPortrait project config (`scportrait_project/config.yml`) specifies:
+- `CytosolOnlySegmentationCellpose` with `cyto3`
+- `HDF5CellExtraction` at 128 × 128 px
+- `ConvNeXtFeaturizer` with `channel_selection: 0` (brightfield channel)
