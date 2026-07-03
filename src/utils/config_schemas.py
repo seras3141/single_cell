@@ -186,6 +186,17 @@ class RadiomicsConfig:
 
 
 @dataclass
+class ScportraitConfig:
+    """scPortrait deep-learning feature extraction configuration."""
+    project_location: str = "tmp/scportrait_projects"
+    config_path: str = "src/feature_extraction/scportrait_project/config.yml"
+    channel_names: List[str] = field(default_factory=lambda: ["brightfield", "brightfield_ch1"])
+    overwrite: bool = True
+    debug: bool = False
+    save_plots: bool = True
+
+
+@dataclass
 class MorphologyConfig:
     """Morphology feature extraction configuration."""
     extract_shape: bool = True
@@ -226,6 +237,8 @@ class FeatureExtractionConfig:
         "combined_filename": "all_features.csv",
         "create_subdirs": True,
     })
+
+    scportrait: ScportraitConfig = field(default_factory=ScportraitConfig)
 
 
 # =============================================================================
@@ -493,6 +506,6 @@ def validate_pipeline_config(config: PipelineConfig) -> None:
         raise ValueError("Blur threshold should typically be between 0 and 1")
     
     # Feature extraction validation
-    valid_methods = ['incarta', 'regionprops', 'pyradiomics']
+    valid_methods = ['incarta', 'regionprops', 'pyradiomics', 'scportrait']
     if config.feature_extraction.method not in valid_methods:
         raise ValueError(f"Feature extraction method must be one of {valid_methods}, got '{config.feature_extraction.method}'")

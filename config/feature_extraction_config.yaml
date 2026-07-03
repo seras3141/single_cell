@@ -18,7 +18,7 @@ paths:
 # Feature extraction parameters
 feature_extraction:
   # Feature extraction method
-  method: "incarta"  # Options: "incarta", "regionprops", "pyradiomics"
+  method: "incarta"  # Options: "incarta", "regionprops", "pyradiomics", "scportrait"
 
   # File matching patterns
   image_pattern: "*_BF.tif"
@@ -45,7 +45,16 @@ feature_extraction:
     
     # Directory structure
     create_subdirs: true  # Create subdirectories for different datasets
-    
+
+  # scPortrait deep-learning featurization (used only when method: "scportrait")
+  scportrait:
+    project_location: "tmp/scportrait_projects"
+    config_path: "src/feature_extraction/scportrait_project/config.yml"
+    channel_names: ["brightfield", "brightfield_ch1"]
+    overwrite: true
+    debug: false
+    save_plots: true
+
 
 # Logging and monitoring
 logging:

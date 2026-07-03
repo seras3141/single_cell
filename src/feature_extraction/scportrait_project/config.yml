@@ -1,4 +1,4 @@
-name: "BF-only single-cell featurization"
+name: "BF-only single-cell featurization (ConvNeXt)"
 
 # CytosolOnlySegmentationCellpose: whole-image (non-sharded) Cellpose segmentation.
 # cyto3 is the latest Cellpose model with improved cytosol detection over cyto2;
@@ -23,31 +23,15 @@ HDF5CellExtraction:
   normalize_output: true
   normalization_range: [0.01, 0.99]
 
-# MLClusterClassifier: encoder-based featurization of single-cell crops.
-# channel_selection=0 selects the brightfield channel (index 0 of the extracted
-# HDF5 crops), which is the only channel present in this BF-only workflow.
-# encoders=[forward] runs only the forward encoder pass, producing a latent
-# embedding per cell without contrastive or reconstruction heads.
-# inference_device=cpu ensures reproducibility and portability; set to "cuda"
-# if a GPU is available for faster inference.
-# MLClusterClassifier:
-#   channel_selection: 0
-#   batch_size: 256
-#   dataloader_worker_number: 0  # must be 0 when inference_device is cpu
-#   inference_device: cpu
-#   label: brightfield_run1
-#   encoders:
-#     - forward
-#   network: "autophagy_classifier"
-#   inference_device: "cpu"   # or "cuda" if GPU available
-#   label: "brightfield_features"
-#   encoders:
-#     - forward
-
-CellFeaturizer:
-  channel_selection: 2            # index 2 = first image channel after the 2 masks
-  dataloader_worker_number: 0     # must be 0 when inference_device is cpu
-  batch_size: 256
-  inference_device: "cpu"
-  label: "brightfield_ch_features"
-  
+# ConvNeXtFeaturizer: ConvNeXt-based deep featurization of single-cell crops.
+# channel_selection=0 selects the brightfield channel (index 0 of the BF-only
+# HDF5 crops). inference_device=cuda runs featurization on the GPU (requires a
+# GPU allocation, e.g. slurm/python_code.sbatch on gpu_p); set back to "cpu" for
+# portable CPU-only runs, in which case dataloader_worker_number must be 0.
+# dataloader_worker_number=4 matches --cpus-per-task=4 for GPU dataloading throughput.
+ConvNeXtFeaturizer:
+  channel_selection: 0
+  dataloader_worker_number: 4     # set to 0 when inference_device is cpu
+  batch_size: 128
+  inference_device: "cuda"
+  label: "convnext_bf_features"

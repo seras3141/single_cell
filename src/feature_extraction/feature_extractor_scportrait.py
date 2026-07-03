@@ -18,14 +18,32 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from scportrait.pipeline.project import Project
-from scportrait.pipeline.featurization import CellFeaturizer, MLClusterClassifier
-from scportrait.pipeline.extraction import HDF5CellExtraction
-from scportrait.pipeline.segmentation.workflows import (
-    ShardedCytosolSegmentationCellpose,
-    CytosolOnlySegmentationCellpose,
-)
-from scportrait.pipeline.selection import LMDSelection
+# scPortrait is an optional dependency. Guard the imports so that this module
+# (and the wider src.feature_extraction package) can be imported even when
+# scportrait is not installed; get_scportrait_features() raises a clear error
+# at call time if it is missing.
+try:
+    from scportrait.pipeline.project import Project
+    from scportrait.pipeline.featurization import (
+        CellFeaturizer,
+        MLClusterClassifier,
+        ConvNeXtFeaturizer,
+    )
+    from scportrait.pipeline.extraction import HDF5CellExtraction
+    from scportrait.pipeline.segmentation.workflows import (
+        ShardedCytosolSegmentationCellpose,
+        CytosolOnlySegmentationCellpose,
+    )
+    from scportrait.pipeline.selection import LMDSelection
+except ImportError:  # pragma: no cover - exercised only without scportrait
+    Project = None
+    CellFeaturizer = None
+    MLClusterClassifier = None
+    ConvNeXtFeaturizer = None
+    HDF5CellExtraction = None
+    ShardedCytosolSegmentationCellpose = None
+    CytosolOnlySegmentationCellpose = None
+    LMDSelection = None
 
 log = logging.getLogger(__name__)
 
@@ -191,7 +209,7 @@ def get_scportrait_features(
     debug: bool = False,
     segmentation_f: Any = CytosolOnlySegmentationCellpose,
     extraction_f: Any = HDF5CellExtraction,
-    featurization_f: Any = MLClusterClassifier,
+    featurization_f: Any = ConvNeXtFeaturizer,
     selection_f: Optional[Any] = None,
     mask_path: Optional[str] = None,
     plots_dir: Optional[str] = None,
@@ -246,6 +264,12 @@ def get_scportrait_features(
     pd.DataFrame
         DataFrame of extracted features per cell.
     """
+    if Project is None:
+        raise RuntimeError(
+            "scportrait is not installed. Install it with 'pip install scportrait' "
+            "(or the project's 'scportrait' optional dependency) to use this method."
+        )
+
     _plots = Path(plots_dir) if plots_dir else None
     if _plots is not None:
         _plots.mkdir(parents=True, exist_ok=True)
@@ -288,62 +312,15 @@ def get_scportrait_features(
     if _plots is not None:
         _plot_featurization(project, _plots, Path(project_location).name)
 
-    # Retrieve the MLClusterClassifier results table from sdata.
-    classifier_keys = [k for k in project.sdata.tables.keys() if "MLClusterClassifier" in k]
-    if not classifier_keys:
-        raise RuntimeError("No MLClusterClassifier results found in project.sdata.tables.")
-    result_key = classifier_keys[0]
+    # Retrieve the featurization results table from sdata. Prefer a table whose
+    # key matches the featurizer name; otherwise fall back to any table present.
+    featurizer_name = getattr(featurization_f, "__name__", "")
+    result_key = next(
+        (k for k in project.sdata.tables.keys() if featurizer_name and featurizer_name in k),
+        next(iter(project.sdata.tables.keys()), None),
+    )
+    if result_key is None:
+        raise RuntimeError("No featurization results found in project.sdata.tables.")
     results = project.sdata.tables[result_key].to_df()
     results["scportrait_cell_id"] = project.sdata.tables[result_key].obs["scportrait_cell_id"]
     return results
-
-
-if __name__ == "__main__":
-    import argparse
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s  %(levelname)-8s  %(message)s",
-        datefmt="%H:%M:%S",
-    )
-
-    parser = argparse.ArgumentParser(
-        description="scPortrait BF-only single-cell feature extraction."
-    )
-    parser.add_argument("--debug", action="store_true", default=False)
-    args = parser.parse_args()
-
-    # Example: brightfield-only extraction from Plate 2426 subset.
-    # CytosolOnlySegmentationCellpose requires 2 input channels; duplicate the
-    # BF TIF so both channel slots receive brightfield data.
-    base_dir = (
-        Path(__file__).resolve().parents[2]
-        / "data"
-        / "Plate 2426_new_preprocessed_2D_split"
-        / "subset"
-    )
-    bf_tif = str(base_dir / "p2426_B01_z10_BF.tif")
-    image_paths = [bf_tif, bf_tif]
-    channel_names = ["brightfield", "brightfield_ch1"]
-
-    project_location = str(
-        Path(__file__).resolve().parents[2] / "tmp" / "scportrait_bf_only_project"
-    )
-    config_path = str(Path(__file__).resolve().parent / "config_scportrait.yaml")
-    plots_dir = str(Path(project_location) / "plots")
-
-    features = get_scportrait_features(
-        image_paths=image_paths,
-        channel_names=channel_names,
-        config_path=config_path,
-        project_location=project_location,
-        overwrite=True,
-        debug=args.debug,
-        segmentation_f=CytosolOnlySegmentationCellpose,
-        extraction_f=HDF5CellExtraction,
-        featurization_f=MLClusterClassifier,
-        plots_dir=plots_dir,
-    )
-
-    print("Extracted features:")
-    print(features.head())

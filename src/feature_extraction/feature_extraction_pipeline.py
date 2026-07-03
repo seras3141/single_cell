@@ -14,6 +14,10 @@ try:
     from src.feature_extraction.feature_extractor_pyradiomics import get_radiomics_features
 except ImportError:
     get_radiomics_features = None
+try:
+    from src.feature_extraction.feature_extractor_scportrait import get_scportrait_features
+except ImportError:
+    get_scportrait_features = None
 from src.feature_extraction.feature_extractor_regionprops import get_region_properties
 
 class FeatureExtractionPipeline:
@@ -42,15 +46,17 @@ class FeatureExtractionPipeline:
         self.processing_config = self.feature_config.get('processing', {})
 
         # Validate method
-        if self.method not in ['incarta', 'regionprops', 'pyradiomics']:
+        if self.method not in ['incarta', 'regionprops', 'pyradiomics', 'scportrait']:
             raise ValueError(f"Unsupported feature extraction method: {self.method}")
 
         # Setup output directory first
         self._setup_output(output_dir, self.output_config)
-        
-        # Now setup logging (which needs output_dir)
+
         self.log_config = log_config
-        self.setup_logging()
+        # Library code must not configure logging; just obtain a module logger
+        # and rely on the entry point (scripts/run_feature_extraction.py) having
+        # called setup_logging(). Records propagate to the root logger.
+        self.logger = logging.getLogger(__name__)
 
         # Initialize counters and results
         self.skipped_files = 0
@@ -78,18 +84,6 @@ class FeatureExtractionPipeline:
 
         return cls(config=feature_config, output_dir=output_dir, log_config=log_config)
     
-    def setup_logging(self):
-        """Setup logging configuration."""
-        from src.utils.logging_utils import setup_logging
-
-        log_level = self.log_config.get('level', 'INFO')
-        log_file = self.log_config.get('filename', 'feature_extraction.log')
-        log_file = self.output_dir / log_file
-
-        setup_logging(log_level, log_file) # type: ignore
-        self.logger = logging.getLogger(__name__)
-
-
     def find_image_mask_pairs(
             self, 
             image_dir: Path, 
@@ -281,64 +275,92 @@ class FeatureExtractionPipeline:
     '''
     
     def extract_features_from_path(
-            self, 
-            image_path: Path | str, 
-            mask_path: Path | str, 
+            self,
+            image_path: Path | str,
+            mask_path: Path | str | None = None,
         ) -> Optional[pd.DataFrame]:
-        """Extract features from a single image-mask pair.
-        
+        """Extract features from a single image (+ mask for mask-based methods).
+
         Args:
             image_path: Path to image file
-            mask_path: Path to mask file
-            
+            mask_path: Path to mask file. Optional and ignored for the
+                'scportrait' method (which runs its own segmentation); required
+                for all other methods.
+
         Returns:
             DataFrame with extracted features, or None if extraction fails
         """
 
         image_path = Path(image_path)
-        mask_path = Path(mask_path)
+        mask_path = Path(mask_path) if mask_path is not None else None
 
         if not image_path.exists():
             self.logger.error(f"Image file does not exist: {image_path}")
             self.error_files.append((str(image_path), "File not found"))
             return None
-        if not mask_path.exists():
-            self.logger.error(f"Mask file does not exist: {mask_path}")
-            self.error_files.append((str(mask_path), "File not found"))
-            return None
+
+        # scPortrait runs its own segmentation and needs no mask; every other
+        # method requires an existing mask.
+        if self.method != 'scportrait':
+            if mask_path is None or not mask_path.exists():
+                self.logger.error(f"Mask file does not exist: {mask_path}")
+                self.error_files.append((str(mask_path), "File not found"))
+                return None
 
         try:
-            # Load image and mask
-            image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
-            mask = cv2.imread(str(mask_path), cv2.IMREAD_UNCHANGED)
-            if image is None or mask is None:
-                self.logger.error(f"Failed to load image: {image_path} or mask: {mask_path}")
-                return None
-                        
-            # Extract features using the main function
-            n_jobs = self.feature_config.get('n_jobs', -1)
-
-            if self.method == 'incarta':
-                features_df = extract_all_instance_features(mask, image, n_jobs=n_jobs)
-            elif self.method == 'regionprops':
-                features_df = get_region_properties(mask, intensity_image=image)
-            elif self.method == 'pyradiomics':
-                if get_radiomics_features is None:
+            if self.method == 'scportrait':
+                # scPortrait takes file paths (not loaded arrays) and runs its own
+                # segmentation/extraction/featurization, so handle it before cv2.imread.
+                if get_scportrait_features is None:
                     raise RuntimeError(
-                        "pyradiomics is not installed. Install it with 'pip install pyradiomics' to use this method."
+                        "scportrait is not installed. Install it with 'pip install scportrait' to use this method."
                     )
-                features_df = get_radiomics_features(image, mask)
+                sc_cfg = self.feature_config.get('scportrait', {})
+                project_location = str(
+                    Path(sc_cfg.get('project_location', 'tmp/scportrait_projects')) / image_path.stem
+                )
+                features_df = get_scportrait_features(
+                    image_paths=[str(image_path), str(image_path)],
+                    channel_names=sc_cfg.get('channel_names', ['brightfield', 'brightfield_ch1']),
+                    config_path=sc_cfg.get('config_path', 'src/feature_extraction/scportrait_project/config.yml'),
+                    project_location=project_location,
+                    overwrite=sc_cfg.get('overwrite', True),
+                    debug=sc_cfg.get('debug', False),
+                    plots_dir=str(Path(project_location) / 'plots') if sc_cfg.get('save_plots', True) else None,
+                )
             else:
-                raise ValueError(f"Unknown feature extraction method: {self.method}")
-            
+                # Load image and mask
+                image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
+                mask = cv2.imread(str(mask_path), cv2.IMREAD_UNCHANGED)
+                if image is None or mask is None:
+                    self.logger.error(f"Failed to load image: {image_path} or mask: {mask_path}")
+                    return None
+
+                # Extract features using the main function
+                n_jobs = self.feature_config.get('n_jobs', -1)
+
+                if self.method == 'incarta':
+                    features_df = extract_all_instance_features(mask, image, n_jobs=n_jobs)
+                elif self.method == 'regionprops':
+                    features_df = get_region_properties(mask, intensity_image=image)
+                elif self.method == 'pyradiomics':
+                    if get_radiomics_features is None:
+                        raise RuntimeError(
+                            "pyradiomics is not installed. Install it with 'pip install pyradiomics' to use this method."
+                        )
+                    features_df = get_radiomics_features(image, mask)
+                else:
+                    raise ValueError(f"Unknown feature extraction method: {self.method}")
+
             if features_df.empty:
-                self.logger.warning(f"No features extracted from {mask_path.name}")
+                self.logger.warning(f"No features extracted from {image_path.name}")
                 return None
-            
+
             # Add metadata if configured
             if self.output_config.get('include_metadata', True):
                 features_df['image_filename'] = image_path.name
-                features_df['mask_filename'] = mask_path.name
+                if mask_path is not None:
+                    features_df['mask_filename'] = mask_path.name
                 # features_df['processing_timestamp'] = datetime.now().isoformat()
                 # features_df['feature_extraction_version'] = '1.0'
                 features_df['dataset_name'] = image_path.parent.name
@@ -431,7 +453,110 @@ class FeatureExtractionPipeline:
             self.logger.warning("No features extracted from any files")
 
         return combined_df
-    
+
+    def find_images(
+            self,
+            image_dir: Path | str,
+            image_patterns: List[str] | None = None,
+        ) -> List[Path]:
+        """Find image files in a directory (no mask pairing).
+
+        Used by segmentation-free methods (scPortrait) that only need input
+        images.
+
+        Args:
+            image_dir: Directory containing images
+            image_patterns: List of glob patterns for images (default ['*_BF.tif'])
+
+        Returns:
+            Sorted, de-duplicated list of image paths
+        """
+        image_dir = Path(image_dir)
+        image_patterns = image_patterns or ['*_BF.tif']
+        self.logger.debug(f"Searching for image patterns: {image_patterns}")
+
+        image_files: List[Path] = []
+        for pattern in image_patterns:
+            image_files.extend(image_dir.rglob(pattern))
+
+        image_files = sorted(set(image_files))
+        self.logger.info(f"Found {len(image_files)} image files in {image_dir}")
+        return image_files
+
+    def process_batch_scportrait(
+            self,
+            image_dir: Path | str,
+            image_patterns: List[str] | None = None,
+        ) -> pd.DataFrame:
+        """Extract scPortrait features from every image in a directory.
+
+        Mask-free counterpart to ``process_batch``: scPortrait runs its own
+        segmentation, so images are discovered directly (no mask pairing).
+
+        Args:
+            image_dir: Directory containing input images
+            image_patterns: List of glob patterns for images
+
+        Returns:
+            Combined DataFrame with features from all images
+        """
+        image_dir = Path(image_dir)
+        self.logger.info(f"Processing scPortrait batch from images in {image_dir}")
+
+        images = self.find_images(image_dir, image_patterns=image_patterns)
+        if not images:
+            self.logger.error(f"No images found in {image_dir}")
+            return pd.DataFrame()
+
+        processed_files = 0
+        all_features = []
+        for image_path in tqdm(images, desc="Processing images"):
+            features_df = self.extract_features_from_path(image_path, mask_path=None)
+            if features_df is not None:
+                all_features.append(features_df)
+                processed_files += 1
+                if self.output_config.get('save_individual_files', True):
+                    self.save_image_features(features_df, image_path)
+
+        if all_features:
+            combined_df = pd.concat(all_features, ignore_index=True)
+            self.logger.info(f"Total features extracted: {len(combined_df)} instances from {processed_files} images")
+        else:
+            combined_df = pd.DataFrame()
+            self.logger.warning("No features extracted from any images")
+
+        return combined_df
+
+    def process_single_image(
+            self,
+            image_path: Path | str,
+            mask_path: Path | str | None = None,
+        ) -> Optional[pd.DataFrame]:
+        """Extract features from a single image and save the results.
+
+        For scPortrait, ``mask_path`` is optional (segmentation is internal);
+        for mask-based methods it is required.
+
+        Args:
+            image_path: Path to the input image
+            mask_path: Path to the mask file (required for non-scportrait methods)
+
+        Returns:
+            Features DataFrame, or None if extraction failed / no features
+        """
+        image_path = Path(image_path)
+        self.logger.info(f"Processing single image: {image_path}")
+
+        features_df = self.extract_features_from_path(image_path, mask_path)
+        if features_df is None or features_df.empty:
+            self.logger.warning(f"No features extracted from {image_path.name}")
+            return features_df
+
+        if self.output_config.get('save_individual_files', True):
+            self.save_image_features(features_df, image_path)
+        self.save_combined_features(features_df)
+        return features_df
+
     def save_combined_features(self, features_df: pd.DataFrame):
         """Save combined features to CSV file.
 
