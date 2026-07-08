@@ -158,7 +158,7 @@ def _plot_extraction(project: Project, plots_dir: Path, label: str) -> None:
 
 
 def _plot_featurization(project: Project, plots_dir: Path, label: str) -> None:
-    """Save a feature-distribution histogram for the MLClusterClassifier output.
+    """Save a feature-distribution histogram for the featurization output.
 
     Parameters
     ----------
