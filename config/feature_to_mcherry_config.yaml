@@ -1,0 +1,21 @@
+# Configuration for src/feature_to_mcherry — Ridge + linear quantile regression
+# baselines mapping brightfield features to mCherry intensity percentiles.
+#
+# feature_csv and target_csv have no valid default (no matched real sample currently
+# exists) — both must be set explicitly, either by editing this file or via
+# `--override feature_csv=... --override target_csv=...` on the CLI.
+
+feature_to_mcherry:
+  feature_csv: ???
+  target_csv: ???
+  id_column: instance_id  # e.g. "instance_id" for regionprops, "label_id" if a backend already uses that name
+  sample_id_column: null  # null => derive from image_filename
+  timepoint_column: null  # null => derive from image_filename
+  target_columns: [percentile_75, percentile_90, percentile_95]
+  group_by: sample_id  # sample_id | timepoint
+  n_splits: 5
+  ridge_alpha: 1.0
+  quantile_alpha: 0.0
+  quantile_solver: highs
+  sort_quantiles: true
+  output_dir: results/feature_to_mcherry

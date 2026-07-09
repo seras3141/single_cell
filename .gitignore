@@ -184,6 +184,7 @@ build/
 dist/
 logs/
 models/
+!src/feature_to_mcherry/models/
 Untitled/
 src/**/*.md
 
@@ -192,6 +193,7 @@ test_*
 tmp*
 tmp/
 tmp1/
+!tests/feature_to_mcherry/test_*.py
 
 .DS_Store
 
@@ -202,10 +204,6 @@ tmp1/
 # Event files from TensorBoard
 events.out.tfevents.*
 *.tsv
-
-# Ignore feature files for now
-src/feature*
-tests/feature*
 
 # Ignore notebook checkpoints
 notebooks/.ipynb_checkpoints
