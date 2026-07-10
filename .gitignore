@@ -188,10 +188,17 @@ Untitled/
 src/**/*.md
 
 #test outputs
-test_*
+test_output*/
 tmp*
 tmp/
 tmp1/
+
+# scPortrait featurizer/project scratch dirs (created in cwd during
+# featurization; leak into the repo root when a job is cancelled/crashes)
+ConvNeXtFeaturizer_*/
+MLClusterClassifier_*/
+CellFeaturizer_*/
+Project_*/
 
 .DS_Store
 

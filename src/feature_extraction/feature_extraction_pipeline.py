@@ -20,6 +20,54 @@ except ImportError:
     get_scportrait_features = None
 from src.feature_extraction.feature_extractor_regionprops import get_region_properties
 
+# scPortrait label-mask export layout. The exported mask mirrors the Cellpose
+# tracked-mask tree but lives under a sibling ``inference_scportrait/`` dir:
+#   <sample>/inference_scportrait/scportrait/test/final_2d/<stem>_pred_mask.tif
+SCPORTRAIT_MASK_ROOT_NAME = "inference_scportrait"
+SCPORTRAIT_MASK_SUBDIRS = ("scportrait", "test", "final_2d")
+
+# Child names whose presence marks a processed-experiment ("sample") folder,
+# e.g. ``.../HD1509 MF5V1 0-72h 23-02-26/``. No single marker is present in
+# every experiment (SA110 lacks manifest.json; HD1883 lacks inference_tracked),
+# so any one match identifies the sample dir.
+_SAMPLE_DIR_MARKERS = frozenset({
+    "split_data",
+    "inference",
+    "inference_tracked",
+    "3d_data",
+    "processed_summary",
+    "manifest.json",
+    "blur_heatmaps",
+})
+
+
+def derive_sample_dir(image_path: Path) -> Optional[Path]:
+    """Walk up from an input image to its processed-experiment ("sample") dir.
+
+    Input BF images live at ``<sample>/split_data/<stem>_BF.tif``; the sample
+    dir is the nearest ancestor that contains recognizable pipeline-output
+    children (``inference_tracked``, ``split_data``, ``manifest.json``, ...).
+
+    Resolves the containing *directory* rather than the image file: in the
+    processed datasets the ``split_data`` BF images are symlinks into the raw
+    dataset tree, so ``image_path.resolve()`` would jump out of the processed
+    experiment folder (whose markers we need) and into the marker-less raw
+    folder. Resolving ``image_path.parent`` keeps us on the processed side.
+
+    Returns None if no such ancestor is found (e.g. ad-hoc input layouts such
+    as the raw ``data_old/Plate 2426/BF Images/`` validation inputs).
+    """
+    start = Path(image_path).parent.resolve()
+    for ancestor in (start, *start.parents):
+        try:
+            child_names = {child.name for child in ancestor.iterdir()}
+        except (OSError, PermissionError):
+            continue
+        if child_names & _SAMPLE_DIR_MARKERS:
+            return ancestor
+    return None
+
+
 class FeatureExtractionPipeline:
     """Pipeline for extracting features from datasets of segmented cells."""
 
@@ -274,6 +322,43 @@ class FeatureExtractionPipeline:
         return True
     '''
     
+    def _scportrait_mask_export_path(
+        self,
+        image_path: Path,
+        sc_cfg: Dict[str, Any],
+    ) -> Optional[Path]:
+        """Build the destination TIFF path for the exported scPortrait mask.
+
+        The export root is derived from the input image's sample folder (see
+        ``derive_sample_dir``) so the mask lands alongside the Cellpose outputs
+        under ``<sample>/inference_scportrait/``. An explicit
+        ``scportrait.mask_export_root`` config value overrides the derivation.
+
+        Returns None (export skipped) when no sample folder can be derived and
+        no override is configured.
+        """
+        root = sc_cfg.get('mask_export_root')
+        if root:
+            export_root = Path(root)
+        else:
+            sample_dir = derive_sample_dir(image_path)
+            if sample_dir is None:
+                self.logger.warning(
+                    "Could not derive a sample folder for %s; skipping "
+                    "scPortrait mask export. Set scportrait.mask_export_root "
+                    "to export anyway.",
+                    image_path,
+                )
+                return None
+            export_root = sample_dir / SCPORTRAIT_MASK_ROOT_NAME
+
+        stem = image_path.stem
+        if stem.endswith('_BF'):
+            stem = stem[:-len('_BF')]
+        return export_root.joinpath(
+            *SCPORTRAIT_MASK_SUBDIRS, f"{stem}_pred_mask.tif"
+        )
+
     def extract_features_from_path(
             self,
             image_path: Path | str,
@@ -319,6 +404,7 @@ class FeatureExtractionPipeline:
                 project_location = str(
                     Path(sc_cfg.get('project_location', 'tmp/scportrait_projects')) / image_path.stem
                 )
+                mask_export_path = self._scportrait_mask_export_path(image_path, sc_cfg)
                 features_df = get_scportrait_features(
                     image_paths=[str(image_path), str(image_path)],
                     channel_names=sc_cfg.get('channel_names', ['brightfield', 'brightfield_ch1']),
@@ -327,6 +413,9 @@ class FeatureExtractionPipeline:
                     overwrite=sc_cfg.get('overwrite', True),
                     debug=sc_cfg.get('debug', False),
                     plots_dir=str(Path(project_location) / 'plots') if sc_cfg.get('save_plots', True) else None,
+                    scportrait_mask_export_path=(
+                        str(mask_export_path) if mask_export_path is not None else None
+                    ),
                 )
             else:
                 # Load image and mask

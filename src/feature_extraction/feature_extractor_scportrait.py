@@ -12,6 +12,8 @@ import logging
 from pathlib import Path
 from typing import Any, List, Dict, Optional
 
+import tifffile
+
 import matplotlib
 matplotlib.use("Agg")  # non-interactive backend; safe for headless/script use
 import matplotlib.pyplot as plt
@@ -197,6 +199,114 @@ def _plot_featurization(project: Project, plots_dir: Path, label: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Label-mask export (scPortrait sdata -> Cellpose-style TIFF)
+# ---------------------------------------------------------------------------
+
+def _scale_rank(key: Any) -> Optional[int]:
+    """Return the integer scale index for keys like ``scale0``/``s0``.
+
+    Returns None for non-scale keys (e.g. a data-variable named ``image``).
+    """
+    text = str(key).lower()
+    for prefix in ("scale", "s"):
+        suffix = text[len(prefix):]
+        if text.startswith(prefix) and suffix.isdigit():
+            return int(suffix)
+    return None
+
+
+def _resolve_fullres_label_array(sdata_label: Any) -> np.ndarray:
+    """Return the full-resolution 2D label array from an sdata label entry.
+
+    scPortrait writes segmentation labels as a **multiscale** pyramid, so
+    ``project.sdata.labels[key]`` is typically a multiscale ``DataTree``
+    (on-disk zarr scales ``s0..sN``) rather than a plain array. This descends
+    to the finest scale (``scale0``/``s0``) and squeezes any singleton leading
+    (channel) axis so the result is a 2D label image. A plain ``DataArray``
+    (single scale) is returned as-is.
+
+    The pixel values are ``scportrait_cell_id`` labels and are preserved
+    exactly by the caller.
+    """
+    node: Any = sdata_label
+    # Descend through multiscale containers, always taking the finest scale,
+    # until we reach something array-like. The bound guards pathological
+    # nesting (DataTree -> scale node -> data variable is at most 2 levels).
+    for _ in range(4):
+        try:
+            keys = list(node.keys())
+        except (AttributeError, TypeError):
+            break
+        if not keys:
+            break
+        scale_keys = [k for k in keys if _scale_rank(k) is not None]
+        if scale_keys:
+            chosen = min(scale_keys, key=lambda k: _scale_rank(k) or 0)
+        elif len(keys) == 1:
+            chosen = keys[0]
+        else:
+            # spatialdata names the label data variable "image".
+            chosen = "image" if "image" in keys else keys[0]
+        node = node[chosen]
+
+    arr = np.asarray(getattr(node, "values", node))
+    arr = np.squeeze(arr)
+    if arr.ndim > 2:
+        arr = arr.reshape(arr.shape[-2:])
+    return arr
+
+
+def _export_scportrait_labels_to_tif(project: Any, export_path: Path) -> Path:
+    """Export the scPortrait segmentation mask from ``project.sdata`` to TIFF.
+
+    Resolves the (single) label key at runtime — the key is a workflow
+    constructor parameter (e.g. ``seg_all_cytosol``), **not** a fixed literal,
+    so it is never hardcoded. Writes the full-resolution label array to
+    ``export_path`` as an integer-valued TIFF whose pixel values are the
+    ``scportrait_cell_id``s of that image.
+
+    # TODO(future): downstream tooling surfaces these label values as
+    # ``label_id``; rename to ``cell_id`` to align with scPortrait's own
+    # ``scportrait_cell_id`` vocabulary once the mcherry_metrics CSV contract
+    # (which still uses ``label_id``) is updated.
+    """
+    label_keys = list(project.sdata.labels.keys())
+    if not label_keys:
+        raise RuntimeError("No segmentation labels found in project.sdata.labels")
+    if len(label_keys) > 1:
+        log.warning(
+            "Multiple segmentation label keys present (%s); exporting the "
+            "first (%r).",
+            label_keys,
+            label_keys[0],
+        )
+    label_key = label_keys[0]
+    arr = _resolve_fullres_label_array(project.sdata.labels[label_key])
+
+    # Normalize the label dtype to match the pipeline's Cellpose masks
+    # (inference_tracked/ masks are uint16). scPortrait returns uint64, which
+    # some readers (cv2, viewers) handle poorly; downcast losslessly to uint16
+    # when the IDs fit, else int32 (mcherry_metrics casts to int32 on read).
+    # This preserves every cell ID exactly — no normalization / binarization.
+    max_label = int(arr.max()) if arr.size else 0
+    if max_label <= np.iinfo(np.uint16).max:
+        arr = arr.astype(np.uint16)
+    else:
+        arr = arr.astype(np.int32)
+
+    export_path = Path(export_path)
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+    tifffile.imwrite(str(export_path), arr)
+    log.info(
+        "Exported scPortrait label mask '%s' -> %s (%d labels)",
+        label_key,
+        export_path,
+        int(arr.max()) if arr.size else 0,
+    )
+    return export_path
+
+
+# ---------------------------------------------------------------------------
 # Main pipeline function
 # ---------------------------------------------------------------------------
 
@@ -213,6 +323,7 @@ def get_scportrait_features(
     selection_f: Optional[Any] = None,
     mask_path: Optional[str] = None,
     plots_dir: Optional[str] = None,
+    scportrait_mask_export_path: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Run scportrait workflow to extract features from single-cell images.
@@ -258,6 +369,13 @@ def get_scportrait_features(
         # extract() and featurize() use the user-supplied labels instead.
     plots_dir : str or None, optional
         Directory to save diagnostic figures. If None, no figures are saved.
+    scportrait_mask_export_path : str or None, optional
+        If provided, the full-resolution scPortrait label mask is written to
+        this exact TIFF path immediately after segmentation (parent dirs are
+        created). The pixel values are ``scportrait_cell_id``s by construction,
+        so the exported mask can be consumed by the same downstream tooling
+        that consumes Cellpose masks. If None (default), nothing is exported
+        and behavior is unchanged.
 
     Returns
     -------
@@ -297,6 +415,8 @@ def get_scportrait_features(
     log.info("Running segmentation (%s)...", segmentation_f.__name__)
     project.segment()
     log.info("Segmentation complete.")
+    if scportrait_mask_export_path is not None:
+        _export_scportrait_labels_to_tif(project, Path(scportrait_mask_export_path))
     if _plots is not None:
         _plot_segmentation(project, _plots, Path(project_location).name)
 
