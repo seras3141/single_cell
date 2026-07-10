@@ -184,16 +184,14 @@ build/
 dist/
 logs/
 models/
-!src/feature_to_mcherry/models/
 Untitled/
 src/**/*.md
 
 #test outputs
-test_*
 tmp*
 tmp/
 tmp1/
-!tests/feature_to_mcherry/test_*.py
+test_output
 
 .DS_Store
 
