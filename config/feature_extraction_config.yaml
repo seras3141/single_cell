@@ -25,7 +25,10 @@ feature_extraction:
   mask_pattern: "*_pred_mask.tif"
 
   # Processing options
-  n_jobs: -1  # Number of parallel jobs (-1 uses all cores)
+  n_jobs: -1  # Number of images processed concurrently (file-level workers).
+              # -1 = all cores, 1 = sequential. Inner per-cell parallelism is
+              # forced to 1 when >1 file worker is used. Ignored for scportrait
+              # (kept sequential on one GPU).
   
   # Image preprocessing (optional)
   preprocessing:
