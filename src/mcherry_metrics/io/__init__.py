@@ -3,6 +3,7 @@
 from .exporters import (
     INSTANCE_METRICS_COLUMNS,
     validate_metrics_dataframe,
+    write_individual_metrics,
     write_instance_metrics,
 )
 from .loaders import (
@@ -23,5 +24,6 @@ __all__ = [
     "migrate_label_id_header",
     "resolve_label_paths",
     "validate_metrics_dataframe",
+    "write_individual_metrics",
     "write_instance_metrics",
 ]

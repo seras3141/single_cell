@@ -41,7 +41,9 @@ def finalize_metrics_dataframe(metrics_df: pd.DataFrame) -> pd.DataFrame:
 def validate_metrics_dataframe(metrics_df: pd.DataFrame) -> None:
     """Validate that the table satisfies the milestone-1 CSV contract."""
     missing_columns = [
-        column for column in INSTANCE_METRICS_COLUMNS[:14] if column not in metrics_df.columns
+        column
+        for column in INSTANCE_METRICS_COLUMNS[:14]
+        if column not in metrics_df.columns
     ]
     if missing_columns:
         raise ValueError(
@@ -57,3 +59,21 @@ def write_instance_metrics(metrics_df: pd.DataFrame, output_csv: Path) -> Path:
     finalized = finalize_metrics_dataframe(metrics_df)
     finalized.to_csv(output_csv, index=False)
     return output_csv
+
+
+INDIVIDUAL_METRICS_SUFFIX = "_metrics.csv"
+
+
+def write_individual_metrics(
+    metrics_df: pd.DataFrame, individual_dir: Path, image_path: Path
+) -> Path:
+    """Write one image's metrics to ``individual_dir/{image_stem}_metrics.csv``.
+
+    Mirrors the feature-extraction per-image layout so that per-image mCherry
+    CSVs sit alongside the per-image feature CSVs. The written file satisfies
+    the same instance-metrics contract as the combined output.
+    """
+    output_csv = (
+        Path(individual_dir) / f"{Path(image_path).stem}{INDIVIDUAL_METRICS_SUFFIX}"
+    )
+    return write_instance_metrics(metrics_df, output_csv)

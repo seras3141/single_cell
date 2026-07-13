@@ -13,7 +13,7 @@ from skimage import measure
 from tqdm import tqdm
 
 from ..config import ExtractionConfig
-from ..io.exporters import finalize_metrics_dataframe
+from ..io.exporters import finalize_metrics_dataframe, write_individual_metrics
 from ..io.loaders import ensure_2d, extract_image_metadata, find_label_from_mcherry_path
 from ..io.loaders import build_file_handler
 from .preprocessing import ImagePreprocessor
@@ -161,8 +161,14 @@ class InstanceMetricsExtractor:
         lbl_paths: list[str | Path | None] | None = None,
         show_progress: bool = True,
         n_jobs: int | None = None,
+        individual_output_dir: Path | None = None,
     ) -> pd.DataFrame:
-        """Extract metrics for a batch of images."""
+        """Extract metrics for a batch of images.
+
+        When ``individual_output_dir`` is given, each image's metrics are also
+        written to ``{image_stem}_metrics.csv`` in that directory, in addition
+        to being concatenated into the returned table.
+        """
         if lbl_paths is None:
             lbl_paths = [find_label_from_mcherry_path(Path(path)) for path in img_paths]
 
@@ -191,14 +197,23 @@ class InstanceMetricsExtractor:
                 )
             )
 
+        if individual_output_dir is not None:
+            Path(individual_output_dir).mkdir(parents=True, exist_ok=True)
+
         records = []
-        for warning, result in results:
+        for (image_path, _label_path), (warning, result) in zip(pairs, results):
             if warning is not None:
                 logger.warning("%s", warning)
             if result is not None:
                 records.append(result)
+                if individual_output_dir is not None:
+                    write_individual_metrics(
+                        result, Path(individual_output_dir), Path(image_path)
+                    )
 
         if not records:
-            return pd.DataFrame(columns=finalize_metrics_dataframe(pd.DataFrame()).columns)
+            return pd.DataFrame(
+                columns=finalize_metrics_dataframe(pd.DataFrame()).columns
+            )
 
         return pd.concat(records, ignore_index=True)
