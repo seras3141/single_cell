@@ -198,6 +198,9 @@ def main():
 
     os.makedirs(output_dir, exist_ok=True)
 
+    # Coexists with the DVC reproducibility DAG in `dvc.yaml` (Phase 3): that is the
+    # content-hash-aware alternative orchestrator (`dvc repro`). This linear if-chain
+    # is retained; retiring it in favour of `dvc.yaml` is a documented follow-up.
     manifest = create_or_load_manifest(output_dir, input_dir, config)
     logger.info(f"Manifest for '{manifest.experiment_id}'")
 

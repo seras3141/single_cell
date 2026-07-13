@@ -1,0 +1,47 @@
+schema: '2.0'
+stages:
+  prepare:
+    cmd: python scripts/run_preprocessing.py --config config/config.yaml 
+      --input-dir "data/sample_data" --output-dir "data/sample_data_output"
+    deps:
+    - path: data/sample_data
+      hash: md5
+      md5: 797e4c5f8ade62a8d43c35bd79700efe.dir
+      size: 9513234864
+      nfiles: 4536
+    - path: scripts/run_preprocessing.py
+      hash: md5
+      md5: 90d2d7b24450fe60d54bde7096b207c0
+      size: 14399
+    - path: src/preprocessing
+      hash: md5
+      md5: ef8b3f8a5f9126747a058e1dffabcbe3.dir
+      size: 50251
+      nfiles: 10
+    params:
+      config/config.yaml:
+        preprocessing:
+          test_size: 1
+          random_state: 42
+          split_by_group: true
+          split_folder: split_data
+          out_3d_folder: 3d_data
+          wavelength_mappings:
+          z_min: 1
+          z_max: 20
+    outs:
+    - path: data/sample_data_output/3d_data
+      hash: md5
+      md5: d751713988987e9331980363e24189ce.dir
+      size: 0
+      nfiles: 0
+    - path: data/sample_data_output/blur_heatmaps
+      hash: md5
+      md5: d751713988987e9331980363e24189ce.dir
+      size: 0
+      nfiles: 0
+    - path: data/sample_data_output/split_data
+      hash: md5
+      md5: 9df953924102bcf1adf4345ea2976677.dir
+      size: 47
+      nfiles: 1
