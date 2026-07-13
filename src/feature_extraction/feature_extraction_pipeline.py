@@ -1,6 +1,7 @@
 from typing import List, Tuple, Dict, Any, Optional
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from datetime import datetime
@@ -214,47 +215,79 @@ class FeatureExtractionPipeline:
         )
 
         # Match files based on configuration
-        pairs = self.match_files(image_files, mask_files, mask_patterns=mask_patterns)
+        pairs = self.match_files(
+            image_files,
+            mask_files,
+            mask_patterns=mask_patterns,
+            image_patterns=image_patterns,
+        )
 
         self.logger.info(f"Successfully paired {len(pairs)} image-mask pairs")
         return pairs
+
+    @staticmethod
+    def _pair_key(name: str, pattern: str) -> Optional[str]:
+        """Return the identifier captured by ``*`` in ``pattern`` for ``name``.
+
+        The glob-style ``pattern`` is translated to an *anchored* regex in which
+        each ``*`` becomes a capture group and every other character is matched
+        literally (so ``.`` matches only a literal dot, not any char). The
+        concatenation of the captured groups is the pairing key: an image and a
+        mask pair iff their keys are **exactly equal**. Returns None if ``name``
+        does not match ``pattern``.
+
+        This replaces the old ``startswith(prefix)`` matching, which paired by
+        prefix and so mismatched neighbouring identifiers — e.g. mask timepoint
+        ``t21`` matched image ``t211`` because ``"t211...".startswith("t21")``,
+        assigning one image to two masks. Exact-key equality is boundary-safe.
+        """
+        regex = "(.*)".join(re.escape(segment) for segment in pattern.split("*"))
+        match = re.fullmatch(regex, name)
+        if match is None:
+            return None
+        return "".join(match.groups())
+
+    @classmethod
+    def _first_key(cls, name: str, patterns: List[str]) -> Optional[str]:
+        """Pairing key from the first ``patterns`` entry that matches ``name``."""
+        for pattern in patterns:
+            key = cls._pair_key(name, pattern)
+            if key is not None:
+                return key
+        return None
 
     def find_image_given_mask(
         self,
         mask_path: Path,
         image_files: List[Path],
         mask_patterns: List[str] | None = None,
+        image_patterns: List[str] | None = None,
     ) -> Optional[Path]:
-        """Find corresponding image file for a given mask.
+        """Find the image whose pairing key equals this mask's pairing key.
 
         Args:
             mask_path: Path to the mask file
             image_files: List of available image files
+            mask_patterns: Glob patterns for masks (default ``['*_Cells.tif']``)
+            image_patterns: Glob patterns for images (default ``['*_BF.tif']``)
 
         Returns:
             Path to the matching image file, or None if not found
         """
-
-        import re
-
-        # Convert mask path to str
-        mask_name = mask_path.name
         mask_patterns = mask_patterns or ["*_Cells.tif"]
+        image_patterns = image_patterns or ["*_BF.tif"]
 
-        for mask_pattern in mask_patterns:
-            mask_pattern = mask_pattern.replace("*", "(.*)")
-            match = re.match(mask_pattern, mask_name)
-            if match:
-                mask_prefix = match.group(1)
-                self.logger.debug(f"Mask prefix extracted: {mask_prefix}")
+        mask_key = self._first_key(mask_path.name, mask_patterns)
+        if mask_key is None:
+            self.logger.warning(f"Mask matches no pattern: {mask_path.name}")
+            return None
 
-                for image in image_files:
-                    image_stem = image.stem
-                    if image_stem.startswith(mask_prefix):
-                        self.logger.debug(
-                            f"Matched {image.name} with {mask_path.name} based on prefix {mask_prefix}"
-                        )
-                        return image
+        for image in image_files:
+            if self._first_key(image.name, image_patterns) == mask_key:
+                self.logger.debug(
+                    f"Matched {image.name} with {mask_path.name} on key {mask_key}"
+                )
+                return image
 
         self.logger.warning(f"No matching image found for mask: {mask_path.name}")
         return None
@@ -264,27 +297,52 @@ class FeatureExtractionPipeline:
         image_files: List[Path],
         mask_files: List[Path],
         mask_patterns: List[str] | None = None,
+        image_patterns: List[str] | None = None,
     ) -> List[Tuple[Path, Path]]:
-        """Match image files with corresponding mask files based on patterns.
+        """Match image files with masks by exact pairing key (see ``_pair_key``).
+
+        Images are indexed once by key, then each mask joins to the image with
+        the same key. Because keys are the full wildcard-captured identifier
+        (not a prefix), a mask pairs with exactly one image and neighbouring
+        identifiers (``t21`` vs ``t211``) no longer collide.
 
         Args:
             image_files: List of image file paths
             mask_files: List of mask file paths
-            mask_patterns: List of glob patterns for masks
+            mask_patterns: Glob patterns for masks (default ``['*_Cells.tif']``)
+            image_patterns: Glob patterns for images (default ``['*_BF.tif']``)
 
         Returns:
             List of matched (image_path, mask_path) tuples
         """
+        mask_patterns = mask_patterns or ["*_Cells.tif"]
+        image_patterns = image_patterns or ["*_BF.tif"]
+
+        # Index images by pairing key; first occurrence wins, warn on collisions.
+        image_by_key: Dict[str, Path] = {}
+        for image in image_files:
+            key = self._first_key(image.name, image_patterns)
+            if key is None:
+                continue
+            if key in image_by_key:
+                self.logger.warning(
+                    f"Multiple images share pairing key '{key}': keeping "
+                    f"{image_by_key[key].name}, ignoring {image.name}"
+                )
+                continue
+            image_by_key[key] = image
+
         pairs = []
-
         for mask in mask_files:
-            # Find corresponding image for each mask
-            image = self.find_image_given_mask(
-                mask, image_files, mask_patterns=mask_patterns
-            )
-
-            if image:
-                pairs.append((image, mask))
+            key = self._first_key(mask.name, mask_patterns)
+            if key is None:
+                self.logger.warning(f"Mask matches no pattern: {mask.name}")
+                continue
+            image = image_by_key.get(key)
+            if image is None:
+                self.logger.warning(f"No matching image found for mask: {mask.name}")
+                continue
+            pairs.append((image, mask))
 
         return pairs
 
