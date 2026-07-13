@@ -13,6 +13,11 @@ def _ensure_mock(name: str) -> None:
         mock = MagicMock()
         mock.__name__ = name
         mock.__spec__ = None
+        if name == "torch":
+            # scipy's array_api_compat calls issubclass(cls, torch.Tensor) at import
+            # time (e.g. via trackpy -> scipy.stats); a MagicMock attribute is not a
+            # valid issubclass argument, so give Tensor a real (if empty) class.
+            mock.Tensor = type("Tensor", (), {})
         sys.modules[name] = mock
 
 

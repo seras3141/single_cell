@@ -1,0 +1,41 @@
+# Configuration for src/feature_to_mcherry/informativeness — the morphology
+# informativeness feasibility gate (univariate association, grouped-CV performance
+# floor, replicate noise ceiling) mapping brightfield morphology to mCherry
+# intensity percentiles.
+#
+# feature_csv and target_csv have no valid default (no matched real sample currently
+# exists locally) — both must be set explicitly, either by editing this file or via
+# `--override feature_csv=... --override target_csv=...` on the CLI.
+
+morphology_informativeness:
+  feature_csv: ???
+  target_csv: ???
+  id_column: instance_id  # e.g. "instance_id" for regionprops, "label_id" if a backend already uses that name
+  sample_id_column: null  # null => derive from image_filename
+  timepoint_column: null  # null => derive from image_filename
+  target_columns: [percentile_75, percentile_90, percentile_95]
+  group_by: sample_id  # sample_id | timepoint
+  n_splits: 5
+  morphology_feature_patterns:
+    - area
+    - perimeter
+    - eccentricity
+    - solidity
+    - extent
+    - major_axis_length
+    - minor_axis_length
+    - aspect_ratio
+    - "*contrast"
+    - "*correlation"
+    - "*entropy"
+    - "*idm"
+    - "*homogeneity"
+  suspect_feature_patterns:
+    - "*mean_intensity"
+    - "*_intensity_std"
+    - "*intensity_std*"
+  ridge_alpha: 1.0
+  nonlinear_backend: auto  # auto | lightgbm | sklearn
+  top_k_features: 5
+  plate_layout_json: config/MF5v1_plate_layout.json
+  output_dir: results/morphology_informativeness
