@@ -137,7 +137,7 @@ class InstanceMetricsExtractor:
 
         metrics_df = self.compute_sum_intensity(metrics_df, labels, image)
         metrics_df = self.compute_percentiles(metrics_df, labels, image)
-        metrics_df = metrics_df.rename(columns={"label": "label_id"})
+        metrics_df = metrics_df.rename(columns={"label": "cell_id"})
         metrics_df = metrics_df[metrics_df["area"] >= self.config.min_area_px].copy()
 
         if metrics_df.empty:

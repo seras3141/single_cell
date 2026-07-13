@@ -263,12 +263,9 @@ def _export_scportrait_labels_to_tif(project: Any, export_path: Path) -> Path:
     constructor parameter (e.g. ``seg_all_cytosol``), **not** a fixed literal,
     so it is never hardcoded. Writes the full-resolution label array to
     ``export_path`` as an integer-valued TIFF whose pixel values are the
-    ``scportrait_cell_id``s of that image.
-
-    # TODO(future): downstream tooling surfaces these label values as
-    # ``label_id``; rename to ``cell_id`` to align with scPortrait's own
-    # ``scportrait_cell_id`` vocabulary once the mcherry_metrics CSV contract
-    # (which still uses ``label_id``) is updated.
+    ``scportrait_cell_id``s of that image. Downstream tooling surfaces these
+    mask pixel values as ``cell_id`` (the unified per-cell identity column
+    shared with the mcherry_metrics CSV contract).
     """
     label_keys = list(project.sdata.labels.keys())
     if not label_keys:

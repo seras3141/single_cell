@@ -10,7 +10,7 @@ import pandas as pd
 LABELED_INSTANCE_COLUMNS = [
     "image_path",
     "label_path",
-    "label_id",
+    "cell_id",
     "area",
     "mean_intensity",
     "max_intensity",

@@ -12,6 +12,7 @@ from .loaders import (
     find_label_from_mcherry_path,
     resolve_label_paths,
 )
+from .migrations import migrate_label_id_header
 
 __all__ = [
     "INSTANCE_METRICS_COLUMNS",
@@ -19,6 +20,7 @@ __all__ = [
     "discover_mcherry_images",
     "extract_image_metadata",
     "find_label_from_mcherry_path",
+    "migrate_label_id_header",
     "resolve_label_paths",
     "validate_metrics_dataframe",
     "write_instance_metrics",
