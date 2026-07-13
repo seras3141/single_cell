@@ -136,11 +136,16 @@ def get_track_output_dir(output_dir: str, config: dict) -> str:
     Single source of truth shared by the ``track`` step (which writes ``final/``,
     ``final_2d/`` etc. under this root) and the ``extract`` step (which reads
     ``final_2d/`` from it). Layout matches ``src/dataset_analysis/processed_inventory.py``
-    and the per-stage SLURM scripts: ``inference_tracked/<model_type>/<dataset_name>``.
+    and the per-stage SLURM scripts: ``inference_tracked/<model_type>[/<dataset_name>]``.
+    ``dataset_name`` is optional — when empty (the MF5V1 convention) no dataset-split
+    subfolder is added, mirroring the inference outputs (``inference/<model_type>/``).
     """
     model_type = config["segmentation"]["cellpose"]["model_type"]
     dataset_name = config["segmentation"]["inference"]["dataset_name"]
-    return os.path.join(output_dir, "inference_tracked", model_type, dataset_name)
+    parts = [output_dir, "inference_tracked", model_type]
+    if dataset_name:
+        parts.append(dataset_name)
+    return os.path.join(*parts)
 
 
 def get_pipeline_legacy_args(args):

@@ -185,8 +185,8 @@ class TestDetectPhantomSamples:
 
     def test_detects_phantoms_in_both_track_subdirs(self, tmp_path: Path):
         raw = _make_raw_inventory([("E07", 1)])
-        final_dir = tmp_path / "inference_tracked" / "cellpose_sam" / "test" / "final"
-        final_2d_dir = tmp_path / "inference_tracked" / "cellpose_sam" / "test" / "final_2d"
+        final_dir = tmp_path / "inference_tracked" / "cellpose_sam" / "final"
+        final_2d_dir = tmp_path / "inference_tracked" / "cellpose_sam" / "final_2d"
         final_dir.mkdir(parents=True)
         final_2d_dir.mkdir(parents=True)
         (final_dir / "pMF5V1_E07_t1_pred_mask_3d.zarr").mkdir()
