@@ -22,6 +22,114 @@ def _hash_config(config: Dict[str, Any]) -> str:
     return hashlib.sha256(serialised.encode()).hexdigest()
 
 
+# --------------------------------------------------------------------------- #
+# DVC / Git provenance helpers. All are best-effort: they return None (never
+# raise) if DVC/Git/yaml is absent or the path is not tracked, so manifest
+# population can never break a pipeline run.
+# --------------------------------------------------------------------------- #
+def _find_dvc_lock(start: str, max_levels: int = 40) -> Optional[str]:
+    """Walk up from ``start`` looking for a ``dvc.lock`` at the repo root."""
+    directory = os.path.abspath(start)
+    for _ in range(max_levels):
+        candidate = os.path.join(directory, "dvc.lock")
+        if os.path.exists(candidate):
+            return candidate
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            break
+        directory = parent
+    return None
+
+
+def _resolve_from_dvc_lock(path: str) -> Optional[str]:
+    """Find the md5 of ``path`` among a ``dvc.lock``'s stage outputs, else None."""
+    import yaml
+
+    lock_path = _find_dvc_lock(os.path.dirname(os.path.abspath(path)) or ".")
+    if lock_path is None:
+        return None
+    with open(lock_path) as f:
+        lock = yaml.safe_load(f) or {}
+    lock_dir = os.path.dirname(lock_path)
+    target = os.path.realpath(path)
+    for stage in (lock.get("stages") or {}).values():
+        for out in stage.get("outs") or []:
+            out_path = out.get("path")
+            if out_path is None or not out.get("md5"):
+                continue
+            if os.path.realpath(os.path.join(lock_dir, out_path)) == target:
+                return out["md5"]
+    return None
+
+
+def resolve_dvc_output(path: str) -> "tuple[Optional[str], Optional[str]]":
+    """Return ``(md5_hash, tracked_path)`` for a DVC-tracked ``path``, else
+    ``(None, None)``.
+
+    Tries the sibling ``<path>.dvc`` pointer first, then falls back to ``dvc.lock``
+    (for ``dvc.yaml``-produced outputs, Phase 3). Directory hashes keep their
+    ``.dir`` suffix verbatim. Never raises.
+    """
+    # 1) sibling .dvc pointer (Phase 1 `dvc add` / `import-url` style)
+    try:
+        import yaml
+
+        dvc_file = str(path) + ".dvc"
+        if os.path.exists(dvc_file):
+            with open(dvc_file) as f:
+                data = yaml.safe_load(f) or {}
+            outs = data.get("outs") or []
+            if outs and outs[0].get("md5"):
+                return outs[0]["md5"], str(path)
+    except Exception:
+        pass
+    # 2) dvc.lock fallback (Phase 3 `dvc repro` outputs)
+    try:
+        md5 = _resolve_from_dvc_lock(str(path))
+        if md5 is not None:
+            return md5, str(path)
+    except Exception:
+        pass
+    return None, None
+
+
+def current_git_commit(repo_root: Optional[str] = None) -> Optional[str]:
+    """Return the short git commit of ``repo_root`` (``-dirty`` suffix if the working
+    tree is modified), or ``None`` if git/HEAD is unavailable. Never raises."""
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            cwd=repo_root,
+        )
+        if result.returncode != 0:
+            return None
+        commit = result.stdout.strip()
+        if not commit:
+            return None
+        try:
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+                cwd=repo_root,
+            )
+            if status.returncode == 0 and status.stdout.strip():
+                commit += "-dirty"
+        except Exception:
+            pass
+        return commit
+    except Exception:
+        return None
+
+
 @dataclass
 class StageRecord:
     status: str = "not_started"
@@ -31,6 +139,8 @@ class StageRecord:
     config_snapshot: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+    dvc_hash: Optional[str] = None  # md5 of the DVC-tracked output (may end in ".dir")
+    dvc_path: Optional[str] = None  # path of the DVC-tracked output this hash is for
 
     def to_dict(self) -> Dict[str, Any]:
         return {k: v for k, v in asdict(self).items() if v is not None}
@@ -50,6 +160,7 @@ class RunManifest:
         updated_at: str,
         config_hash: str,
         stages: Dict[str, StageRecord],
+        config_git_commit: Optional[str] = None,
     ):
         self.output_dir = output_dir
         self.input_dir = input_dir
@@ -58,6 +169,7 @@ class RunManifest:
         self.updated_at = updated_at
         self.config_hash = config_hash
         self.stages = stages
+        self.config_git_commit = config_git_commit
 
     @classmethod
     def create(
@@ -79,6 +191,7 @@ class RunManifest:
             updated_at=now,
             config_hash=_hash_config(config),
             stages=stages,
+            config_git_commit=current_git_commit(),
         )
         manifest.save()
         return manifest
@@ -103,6 +216,7 @@ class RunManifest:
             updated_at=data["updated_at"],
             config_hash=data.get("config_hash", ""),
             stages=stages,
+            config_git_commit=data.get("config_git_commit"),
         )
 
     @classmethod
@@ -129,6 +243,8 @@ class RunManifest:
         stage: str,
         output_dir: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        dvc_hash: Optional[str] = None,
+        dvc_path: Optional[str] = None,
     ) -> None:
         record = self._get_stage(stage)
         record.status = "completed"
@@ -137,6 +253,10 @@ class RunManifest:
             record.output_dir = str(output_dir)
         if metadata is not None:
             record.metadata = metadata
+        if dvc_hash is not None:
+            record.dvc_hash = dvc_hash
+        if dvc_path is not None:
+            record.dvc_path = dvc_path
         self.save()
 
     def fail_stage(self, stage: str, error: Optional[str] = None) -> None:
@@ -174,10 +294,23 @@ class RunManifest:
         return "in_progress"
 
     def summary(self) -> str:
-        lines = [f"Run: {self.experiment_id}  ({self.overall_status()})"]
+        header = f"Run: {self.experiment_id}  ({self.overall_status()})"
+        if self.config_git_commit:
+            header += f"  [config commit: {self.config_git_commit}]"
+        lines = [header]
         for stage in STAGE_ORDER:
             record = self.stages.get(stage, StageRecord())
-            lines.append(f"  {stage:14s} {record.status}")
+            line = f"  {stage:14s} {record.status}"
+            # Prefer the hash recorded at run time; otherwise resolve live from the
+            # current .dvc/dvc.lock state for display only (never mutate the record).
+            dvc_hash, dvc_path = record.dvc_hash, record.dvc_path
+            if dvc_hash is None and record.output_dir:
+                dvc_hash, dvc_path = resolve_dvc_output(record.output_dir)
+            if dvc_hash:
+                line += f"  dvc:{dvc_hash[:12]}"
+                if dvc_path:
+                    line += f" ({dvc_path})"
+            lines.append(line)
         remaining = self.next_steps()
         if remaining:
             lines.append(f"Next steps: {' → '.join(remaining)}")
@@ -191,6 +324,7 @@ class RunManifest:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "config_hash": self.config_hash,
+            "config_git_commit": self.config_git_commit,
             "stages": {name: record.to_dict() for name, record in self.stages.items()},
             "next_steps": self.next_steps(),
         }
@@ -224,6 +358,34 @@ def create_or_load_manifest(
     if os.path.exists(manifest_path):
         return RunManifest.load(manifest_path)
     return RunManifest.create(output_dir, input_dir, config)
+
+
+def complete_stage_with_dvc(
+    manifest: "RunManifest",
+    stage: str,
+    output_dir: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Complete ``stage``, best-effort attaching the DVC hash/path of ``output_dir``.
+
+    The DVC hash is usually absent at completion time (``dvc add``/``dvc repro`` runs
+    afterwards), so this resolves to ``None`` and the stage completes normally; the
+    value later surfaces via ``pipeline_status.py``'s live resolution. Resolution
+    never raises into the pipeline. Other ``run_*`` scripts can opt in with one call.
+    """
+    dvc_hash = dvc_path = None
+    if output_dir is not None:
+        try:
+            dvc_hash, dvc_path = resolve_dvc_output(str(output_dir))
+        except Exception:
+            dvc_hash = dvc_path = None
+    manifest.complete_stage(
+        stage,
+        output_dir=output_dir,
+        metadata=metadata,
+        dvc_hash=dvc_hash,
+        dvc_path=dvc_path,
+    )
 
 
 def find_manifests(results_dir: str) -> List[RunManifest]:
