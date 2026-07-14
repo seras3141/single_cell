@@ -43,11 +43,16 @@ class MetricsExtractor:
         show_progress: bool = False,
     ) -> pd.DataFrame:
         """Run batch extraction for explicit image and label path lists."""
+        individual_output_dir = None
+        if self.config.save_individual_files and output_csv is not None:
+            individual_output_dir = output_csv.parent / "split_data"
+
         metrics_df = self.instance_extractor.process_batch_images(
             img_paths=mcherry_paths,
             lbl_paths=mask_paths,
             show_progress=show_progress,
             n_jobs=self.config.n_jobs,
+            individual_output_dir=individual_output_dir,
         )
 
         if output_csv is not None and not metrics_df.empty:

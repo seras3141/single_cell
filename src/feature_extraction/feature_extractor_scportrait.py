@@ -1,0 +1,443 @@
+"""
+Feature extraction using scportrait package.
+
+This module provides feature extraction functions using the scportrait library,
+following the official workflow for single-cell image featurization.
+
+For brightfield-only workflows, use CytosolOnlySegmentationCellpose (whole-image
+Cellpose cyto3 segmentation) with MLClusterClassifier for deep feature extraction.
+"""
+
+import logging
+from pathlib import Path
+from typing import Any, List, Dict, Optional
+
+import tifffile
+
+import matplotlib
+matplotlib.use("Agg")  # non-interactive backend; safe for headless/script use
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+# scPortrait is an optional dependency. Guard the imports so that this module
+# (and the wider src.feature_extraction package) can be imported even when
+# scportrait is not installed; get_scportrait_features() raises a clear error
+# at call time if it is missing.
+try:
+    from scportrait.pipeline.project import Project
+    from scportrait.pipeline.featurization import (
+        CellFeaturizer,
+        MLClusterClassifier,
+        ConvNeXtFeaturizer,
+    )
+    from scportrait.pipeline.extraction import HDF5CellExtraction
+    from scportrait.pipeline.segmentation.workflows import (
+        ShardedCytosolSegmentationCellpose,
+        CytosolOnlySegmentationCellpose,
+    )
+    from scportrait.pipeline.selection import LMDSelection
+except ImportError:  # pragma: no cover - exercised only without scportrait
+    Project = None
+    CellFeaturizer = None
+    MLClusterClassifier = None
+    ConvNeXtFeaturizer = None
+    HDF5CellExtraction = None
+    ShardedCytosolSegmentationCellpose = None
+    CytosolOnlySegmentationCellpose = None
+    LMDSelection = None
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Plot helpers
+# ---------------------------------------------------------------------------
+
+def _plot_segmentation(project: Project, plots_dir: Path, label: str) -> None:
+    """Save a segmentation overview figure.
+
+    Renders the input brightfield image alongside the cytosol mask. Falls back
+    gracefully if the expected sdata keys are absent.
+
+    Parameters
+    ----------
+    project : Project
+        Segmented scPortrait project.
+    plots_dir : Path
+        Directory where the figure will be saved.
+    label : str
+        Used in the figure title and output file name.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+    fig.suptitle(f"Segmentation – {label}")
+    try:
+        sdata = project.sdata
+        img_keys = list(sdata.images.keys())
+        if img_keys:
+            img = np.array(sdata.images[img_keys[0]])
+            if img.ndim == 3:
+                img = img[0]
+            axes[0].imshow(img, cmap="gray")
+            axes[0].set_title("Brightfield input")
+            axes[0].axis("off")
+        label_keys = list(sdata.labels.keys())
+        if label_keys:
+            mask = np.array(sdata.labels[label_keys[0]])
+            axes[1].imshow(mask, cmap="nipy_spectral", interpolation="nearest")
+            axes[1].set_title(f"Mask – {label_keys[0]} ({mask.max()} cells)")
+            axes[1].axis("off")
+    except Exception as exc:
+        log.warning("Could not render segmentation figure: %s", exc)
+    plt.tight_layout()
+    out = plots_dir / f"{label}_segmentation.png"
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    log.info("Segmentation figure saved: %s", out)
+
+
+def _plot_extraction(project: Project, plots_dir: Path, label: str) -> None:
+    """Save a grid of extracted single-cell crops (up to 64).
+
+    Reads cells from the HDF5 archive produced by HDF5CellExtraction.
+
+    Parameters
+    ----------
+    project : Project
+        Extracted scPortrait project.
+    plots_dir : Path
+        Directory where the figure will be saved.
+    label : str
+        Used in the figure title and output file name.
+    """
+    import h5py
+
+    h5_candidates = sorted(Path(project.directory).rglob("*.h5"))
+    if not h5_candidates:
+        log.warning("No HDF5 extraction file found; skipping extraction plot.")
+        return
+    try:
+        with h5py.File(h5_candidates[0], "r") as f:
+            def _find_crops(group):
+                for key in group:
+                    item = group[key]
+                    if isinstance(item, h5py.Dataset) and item.ndim >= 3:
+                        return item
+                    if isinstance(item, h5py.Group):
+                        result = _find_crops(item)
+                        if result is not None:
+                            return result
+                return None
+
+            dataset = _find_crops(f)
+            if dataset is None:
+                log.warning("Could not locate crop dataset; skipping extraction plot.")
+                return
+            n_cells = dataset.shape[0]
+            n_show = min(64, n_cells)
+            crops = dataset[:n_show]
+            if crops.ndim == 4:
+                crops = crops[:, 0]  # channel_selection=0 → brightfield channel
+    except Exception as exc:
+        log.warning("Could not read HDF5 crops: %s", exc)
+        return
+
+    grid_size = int(np.ceil(np.sqrt(n_show)))
+    fig, axes = plt.subplots(
+        grid_size, grid_size, figsize=(grid_size * 1.5, grid_size * 1.5)
+    )
+    fig.suptitle(f"Extracted crops (first {n_show} of {n_cells}) – {label}")
+    axes = np.array(axes).reshape(-1)
+    for idx, ax in enumerate(axes):
+        if idx < n_show:
+            ax.imshow(crops[idx], cmap="gray", interpolation="nearest")
+        ax.axis("off")
+    plt.tight_layout()
+    out = plots_dir / f"{label}_extraction.png"
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    log.info("Extraction figure saved: %s", out)
+
+
+def _plot_featurization(project: Project, plots_dir: Path, label: str) -> None:
+    """Save a feature-distribution histogram for the featurization output.
+
+    Parameters
+    ----------
+    project : Project
+        Featurized scPortrait project.
+    plots_dir : Path
+        Directory where the figure will be saved.
+    label : str
+        Used in the figure title and output file name.
+    """
+    try:
+        sdata = project.sdata
+        table_keys = [k for k in sdata.tables.keys() if "MLClusterClassifier" in k]
+        if not table_keys:
+            table_keys = list(sdata.tables.keys())
+        if not table_keys:
+            log.warning("No featurization table found in sdata; skipping feature plot.")
+            return
+        df = sdata.tables[table_keys[0]].to_df()
+        if df.empty:
+            log.warning("Featurization table is empty; skipping feature plot.")
+            return
+        cell_means = df.mean(axis=1)
+        fig, ax = plt.subplots(figsize=(7, 4))
+        ax.hist(cell_means, bins=40, color="steelblue", edgecolor="white", linewidth=0.5)
+        ax.set_xlabel("Mean encoder activation")
+        ax.set_ylabel("Cell count")
+        ax.set_title(f"Feature distribution ({len(df)} cells) – {label}")
+        plt.tight_layout()
+        out = plots_dir / f"{label}_featurization.png"
+        fig.savefig(out, dpi=150)
+        plt.close(fig)
+        log.info("Featurization figure saved: %s", out)
+    except Exception as exc:
+        log.warning("Could not render featurization figure: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Label-mask export (scPortrait sdata -> Cellpose-style TIFF)
+# ---------------------------------------------------------------------------
+
+def _scale_rank(key: Any) -> Optional[int]:
+    """Return the integer scale index for keys like ``scale0``/``s0``.
+
+    Returns None for non-scale keys (e.g. a data-variable named ``image``).
+    """
+    text = str(key).lower()
+    for prefix in ("scale", "s"):
+        suffix = text[len(prefix):]
+        if text.startswith(prefix) and suffix.isdigit():
+            return int(suffix)
+    return None
+
+
+def _resolve_fullres_label_array(sdata_label: Any) -> np.ndarray:
+    """Return the full-resolution 2D label array from an sdata label entry.
+
+    scPortrait writes segmentation labels as a **multiscale** pyramid, so
+    ``project.sdata.labels[key]`` is typically a multiscale ``DataTree``
+    (on-disk zarr scales ``s0..sN``) rather than a plain array. This descends
+    to the finest scale (``scale0``/``s0``) and squeezes any singleton leading
+    (channel) axis so the result is a 2D label image. A plain ``DataArray``
+    (single scale) is returned as-is.
+
+    The pixel values are ``scportrait_cell_id`` labels and are preserved
+    exactly by the caller.
+    """
+    node: Any = sdata_label
+    # Descend through multiscale containers, always taking the finest scale,
+    # until we reach something array-like. The bound guards pathological
+    # nesting (DataTree -> scale node -> data variable is at most 2 levels).
+    for _ in range(4):
+        try:
+            keys = list(node.keys())
+        except (AttributeError, TypeError):
+            break
+        if not keys:
+            break
+        scale_keys = [k for k in keys if _scale_rank(k) is not None]
+        if scale_keys:
+            chosen = min(scale_keys, key=lambda k: _scale_rank(k) or 0)
+        elif len(keys) == 1:
+            chosen = keys[0]
+        else:
+            # spatialdata names the label data variable "image".
+            chosen = "image" if "image" in keys else keys[0]
+        node = node[chosen]
+
+    arr = np.asarray(getattr(node, "values", node))
+    arr = np.squeeze(arr)
+    if arr.ndim > 2:
+        arr = arr.reshape(arr.shape[-2:])
+    return arr
+
+
+def _export_scportrait_labels_to_tif(project: Any, export_path: Path) -> Path:
+    """Export the scPortrait segmentation mask from ``project.sdata`` to TIFF.
+
+    Resolves the (single) label key at runtime — the key is a workflow
+    constructor parameter (e.g. ``seg_all_cytosol``), **not** a fixed literal,
+    so it is never hardcoded. Writes the full-resolution label array to
+    ``export_path`` as an integer-valued TIFF whose pixel values are the
+    ``scportrait_cell_id``s of that image. Downstream tooling surfaces these
+    mask pixel values as ``cell_id`` (the unified per-cell identity column
+    shared with the mcherry_metrics CSV contract).
+    """
+    label_keys = list(project.sdata.labels.keys())
+    if not label_keys:
+        raise RuntimeError("No segmentation labels found in project.sdata.labels")
+    if len(label_keys) > 1:
+        log.warning(
+            "Multiple segmentation label keys present (%s); exporting the "
+            "first (%r).",
+            label_keys,
+            label_keys[0],
+        )
+    label_key = label_keys[0]
+    arr = _resolve_fullres_label_array(project.sdata.labels[label_key])
+
+    # Normalize the label dtype to match the pipeline's Cellpose masks
+    # (inference_tracked/ masks are uint16). scPortrait returns uint64, which
+    # some readers (cv2, viewers) handle poorly; downcast losslessly to uint16
+    # when the IDs fit, else int32 (mcherry_metrics casts to int32 on read).
+    # This preserves every cell ID exactly — no normalization / binarization.
+    max_label = int(arr.max()) if arr.size else 0
+    if max_label <= np.iinfo(np.uint16).max:
+        arr = arr.astype(np.uint16)
+    else:
+        arr = arr.astype(np.int32)
+
+    export_path = Path(export_path)
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+    tifffile.imwrite(str(export_path), arr)
+    log.info(
+        "Exported scPortrait label mask '%s' -> %s (%d labels)",
+        label_key,
+        export_path,
+        int(arr.max()) if arr.size else 0,
+    )
+    return export_path
+
+
+# ---------------------------------------------------------------------------
+# Main pipeline function
+# ---------------------------------------------------------------------------
+
+def get_scportrait_features(
+    image_paths: List[str],
+    channel_names: List[str],
+    config_path: str,
+    project_location: str,
+    overwrite: bool = True,
+    debug: bool = False,
+    segmentation_f: Any = CytosolOnlySegmentationCellpose,
+    extraction_f: Any = HDF5CellExtraction,
+    featurization_f: Any = ConvNeXtFeaturizer,
+    selection_f: Optional[Any] = None,
+    mask_path: Optional[str] = None,
+    plots_dir: Optional[str] = None,
+    scportrait_mask_export_path: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Run scportrait workflow to extract features from single-cell images.
+
+    Defaults to CytosolOnlySegmentationCellpose (whole-image Cellpose cyto3)
+    and MLClusterClassifier for brightfield-only featurization. Pass
+    segmentation_f=ShardedCytosolSegmentationCellpose for large tiled images.
+
+    CytosolOnlySegmentationCellpose requires exactly 2 input channels. For
+    BF-only inputs, pass the same BF path twice with distinct channel names
+    (e.g. ["brightfield", "brightfield_ch1"]).
+
+    Parameters
+    ----------
+    image_paths : list of str
+        List of image file paths, one per channel (same FOV). For BF-only
+        inputs, duplicate the single BF path to satisfy the 2-channel
+        requirement of CytosolOnlySegmentationCellpose.
+    channel_names : list of str
+        Names of channels in order.
+    config_path : str
+        Path to scportrait config YAML.
+    project_location : str
+        Directory for scportrait project output.
+    overwrite : bool, optional
+        Overwrite existing project files (default True).
+    debug : bool, optional
+        Enable debug mode (default False).
+    segmentation_f : callable, optional
+        Segmentation workflow class. Defaults to CytosolOnlySegmentationCellpose
+        (whole-image, suitable for standard FOV sizes).
+    extraction_f : callable, optional
+        Extraction workflow class.
+    featurization_f : callable, optional
+        Featurization workflow class. Defaults to MLClusterClassifier, which
+        produces encoder embeddings for each single-cell crop.
+    selection_f : callable or None, optional
+        LMD selection workflow class. Pass None (default) to skip selection.
+    mask_path : str or None, optional
+        Path to a pre-computed segmentation mask TIF. Currently unused.
+        # TODO: if mask_path is provided, skip scPortrait segmentation and
+        # inject the external mask directly into the project's sdata so that
+        # extract() and featurize() use the user-supplied labels instead.
+    plots_dir : str or None, optional
+        Directory to save diagnostic figures. If None, no figures are saved.
+    scportrait_mask_export_path : str or None, optional
+        If provided, the full-resolution scPortrait label mask is written to
+        this exact TIFF path immediately after segmentation (parent dirs are
+        created). The pixel values are ``scportrait_cell_id``s by construction,
+        so the exported mask can be consumed by the same downstream tooling
+        that consumes Cellpose masks. If None (default), nothing is exported
+        and behavior is unchanged.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame of extracted features per cell.
+    """
+    if Project is None:
+        raise RuntimeError(
+            "scportrait is not installed. Install it with 'pip install scportrait' "
+            "(or the project's 'scportrait' optional dependency) to use this method."
+        )
+
+    _plots = Path(plots_dir) if plots_dir else None
+    if _plots is not None:
+        _plots.mkdir(parents=True, exist_ok=True)
+
+    project_kwargs: Dict[str, Any] = {
+        "segmentation_f": segmentation_f,
+        "extraction_f": extraction_f,
+        "featurization_f": featurization_f,
+    }
+    if selection_f is not None:
+        project_kwargs["selection_f"] = selection_f
+
+    project = Project(
+        project_location,
+        config_path=config_path,
+        overwrite=overwrite,
+        debug=debug,
+        **project_kwargs,
+    )
+
+    log.info("Loading input images...")
+    project.load_input_from_tif_files(image_paths, channel_names=channel_names)
+    log.info("Input loaded (%d channel(s)).", len(image_paths))
+
+    log.info("Running segmentation (%s)...", segmentation_f.__name__)
+    project.segment()
+    log.info("Segmentation complete.")
+    if scportrait_mask_export_path is not None:
+        _export_scportrait_labels_to_tif(project, Path(scportrait_mask_export_path))
+    if _plots is not None:
+        _plot_segmentation(project, _plots, Path(project_location).name)
+
+    log.info("Running extraction (image_size from config)...")
+    project.extract()
+    log.info("Extraction complete.")
+    if _plots is not None:
+        _plot_extraction(project, _plots, Path(project_location).name)
+
+    log.info("Running featurization (%s)...", featurization_f.__name__)
+    project.featurize(overwrite=True)
+    log.info("Featurization complete.")
+    if _plots is not None:
+        _plot_featurization(project, _plots, Path(project_location).name)
+
+    # Retrieve the featurization results table from sdata. Prefer a table whose
+    # key matches the featurizer name; otherwise fall back to any table present.
+    featurizer_name = getattr(featurization_f, "__name__", "")
+    result_key = next(
+        (k for k in project.sdata.tables.keys() if featurizer_name and featurizer_name in k),
+        next(iter(project.sdata.tables.keys()), None),
+    )
+    if result_key is None:
+        raise RuntimeError("No featurization results found in project.sdata.tables.")
+    results = project.sdata.tables[result_key].to_df()
+    results["scportrait_cell_id"] = project.sdata.tables[result_key].obs["scportrait_cell_id"]
+    return results
