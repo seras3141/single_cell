@@ -29,8 +29,10 @@ def get_region_properties(segmentation_mask, intensity_image=None):
                 'min_intensity'
             ]
         )
-        return pd.DataFrame(properties)
-    
+        # Rename skimage's ``label`` id column to ``cell_id`` for consistency
+        # with the incarta/scPortrait outputs and the mcherry_metrics contract.
+        return pd.DataFrame(properties).rename(columns={'label': 'cell_id'})
+
     elif segmentation_mask.ndim !=3:
 
         # Initialize an empty list to store region properties for all z-stacks
@@ -66,7 +68,8 @@ def get_region_properties(segmentation_mask, intensity_image=None):
         # Combine all properties into a single DataFrame
         combined_df = pd.concat(all_properties, ignore_index=True)
 
-        return combined_df
+        # Rename skimage's ``label`` id column to ``cell_id`` (see 2D branch).
+        return combined_df.rename(columns={'label': 'cell_id'})
     else:
         raise ValueError("Segmentation mask must be either 2D or 3D.")
 
@@ -130,14 +133,14 @@ def test_feature_extractor():
     output_csv_path = os.path.join(radiomics_csv_dir, os.path.basename(prediction_image_path).replace(".tif", ".csv"))
 
     gt_props = extract_regionprops_features(brightfield_image_path, segmentation_image_path, visualize=False)
-    gt_props['y'] = ['gt'] * len(gt_props['label'])
+    gt_props['y'] = ['gt'] * len(gt_props['cell_id'])
 
     pred_props = extract_regionprops_features(brightfield_image_path, prediction_image_path, output_csv_path, visualize=False)
-    pred_props['y'] = ['pred'] * len(pred_props['label'])
+    pred_props['y'] = ['pred'] * len(pred_props['cell_id'])
 
     combined_df = pd.concat([gt_props, pred_props], ignore_index=True)
 
-    visualize_region_properties(combined_df, drop=['label', 'z_stack', 'y'], labels='y')
+    visualize_region_properties(combined_df, drop=['cell_id', 'z_stack', 'y'], labels='y')
 
 if __name__ == "__main__":
     test_feature_extractor()

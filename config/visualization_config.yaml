@@ -51,7 +51,7 @@ visualization:
   # Interactive plotting
   interactive:
     enabled: false
-    hover_data: ["instance_id", "z_stack", "sample_id"]
+    hover_data: ["cell_id", "z_index", "z_stack", "sample_id"]
     plot_width: 800
     plot_height: 600
 
@@ -72,10 +72,14 @@ visualization:
     
     # Features to exclude from dimensionality reduction
     exclude_from_reduction:
+      - "cell_id"
+      - "scportrait_cell_id"
       - "instance_id"
       - "filename"
       - "image_path"
       - "sample_id"
+      - "timepoint"
+      - "z_index"
       - "z_stack"
       - "sample_z_id"
       - "centroid_x"

@@ -28,6 +28,7 @@ try:
 except ImportError:
     get_scportrait_features = None
 from src.feature_extraction.feature_extractor_regionprops import get_region_properties
+from src.utils.file_utils import ConfigurableFileHandler
 
 # scPortrait label-mask export layout. The exported mask mirrors the Cellpose
 # tracked-mask tree but lives under a sibling ``inference_scportrait/`` dir:
@@ -470,6 +471,18 @@ class FeatureExtractionPipeline:
             stem = stem[: -len("_BF")]
         return export_root.joinpath(*SCPORTRAIT_MASK_SUBDIRS, f"{stem}_pred_mask.tif")
 
+    def _get_file_handler(self) -> ConfigurableFileHandler:
+        """Return a cached filename handler for per-cell metadata extraction.
+
+        Built lazily (and per-process, so it survives loky worker pickling of
+        ``self``) since it is only needed when ``include_metadata`` is set.
+        """
+        handler = getattr(self, "_file_handler", None)
+        if handler is None:
+            handler = ConfigurableFileHandler()
+            self._file_handler = handler
+        return handler
+
     def extract_features_from_path(
         self,
         image_path: Path | str,
@@ -589,7 +602,23 @@ class FeatureExtractionPipeline:
                 self.logger.warning(f"No features extracted from {image_path.name}")
                 return None
 
-            # Add metadata if configured
+            # Per-cell key columns parsed from the image filename
+            # (e.g. ``pMF5V1_C09_t11_z10_BF.tif``). These are written
+            # **unconditionally** — together with ``cell_id`` they form the join
+            # key with the mcherry_metrics CSV
+            # ``(sample_id, timepoint, z_index, cell_id)``, so they are data, not
+            # the optional ``include_metadata`` provenance below. Mirrors
+            # ``mcherry_metrics.io.loaders.extract_image_metadata``.
+            handler = self._get_file_handler()
+            name = image_path.name
+            sample_id = handler.extract_sample_id(name)
+            z_index = handler.extract_z_index(name)
+            timepoint = handler.extract_time_point(name)
+            features_df["sample_id"] = sample_id if sample_id is not None else ""
+            features_df["timepoint"] = "" if timepoint == "unknown" else str(timepoint)
+            features_df["z_index"] = -1 if z_index is None else int(z_index)
+
+            # Optional provenance columns (filenames, dataset), gated by config.
             if self.output_config.get("include_metadata", True):
                 features_df["image_filename"] = image_path.name
                 if mask_path is not None:

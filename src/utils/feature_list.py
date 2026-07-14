@@ -18,10 +18,14 @@ SPATIAL_FEATURES = [
     'mass_displacement'
 ]
 
-# Columns to exclude from feature analysis
+# Columns to exclude from feature analysis. ``cell_id`` is the current per-cell
+# id (``instance_id`` kept for reading pre-rename CSVs; ``scportrait_cell_id``
+# for the scPortrait backend). ``sample_id``/``timepoint``/``z_index`` are the
+# per-cell key columns now written alongside the features.
 METADATA_COLUMNS = [
-    'instance_id', 'filename', 'image_path', 'image_filename', 'mask_filename',
-    'sample_id', 'z_stack', 'sample_z_id', 'processing_timestamp',
+    'cell_id', 'scportrait_cell_id', 'instance_id', 'filename', 'image_path',
+    'image_filename', 'mask_filename', 'sample_id', 'timepoint', 'z_index',
+    'z_stack', 'sample_z_id', 'processing_timestamp',
     'feature_extraction_version', 'dataset_name'
 ]
 

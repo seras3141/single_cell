@@ -309,7 +309,7 @@ class VisualizationConfig:
     # Interactive plotting (plotly, bokeh, etc.)
     interactive: Dict[str, Any] = field(default_factory=lambda: {
         "enabled": False,
-        "hover_data": ["instance_id", "z_stack", "sample_id"],
+        "hover_data": ["cell_id", "z_index", "z_stack", "sample_id"],
         "plot_width": 800,
         "plot_height": 600
     })
@@ -328,7 +328,8 @@ class VisualizationConfig:
         ],
         # Features to exclude from dimensionality reduction
         "exclude_from_reduction": [
-            "instance_id", "filename", "image_path", "sample_id",
+            "cell_id", "scportrait_cell_id", "instance_id", "filename",
+            "image_path", "sample_id", "timepoint", "z_index",
             "z_stack", "sample_z_id", "centroid_x", "centroid_y",
             "center_of_mass_x", "center_of_mass_y",
         ]
@@ -382,7 +383,7 @@ class DimensionalityReductionConfig:
     # Interactive plotting
     interactive: Dict[str, Any] = field(default_factory=lambda: {
         "enabled": False,
-        "hover_data": ["instance_id", "z_stack", "sample_id"],
+        "hover_data": ["cell_id", "z_index", "z_stack", "sample_id"],
         "plot_width": 800,
         "plot_height": 600
     })
@@ -405,10 +406,14 @@ class DimensionalityReductionConfig:
         ],
         # Features to exclude from dimensionality reduction
         "exclude_from_reduction": [
+            "cell_id",
+            "scportrait_cell_id",
             "instance_id",
             "filename",
             "image_path",
             "sample_id",
+            "timepoint",
+            "z_index",
             "z_stack",
             "sample_z_id",
             "centroid_x",

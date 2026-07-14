@@ -100,9 +100,10 @@ class DimensionalityReducer:
         Automatically identify feature columns (exclude metadata columns).
         """
         exclude_cols = [
-            'instance_id', 'filename', 'image_filename', 'image_path', 'mask_filename',
-            'sample_id', 'z_stack', 'sample_z_id', 'processing_timestamp',
-            'feature_extraction_version', 'dataset_name'
+            'cell_id', 'scportrait_cell_id', 'instance_id', 'filename',
+            'image_filename', 'image_path', 'mask_filename', 'sample_id',
+            'timepoint', 'z_index', 'z_stack', 'sample_z_id',
+            'processing_timestamp', 'feature_extraction_version', 'dataset_name'
         ]
         
         # Include common morphological, intensity, and texture features
@@ -343,7 +344,7 @@ def main():
     feature_names = [f'feature_{i}' for i in range(n_features)]
     df = pd.DataFrame(X, columns=feature_names)
     df['sample_id'] = np.random.choice(['A', 'B', 'C'], n_samples)
-    df['instance_id'] = range(n_samples)
+    df['cell_id'] = range(n_samples)
     
     print(f"Created synthetic dataset: {df.shape}")
     
