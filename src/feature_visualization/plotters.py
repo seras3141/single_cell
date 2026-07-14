@@ -173,7 +173,8 @@ class ScatterPlotter(BasePlotter):
     def _get_numeric_columns(self, data: pd.DataFrame) -> List[str]:
         """Get numeric columns, excluding common metadata columns."""
         numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
-        metadata_cols = ['instance_id', 'sample_id', 'z_stack']
+        metadata_cols = ['cell_id', 'scportrait_cell_id', 'instance_id',
+                         'sample_id', 'timepoint', 'z_index', 'z_stack']
         return [col for col in numeric_cols if col not in metadata_cols]
     
     def _extract_coordinates(self, data: pd.DataFrame, x_col: str, y_col: str, z_col: Optional[str] = None) -> np.ndarray:
@@ -355,7 +356,8 @@ class DistributionPlotter(BasePlotter):
                        plot_config: PlotConfig) -> None:
         """Create box plot."""
         feature_cols = data.select_dtypes(include=[np.number]).columns.tolist()
-        metadata_cols = ['instance_id', 'sample_id', 'z_stack']
+        metadata_cols = ['cell_id', 'scportrait_cell_id', 'instance_id',
+                         'sample_id', 'timepoint', 'z_index', 'z_stack']
         feature_cols = [col for col in feature_cols if col not in metadata_cols]
         
         if not feature_cols:
@@ -469,7 +471,8 @@ class HeatmapPlotter(BasePlotter):
         numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
         
         # Remove common metadata columns
-        metadata_cols = ['instance_id', 'sample_id', 'z_stack']
+        metadata_cols = ['cell_id', 'scportrait_cell_id', 'instance_id',
+                         'sample_id', 'timepoint', 'z_index', 'z_stack']
         feature_cols = [col for col in numeric_cols if col not in metadata_cols]
         
         # Apply feature subset filter if provided

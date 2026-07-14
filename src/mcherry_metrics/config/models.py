@@ -37,6 +37,11 @@ class ExtractionConfig:
         Minimum region area to keep in the output table.
     write_analytics : bool
         Whether a batch run should emit analytics outputs.
+    save_individual_files : bool
+        Whether a batch run should also write one CSV per input image to a
+        ``split_data/`` subdirectory (``{image_stem}_metrics.csv``), mirroring
+        the feature-extraction output layout. The combined
+        ``instance_metrics.csv`` is always written regardless.
     """
 
     percentiles: list[int] = field(default_factory=lambda: [75, 90, 95])
@@ -49,6 +54,7 @@ class ExtractionConfig:
     exclude_z0: bool = True
     min_area_px: int = 10
     write_analytics: bool = True
+    save_individual_files: bool = True
 
     def __post_init__(self) -> None:
         """Validate extraction parameters."""

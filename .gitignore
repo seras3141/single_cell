@@ -188,10 +188,17 @@ Untitled/
 src/**/*.md
 
 #test outputs
-test_*
+test_output*/
 tmp*
 tmp/
 tmp1/
+
+# scPortrait featurizer/project scratch dirs (created in cwd during
+# featurization; leak into the repo root when a job is cancelled/crashes)
+ConvNeXtFeaturizer_*/
+MLClusterClassifier_*/
+CellFeaturizer_*/
+Project_*/
 
 .DS_Store
 
@@ -202,10 +209,6 @@ tmp1/
 # Event files from TensorBoard
 events.out.tfevents.*
 *.tsv
-
-# Ignore feature files for now
-src/feature*
-tests/feature*
 
 # Ignore notebook checkpoints
 notebooks/.ipynb_checkpoints
@@ -221,6 +224,8 @@ examples/
 venv/
 uv.lock
 */uv.lock
+# dedicated scportrait environment (cellpose<4)
+.venv-scportrait/
 
 
 # Notebook outputs and archives

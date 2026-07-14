@@ -121,6 +121,33 @@ def run_feature_extraction(image_dir: str, ground_truth_dir: Optional[str] = Non
         
     logger.info("Feature extraction completed")
 
+def get_3d_folder(config: dict) -> str:
+    """Name of the 2D-to-3D output folder, honoring ``preprocessing.out_3d_folder``.
+
+    Must match the value used by ``run_preprocessing.run_preprocessing_from_config``
+    so the ``track`` step reads the folder that ``prepare`` actually wrote.
+    """
+    return config.get("preprocessing", {}).get("out_3d_folder", "3d_images")
+
+
+def get_track_output_dir(output_dir: str, config: dict) -> str:
+    """Root directory for cell-tracking outputs.
+
+    Single source of truth shared by the ``track`` step (which writes ``final/``,
+    ``final_2d/`` etc. under this root) and the ``extract`` step (which reads
+    ``final_2d/`` from it). Layout matches ``src/dataset_analysis/processed_inventory.py``
+    and the per-stage SLURM scripts: ``inference_tracked/<model_type>[/<dataset_name>]``.
+    ``dataset_name`` is optional — when empty (the MF5V1 convention) no dataset-split
+    subfolder is added, mirroring the inference outputs (``inference/<model_type>/``).
+    """
+    model_type = config["segmentation"]["cellpose"]["model_type"]
+    dataset_name = config["segmentation"]["inference"]["dataset_name"]
+    parts = [output_dir, "inference_tracked", model_type]
+    if dataset_name:
+        parts.append(dataset_name)
+    return os.path.join(*parts)
+
+
 def get_pipeline_legacy_args(args):
     """Get legacy CLI arguments for the pipeline."""
     legacy_overrides = {}
@@ -228,17 +255,16 @@ def main():
 
         # Step 3: Cell tracking (postprocessing)
         if "track" in steps:
-            # TODO : Update hardcoded paths
             results_folder = config["segmentation"]["inference"]["results_folder"]
             model_type = config["segmentation"]["cellpose"]["model_type"]
             dataset_name = config["segmentation"]["inference"]["dataset_name"]
 
-            image_dir = os.path.join(output_dir, "3d_images")
+            image_dir = os.path.join(output_dir, get_3d_folder(config))
             blur_dir = os.path.join(output_dir, "blur_heatmaps")
 
             mask_base_dir = os.path.join(output_dir, results_folder, model_type, dataset_name)
             mask_dir = os.path.join(mask_base_dir, "masks_3d")
-            track_dir = os.path.join(output_dir, "inference_tracked")
+            track_dir = get_track_output_dir(output_dir, config)
 
             manifest.start_stage("track")
             try:
@@ -277,10 +303,8 @@ def main():
             image_dir = os.path.join(output_dir, split_folder)
             ground_truth_dir = os.path.join(output_dir, split_folder)
 
-            results_folder = config["segmentation"]["inference"]["results_folder"]
-            model_type = config["segmentation"]["cellpose"]["model_type"]
-            dataset_name = config["segmentation"]["inference"]["dataset_name"]
-            inference_dir = os.path.join(output_dir, results_folder, model_type, dataset_name, "tracking", "final_2d")
+            # Read the tracked 2D masks from the same root the `track` step wrote to.
+            inference_dir = os.path.join(get_track_output_dir(output_dir, config), "final_2d")
 
             manifest.start_stage("extract")
             try:

@@ -48,22 +48,24 @@ Cellpose-based inference pipeline for running cell segmentation predictions.
 
 ## Feature Extraction (`src/feature_extraction/`)
 
-Comprehensive feature extraction from 2D instance segmentations.
+Extracts per-cell features from 2D and 3D segmented microscopy images. Supports multiple backends; output is a `DataFrame` with one row per cell instance.
 
 **Key features:**
-- 23 morphological, intensity, spatial, and texture features per cell
-- Multi-backend support
-- Parallel processing with configurable batch sizes
+- 25 morphological, intensity, spatial, and texture features per cell (incarta backend)
+- Multi-backend support: `incarta`, `regionprops`, `pyradiomics` (optional), `scportrait` (planned)
+- Parallel processing via joblib
 
-**Extracted features:**
+**Extracted features (incarta / 2D):**
 | Category | Features |
 |---|---|
-| Morphology | Area, perimeter, elongation, compactness, circularity, Feret diameter |
+| Morphology | Area, perimeter, elongation, compactness, circularity, Feret diameter, radius of gyration, major/minor axis |
 | Intensity | Mean, std, CV, total intensity |
 | Spatial | Centroids, centre of mass, mass displacement |
-| Texture | Gabor filters, skewness, kurtosis, entropy |
+| Texture | Gabor mean/std, skewness, kurtosis, entropy |
 
 **CLI entry point:** `scripts/run_feature_extraction.py`
+
+**Module README:** [`src/feature_extraction/README.md`](../src/feature_extraction/README.md)
 
 ---
 

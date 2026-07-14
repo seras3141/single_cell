@@ -19,13 +19,17 @@ from src.dataset_analysis.run_manifest import create_or_load_manifest
 
 
 def _get_mcherry_snapshot(args) -> Dict[str, Any]:
-    return {k: v for k, v in {
-        "percentiles": args.percentiles,
-        "normalize_before_extraction": args.normalize_before_extraction,
-        "normalize_mode": args.normalize_mode,
-        "gaussian_sigma": args.gaussian_sigma,
-        "min_area_px": args.min_area_px,
-    }.items() if v is not None}
+    return {
+        k: v
+        for k, v in {
+            "percentiles": args.percentiles,
+            "normalize_before_extraction": args.normalize_before_extraction,
+            "normalize_mode": args.normalize_mode,
+            "gaussian_sigma": args.gaussian_sigma,
+            "min_area_px": args.min_area_px,
+        }.items()
+        if v is not None
+    }
 
 
 def main() -> None:
@@ -59,6 +63,7 @@ def main() -> None:
         exclude_z0=not args.include_z0,
         min_area_px=args.min_area_px,
         write_analytics=not args.skip_analytics,
+        save_individual_files=not args.no_save_individual_files,
     )
 
     wavelength_mappings = {

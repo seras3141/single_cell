@@ -211,8 +211,8 @@ Each experiment contains exactly one negative control well: either **M11** or **
 
 | Property | Value |
 |---|---|
-| Folder | `HD1883 MF5V1 0-72h 02-03-26` |
-| Acquisition date | 2026-03-02 |
+| Folder | `HD1883 MF5V1 0-72h 20-03-26` |
+| Acquisition date | 2026-03-20 |
 | Raw files | 4,321 |
 | Raw size | 8.44 GB |
 | Timepoints present | t1, t11, t21, …, t351 (36 timepoints) |
@@ -243,7 +243,7 @@ Each experiment contains exactly one negative control well: either **M11** or **
 
 | Property | Value |
 |---|---|
-| Folder | `Ew2-1 PMU421 MF5V1 0-72h 06-03-26` |
+| Folder | `Ew2-1 MF5V1 0-72h 06-03-26` |
 | Acquisition date | 2026-03-06 |
 | Raw files | 4,296 |
 | Raw size | 8.39 GB |
@@ -333,6 +333,33 @@ Each experiment contains exactly one negative control well: either **M11** or **
 #### Subfolder structure
 
 TBD
+
+### Sample data for feature extraction
+
+`data/sample_data/` is a small, self-contained subset of brightfield images used
+to run and validate the scPortrait ConvNeXt feature extractor (mask-free — it
+runs its own segmentation). It is **generated**, not tracked; rebuild it with
+`sbatch slurm/sample_data.sbatch` (idempotent).
+
+The sample copies (via `cp -L`, dereferencing the source symlinks into real
+~2 MB TIFs) a few wells from three experiments' `split_data/` folders, keeping
+all timepoints and all z-slices:
+
+| Short name | Source `split_data/` folder | Wells | BF files |
+|---|---|---|---|
+| `HD1883` | `HD1883 MF5V1 0-72h 20-03-26` | E07, F08 | 1512 |
+| `Ew2-1` | `Ew2-1 MF5V1 0-72h 06-03-26` | C09, D07 | 1512 |
+| `Ew2-2` | `Ew2-2 MF5V1 072h 17-04-26` | E07, E10 | 1512 |
+
+Each well = 36 timepoints × 21 z-slices = 756 BF files; total ≈ 4,536 files
+(~8.4 GB). Files keep their source names (`pMF5V1_<well>_t<n>_z<n>_BF.tif`), which
+do **not** encode the experiment — hence the per-experiment subdirs, which
+namespace both the inputs and the per-image output CSVs.
+
+Run feature extraction over it with `sbatch slurm/gpu_feature_scportrait.sbatch`
+(configured to run one `--output-dir` per experiment; ships with a z10-only
+smoke pass and a commented full all-z pass). To change the selection, edit the
+`EXP_WELLS` map in `slurm/sample_data.sbatch` and resubmit.
 
 ---
 

@@ -60,6 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not write analytics outputs.",
     )
+    parser.add_argument(
+        "--no-save-individual-files",
+        action="store_true",
+        help="Only write the combined instance_metrics.csv; skip per-image "
+        "CSVs in the split_data/ subdirectory.",
+    )
     parser.add_argument("--plate-number", default=None)
     parser.add_argument("--wavelength-w1", default=None)
     parser.add_argument("--wavelength-w2", default=None)
@@ -99,6 +105,7 @@ def main() -> None:
         exclude_z0=not args.include_z0,
         min_area_px=args.min_area_px,
         write_analytics=not args.skip_analytics,
+        save_individual_files=not args.no_save_individual_files,
     )
 
     wavelength_mappings = {

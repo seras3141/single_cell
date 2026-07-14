@@ -118,9 +118,12 @@ def extract_instance_features(instance_id: int, label_mask: np.ndarray, image: n
         Dict: A dictionary of extracted features for the instance.
     """
     mask = (label_mask == instance_id).astype(np.uint8)
-    
+
+    # Output the per-cell id as ``cell_id`` to match the mcherry_metrics CSV
+    # contract (feature and target tables join on this name); the function
+    # argument stays ``instance_id`` as it is the raw Cellpose label value.
     features = {
-        "instance_id": instance_id
+        "cell_id": instance_id
     }
     features.update(compute_morphology_features(mask))
     features.update(compute_intensity_features(mask, image))

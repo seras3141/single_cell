@@ -7,7 +7,7 @@ import pandas as pd
 def generate_activity_summary(metrics_df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate per-instance classification results into per-image summaries."""
     summary = metrics_df.groupby("image").agg(
-        n_instances=("label", "count"),
+        n_instances=("cell_id", "count"),
         n_active=("is_active", "sum"),
         n_dead=("is_active", lambda values: (~values).sum()),
         activity_ratio=("is_active", "mean"),

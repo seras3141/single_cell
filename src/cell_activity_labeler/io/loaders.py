@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 IMAGE_COLUMNS = ("image", "image_path")
-LABEL_COLUMNS = ("label", "label_id")
+CELL_ID_COLUMN = "cell_id"
 
 
 def validate_metrics_input_dataframe(metrics_df: pd.DataFrame) -> None:
@@ -15,8 +15,12 @@ def validate_metrics_input_dataframe(metrics_df: pd.DataFrame) -> None:
     missing = []
     if not any(column in metrics_df.columns for column in IMAGE_COLUMNS):
         missing.append("image or image_path")
-    if not any(column in metrics_df.columns for column in LABEL_COLUMNS):
-        missing.append("label or label_id")
+    if CELL_ID_COLUMN not in metrics_df.columns:
+        raise ValueError(
+            "Metrics dataframe is missing required column 'cell_id'. Legacy CSVs "
+            "using 'label_id'/'label' must be migrated with "
+            "scripts/migrate_label_id_to_cell_id.py."
+        )
     if missing:
         raise ValueError(
             "Metrics dataframe is missing required columns: " + ", ".join(missing)
@@ -36,11 +40,6 @@ def normalize_metrics_dataframe(metrics_df: pd.DataFrame) -> pd.DataFrame:
     if "image_path" not in normalized.columns and "image" in normalized.columns:
         normalized["image_path"] = normalized["image"]
 
-    if "label" not in normalized.columns and "label_id" in normalized.columns:
-        normalized["label"] = normalized["label_id"]
-    if "label_id" not in normalized.columns and "label" in normalized.columns:
-        normalized["label_id"] = normalized["label"]
-
     if "sample" not in normalized.columns and "sample_id" in normalized.columns:
         normalized["sample"] = normalized["sample_id"]
     if "sample_id" not in normalized.columns and "sample" in normalized.columns:
@@ -59,9 +58,11 @@ def normalize_metrics_dataframe(metrics_df: pd.DataFrame) -> pd.DataFrame:
             source_series = normalized["image"]
         if source_series is not None:
             normalized["ID"] = source_series.map(
-                lambda value: Path(str(value)).stem.replace("_mCherry", "")
-                if pd.notna(value)
-                else ""
+                lambda value: (
+                    Path(str(value)).stem.replace("_mCherry", "")
+                    if pd.notna(value)
+                    else ""
+                )
             )
 
     if "label_path" not in normalized.columns:

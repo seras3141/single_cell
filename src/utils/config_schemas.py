@@ -186,6 +186,17 @@ class RadiomicsConfig:
 
 
 @dataclass
+class ScportraitConfig:
+    """scPortrait deep-learning feature extraction configuration."""
+    project_location: str = "tmp/scportrait_projects"
+    config_path: str = "src/feature_extraction/scportrait_project/config.yml"
+    channel_names: List[str] = field(default_factory=lambda: ["brightfield", "brightfield_ch1"])
+    overwrite: bool = True
+    debug: bool = False
+    save_plots: bool = True
+
+
+@dataclass
 class MorphologyConfig:
     """Morphology feature extraction configuration."""
     extract_shape: bool = True
@@ -211,13 +222,14 @@ class FeatureExtractionConfig:
     n_jobs: int = -1  # Use all available cores (or set to 0)
 
     method: str = "incarta"
+    image_pattern: str = "*_BF.tif"
+    mask_pattern: str = "*_pred_mask.tif"
             
     preprocessing: Dict[str, Any] = field(default_factory=lambda: {
         "normalize_intensity": True,
         "clip_percentiles": [1, 99]
     })
     output: Dict[str, Any] = field(default_factory=lambda: {
-        "folder_name": "features",  # Subdirectory for features
         "save_individual_files": True,
         "save_combined_file": True,
         "include_metadata": True,
@@ -225,6 +237,8 @@ class FeatureExtractionConfig:
         "combined_filename": "all_features.csv",
         "create_subdirs": True,
     })
+
+    scportrait: ScportraitConfig = field(default_factory=ScportraitConfig)
 
 
 # =============================================================================
@@ -295,7 +309,7 @@ class VisualizationConfig:
     # Interactive plotting (plotly, bokeh, etc.)
     interactive: Dict[str, Any] = field(default_factory=lambda: {
         "enabled": False,
-        "hover_data": ["instance_id", "z_stack", "sample_id"],
+        "hover_data": ["cell_id", "z_index", "z_stack", "sample_id"],
         "plot_width": 800,
         "plot_height": 600
     })
@@ -314,7 +328,8 @@ class VisualizationConfig:
         ],
         # Features to exclude from dimensionality reduction
         "exclude_from_reduction": [
-            "instance_id", "filename", "image_path", "sample_id",
+            "cell_id", "scportrait_cell_id", "instance_id", "filename",
+            "image_path", "sample_id", "timepoint", "z_index",
             "z_stack", "sample_z_id", "centroid_x", "centroid_y",
             "center_of_mass_x", "center_of_mass_y",
         ]
@@ -368,7 +383,7 @@ class DimensionalityReductionConfig:
     # Interactive plotting
     interactive: Dict[str, Any] = field(default_factory=lambda: {
         "enabled": False,
-        "hover_data": ["instance_id", "z_stack", "sample_id"],
+        "hover_data": ["cell_id", "z_index", "z_stack", "sample_id"],
         "plot_width": 800,
         "plot_height": 600
     })
@@ -391,10 +406,14 @@ class DimensionalityReductionConfig:
         ],
         # Features to exclude from dimensionality reduction
         "exclude_from_reduction": [
+            "cell_id",
+            "scportrait_cell_id",
             "instance_id",
             "filename",
             "image_path",
             "sample_id",
+            "timepoint",
+            "z_index",
             "z_stack",
             "sample_z_id",
             "centroid_x",
@@ -492,6 +511,6 @@ def validate_pipeline_config(config: PipelineConfig) -> None:
         raise ValueError("Blur threshold should typically be between 0 and 1")
     
     # Feature extraction validation
-    valid_methods = ['incarta', 'regionprops', 'pyradiomics']
+    valid_methods = ['incarta', 'regionprops', 'pyradiomics', 'scportrait']
     if config.feature_extraction.method not in valid_methods:
         raise ValueError(f"Feature extraction method must be one of {valid_methods}, got '{config.feature_extraction.method}'")

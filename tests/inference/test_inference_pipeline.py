@@ -271,22 +271,21 @@ def test_from_config_class_method(mock_config_manager_class, temp_dirs):
     
     with patch('src.inference.inference_pipeline.CellposePredictor') as mock_predictor_class:
         with patch('src.inference.inference_pipeline.OutputManager') as mock_output_class:
-            with patch.object(InferencePipeline, '_setup_logging'):
-                mock_predictor = MagicMock()
-                mock_output_manager = MagicMock()
-                mock_predictor_class.return_value = mock_predictor
-                mock_output_class.return_value = mock_output_manager
-                
-                pipeline = InferencePipeline.from_config(
-                    config=config_dict,
-                    model_name="cyto3",
-                    output_dir=temp_dirs[1],
-                    dataset_name="test"
-                )
-                
-                assert pipeline is not None
-                mock_predictor_class.assert_called_once()
-                mock_output_class.assert_called_once()
+            mock_predictor = MagicMock()
+            mock_output_manager = MagicMock()
+            mock_predictor_class.return_value = mock_predictor
+            mock_output_class.return_value = mock_output_manager
+
+            pipeline = InferencePipeline.from_config(
+                config=config_dict,
+                model_name="cyto3",
+                output_dir=temp_dirs[1],
+                dataset_name="test"
+            )
+
+            assert pipeline is not None
+            mock_predictor_class.assert_called_once()
+            mock_output_class.assert_called_once()
 
 # TODO : Write a test with config_path instead of config for from_config
 

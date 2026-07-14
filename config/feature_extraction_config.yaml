@@ -18,18 +18,18 @@ paths:
 # Feature extraction parameters
 feature_extraction:
   # Feature extraction method
-  method: "incarta"  # Options: "incarta", "regionprops", "pyradiomics"
-  
+  method: "incarta"  # Options: "incarta", "regionprops", "pyradiomics", "scportrait"
+
+  # File matching patterns
+  image_pattern: "*_BF.tif"
+  mask_pattern: "*_pred_mask.tif"
+
   # Processing options
-  n_jobs: -1  # Number of parallel jobs (-1 uses all cores)
+  n_jobs: -1  # Number of images processed concurrently (file-level workers).
+              # -1 = all cores, 1 = sequential. Inner per-cell parallelism is
+              # forced to 1 when >1 file worker is used. Ignored for scportrait
+              # (kept sequential on one GPU).
   
-  # Feature types to compute
-  features:
-    morphology: true      # Area, perimeter, elongation, etc.
-    intensity: true       # Mean, std, CV, total intensity
-    spatial: true         # Centroids, center of mass
-    texture: true         # Gabor, skewness, kurtosis, entropy
-    
   # Image preprocessing (optional)
   preprocessing:
     normalize_intensity: false  # Normalize image intensity 
@@ -37,8 +37,6 @@ feature_extraction:
 
   # File organization
   output:
-    folder_name: "features"  # Subdirectory for features
-
     # Output options
     save_individual_files: true   # Save features for each image separately
     save_combined_file: false      # Save all features in one CSV
@@ -50,7 +48,16 @@ feature_extraction:
     
     # Directory structure
     create_subdirs: true  # Create subdirectories for different datasets
-    
+
+  # scPortrait deep-learning featurization (used only when method: "scportrait")
+  scportrait:
+    project_location: "tmp/scportrait_projects"
+    config_path: "src/feature_extraction/scportrait_project/config.yml"
+    channel_names: ["brightfield", "brightfield_ch1"]
+    overwrite: true
+    debug: false
+    save_plots: true
+
 
 # Logging and monitoring
 logging:

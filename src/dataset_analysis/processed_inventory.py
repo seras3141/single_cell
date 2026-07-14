@@ -24,8 +24,8 @@ _STAGE_DIRS = {
     "prepare-split": "split_data",
     "prepare-3d": "3d_data",
     "prepare-blur": "blur_heatmaps",
-    "segment-2d": "inference/cellpose_sam/test/masks",
-    "track": "inference_tracked/cellpose_sam/test/final",
+    "segment-2d": "inference/cellpose_sam/masks",
+    "track": "inference_tracked/cellpose_sam/final",
     "mcherry": "mcherry_metrics/cellpose_sam",
 }
 
@@ -40,10 +40,10 @@ _PHANTOM_SCAN: Dict[str, tuple] = {
     "prepare-split": (["split_data"], "*.tif"),
     "prepare-3d":    (["3d_data"], "*.tif"),
     "prepare-blur":  (["blur_heatmaps"], "*.tif"),
-    "segment-2d":    (["inference/cellpose_sam/test/masks",
-                       "inference/cellpose_sam/test/masks_3d"], "*.zarr"),
-    "track":         (["inference_tracked/cellpose_sam/test/final",
-                       "inference_tracked/cellpose_sam/test/final_2d"], "*.zarr"),
+    "segment-2d":    (["inference/cellpose_sam/masks",
+                       "inference/cellpose_sam/masks_3d"], "*.zarr"),
+    "track":         (["inference_tracked/cellpose_sam/final",
+                       "inference_tracked/cellpose_sam/final_2d"], "*.zarr"),
 }
 
 # Matches well_id and time_point in pipeline filenames of the form

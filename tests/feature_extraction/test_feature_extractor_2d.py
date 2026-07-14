@@ -242,7 +242,7 @@ class TestExtractInstanceFeatures:
         features = extract_instance_features(1, label_mask, image)
         
         # Check that instance_id is included
-        assert features["instance_id"] == 1
+        assert features["cell_id"] == 1
         
         # Check that all feature categories are present
         morphology_keys = ["area", "perimeter", "elongation"]
@@ -283,14 +283,14 @@ class TestExtractAllInstanceFeatures:
         
         # Check that DataFrame has correct shape
         assert len(df) == 3  # Three instances
-        assert "instance_id" in df.columns
+        assert "cell_id" in df.columns
         
         # Check that all instances are present
-        assert set(df["instance_id"]) == {1, 2, 3}
+        assert set(df["cell_id"]) == {1, 2, 3}
         
         # Check that all expected columns are present
         expected_columns = [
-            "instance_id", "area", "perimeter", "elongation", "compactness",
+            "cell_id", "area", "perimeter", "elongation", "compactness",
             "circularity", "feret_diameter", "radius_of_gyration", "major_axis",
             "minor_axis", "mean_intensity", "std_intensity", "cv_intensity",
             "total_intensity", "centroid_x", "centroid_y", "center_of_mass_x",
@@ -311,7 +311,7 @@ class TestExtractAllInstanceFeatures:
         df = extract_all_instance_features(label_mask, image, n_jobs=1)
         
         assert len(df) == 1
-        assert df["instance_id"].iloc[0] == 5
+        assert df["cell_id"].iloc[0] == 5
         assert isinstance(df, pd.DataFrame)
         
     def test_no_instances(self):
@@ -335,7 +335,7 @@ class TestExtractAllInstanceFeatures:
         df = extract_all_instance_features(label_mask, image, n_jobs=1)
         
         assert len(df) == 1  # Only instance 1, background excluded
-        assert df["instance_id"].iloc[0] == 1
+        assert df["cell_id"].iloc[0] == 1
         
     def test_parallel_processing(self):
         """Test that parallel processing gives same results as serial."""
@@ -352,8 +352,8 @@ class TestExtractAllInstanceFeatures:
         df_parallel = extract_all_instance_features(label_mask, image, n_jobs=2)
         
         # Results should be identical (order might differ)
-        df_serial_sorted = df_serial.sort_values("instance_id").reset_index(drop=True)
-        df_parallel_sorted = df_parallel.sort_values("instance_id").reset_index(drop=True)
+        df_serial_sorted = df_serial.sort_values("cell_id").reset_index(drop=True)
+        df_parallel_sorted = df_parallel.sort_values("cell_id").reset_index(drop=True)
         
         pd.testing.assert_frame_equal(df_serial_sorted, df_parallel_sorted)
         
@@ -367,11 +367,11 @@ class TestExtractAllInstanceFeatures:
         df = extract_all_instance_features(label_mask, image, n_jobs=1)
         
         # instance_id should be integer (can be various integer types)
-        assert pd.api.types.is_integer_dtype(df["instance_id"])
+        assert pd.api.types.is_integer_dtype(df["cell_id"])
         
         # All other features should be numeric (int or float)
         for col in df.columns:
-            if col != "instance_id":
+            if col != "cell_id":
                 assert pd.api.types.is_numeric_dtype(df[col])
                 
     def test_large_instance_ids(self):
@@ -384,7 +384,7 @@ class TestExtractAllInstanceFeatures:
         df = extract_all_instance_features(label_mask, image, n_jobs=1)
         
         assert len(df) == 1
-        assert df["instance_id"].iloc[0] == 65000
+        assert df["cell_id"].iloc[0] == 65000
 
 
 class TestIntegration:
@@ -493,6 +493,6 @@ class TestIntegration:
         assert (df["cv_intensity"] >= 0).all()
         
         # Rectangle should be more elongated than circle
-        circle_elongation = df[df["instance_id"] == 1]["elongation"].iloc[0]
-        rect_elongation = df[df["instance_id"] == 2]["elongation"].iloc[0]
+        circle_elongation = df[df["cell_id"] == 1]["elongation"].iloc[0]
+        rect_elongation = df[df["cell_id"] == 2]["elongation"].iloc[0]
         assert rect_elongation > circle_elongation

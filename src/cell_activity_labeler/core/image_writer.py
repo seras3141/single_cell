@@ -15,7 +15,7 @@ def create_activity_labeled_image(
     label_dict: dict[str, int] | None = None,
 ) -> np.ndarray:
     """Render an activity label image for a single source image."""
-    required_cols = {"label", "is_active", "image"}
+    required_cols = {"cell_id", "is_active", "image"}
     if not required_cols.issubset(classification_data.columns):
         raise ValueError(f"Classification data must contain columns: {required_cols}")
 
@@ -26,20 +26,20 @@ def create_activity_labeled_image(
 
     activity_labels = np.zeros_like(label_data, dtype=np.int32)
     activity_dict = dict(
-        zip(classification_data["label"], classification_data["is_active"])
+        zip(classification_data["cell_id"], classification_data["is_active"])
     )
 
-    for label_id in np.unique(label_data):
-        if label_id == 0:
+    for cell_id in np.unique(label_data):
+        if cell_id == 0:
             continue
-        mask = label_data == label_id
-        is_active = bool(activity_dict.get(label_id, False))
+        mask = label_data == cell_id
+        is_active = bool(activity_dict.get(cell_id, False))
         if label_dict is not None:
             activity_labels[mask] = (
                 label_dict["active"] if is_active else label_dict["dead"]
             )
         else:
-            activity_labels[mask] = int(label_id) if is_active else -int(label_id)
+            activity_labels[mask] = int(cell_id) if is_active else -int(cell_id)
 
     return activity_labels
 
