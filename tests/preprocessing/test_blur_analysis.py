@@ -60,7 +60,10 @@ def test_basic_functionality(temp_dirs, sample_images):
             tiff.imwrite(blur_path, mock_heatmap.astype(np.float32))
         return mock_heatmap
     
-    with patch('src.utils.blur_measure.get_or_compute_blur_heatmap', side_effect=mock_measure_side_effect) as mock_measure:
+    with patch(
+        "src.preprocessing.blur_analysis.generate_blur_heatmap",
+        side_effect=mock_measure_side_effect,
+    ) as mock_measure:
         results = generate_blur_heatmap_batch(
             input_dir=input_dir,
             output_dir=output_dir,
@@ -78,7 +81,7 @@ def test_basic_functionality(temp_dirs, sample_images):
         for output_path in results.values():
             assert Path(output_path).exists()
         
-        # Verify get_or_compute_blur_heatmap was called for each image
+        # Verify generate_blur_heatmap was called for each image
         assert mock_measure.call_count == 3
 
 def test_no_images_found(temp_dirs):
@@ -107,7 +110,7 @@ def test_custom_pattern(temp_dirs):
     tiff.imwrite(str(png_path), png_image)
     tiff.imwrite(str(tiff_path), tiff_image)
     
-    with patch('src.utils.blur_measure.get_or_compute_blur_heatmap') as mock_measure:
+    with patch("src.preprocessing.blur_analysis.generate_blur_heatmap") as mock_measure:
         mock_measure.return_value = np.random.rand(25, 25)
         
         # Test PNG pattern
@@ -128,7 +131,7 @@ def test_file_handler_integration(temp_dirs, sample_images):
     
     file_handler = BF_IF_FileHandler()
     
-    with patch('src.utils.blur_measure.get_or_compute_blur_heatmap') as mock_measure:
+    with patch("src.preprocessing.blur_analysis.generate_blur_heatmap") as mock_measure:
         mock_measure.return_value = np.random.rand(50, 50)
         
         results = generate_blur_heatmap_batch(
@@ -153,7 +156,10 @@ def test_overwrite_behavior(temp_dirs, sample_images):
             tiff.imwrite(blur_path, mock_heatmap.astype(np.float32))
         return mock_heatmap
     
-    with patch('src.utils.blur_measure.get_or_compute_blur_heatmap', side_effect=mock_measure_side_effect) as mock_measure:
+    with patch(
+        "src.preprocessing.blur_analysis.generate_blur_heatmap",
+        side_effect=mock_measure_side_effect,
+    ) as mock_measure:
         # First run
         results1 = generate_blur_heatmap_batch(
             input_dir=input_dir,
@@ -172,7 +178,7 @@ def test_overwrite_behavior(temp_dirs, sample_images):
             file_handler=None
         )
         
-        # Should not call get_or_compute_blur_heatmap again
+        # Should not call generate_blur_heatmap again
         assert mock_measure.call_count == call_count_first
         assert results1 == results2
         
@@ -184,14 +190,14 @@ def test_overwrite_behavior(temp_dirs, sample_images):
             file_handler=None
         )
         
-        # Should call get_or_compute_blur_heatmap again
+        # Should call generate_blur_heatmap again
         assert mock_measure.call_count == call_count_first * 2
 
 def test_error_handling(temp_dirs, sample_images):
     """Test error handling for failed processing."""
     input_dir, output_dir = temp_dirs
     
-    with patch('src.utils.blur_measure.get_or_compute_blur_heatmap') as mock_measure:
+    with patch("src.preprocessing.blur_analysis.generate_blur_heatmap") as mock_measure:
         # Make the first call succeed, second fail, third succeed
         mock_measure.side_effect = [
             np.random.rand(50, 50),  # Success
@@ -208,6 +214,71 @@ def test_error_handling(temp_dirs, sample_images):
         
         # Should have 2 successful results out of 3 images
         assert len(results) == 2
+
+
+def test_kwargs_forwarded_to_generate_blur_heatmap(temp_dirs, sample_images):
+    """patch_size, stride_size, normalize, and center_values are forwarded unchanged."""
+    input_dir, output_dir = temp_dirs
+
+    with patch("src.preprocessing.blur_analysis.generate_blur_heatmap") as mock_gen:
+        mock_gen.return_value = np.zeros((50, 50))
+
+        generate_blur_heatmap_batch(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            patch_size=64,
+            stride_size=8,
+            normalize=False,
+            center_values=False,
+            file_handler=None,
+        )
+
+        assert mock_gen.call_count == len(sample_images)
+        for call in mock_gen.call_args_list:
+            kwargs = call.kwargs
+            assert kwargs.get("patch_size") == 64
+            assert kwargs.get("stride_size") == 8
+            assert kwargs.get("normalize") is False
+            assert kwargs.get("center_values") is False
+
+
+def test_output_dir_created_automatically(tmp_path):
+    """output_dir is created when it does not exist before the call."""
+    input_dir = tmp_path / "images"
+    output_dir = tmp_path / "nonexistent" / "nested" / "output"
+    input_dir.mkdir()
+
+    result = generate_blur_heatmap_batch(
+        input_dir=str(input_dir),
+        output_dir=str(output_dir),
+        file_handler=None,
+    )
+
+    assert output_dir.exists()
+    assert result == {}
+
+
+def test_recursive_subdirectory_search(tmp_path):
+    """Pattern '**/*.tif' finds images nested in subdirectories."""
+    sub_dir = tmp_path / "images" / "subdir"
+    sub_dir.mkdir(parents=True)
+    output_dir = tmp_path / "output"
+
+    img = np.zeros((32, 32), dtype=np.uint8)
+    tiff.imwrite(str(sub_dir / "nested.tif"), img)
+
+    with patch("src.preprocessing.blur_analysis.generate_blur_heatmap") as mock_gen:
+        mock_gen.return_value = np.zeros((32, 32))
+
+        results = generate_blur_heatmap_batch(
+            input_dir=str(tmp_path / "images"),
+            output_dir=str(output_dir),
+            pattern="**/*.tif",
+            file_handler=None,
+            normalize=False,
+        )
+
+    assert len(results) == 1
 
 
 if __name__ == "__main__":

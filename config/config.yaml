@@ -8,26 +8,40 @@ paths:
   # models: "models/"
   # temp: "temp/"
 
+# File processing parameters
+preprocessing:
+  # Dataset splitting
+  test_size: 1
+  random_state: 42
+  split_by_group: true
+  split_folder: "split_data"
+  out_3d_folder: "3d_data"
+
+  # Wavelength-to-channel mappings differ by experiment — set the correct one here or via --experiment-name CLI.
+  # Ew2-1, Ew2-2:          {1: FlipGFP, 2: mCherry, 3: BF}
+  # HD1509, HD1883, SA110: {1: BF,      2: mCherry, 3: FlipGFP}
+  # Leave null to use the default (Ew2 convention).
+  wavelength_mappings:
+
+  # Optional: default plate number for file renaming (overrides auto-detection from filepath)
+  # plate_number: "2126"
+
+  # Z-range for 2D-to-3D combination
+  # z0 is the 2D projection and is skipped by default (z_min: 1)
+  z_min: 1       # first z-slice to include (inclusive)
+  z_max: 20      # last z-slice to include (inclusive); combine_2d_to_3d raises an error if any group has the wrong slice count
+  
 # Image quality assessment
 quality:
   blur_detection:
     patch_size: [32, 32]
     stride_size: [8, 8]
-
-# File processing parameters
-preprocessing:
-  # Dataset splitting
-  test_size: 0.2
-  random_state: 42
-  split_by_group: true
-  split_folder: "split_data"
-  out_3d_folder: "3d_images"
   
 # Segmentation parameters
 segmentation:
   # Cellpose parameters
   cellpose:
-    model_type: "cyto3"
+    model_type: "cellpose_sam"
     channels: [0, 0]  # Grayscale
     diameter: null  # Auto-diameter
     flow_threshold: 0.4
@@ -37,26 +51,29 @@ segmentation:
     invert: false
     gpu: true
   inference:
-    dataset_name: "test"  # Subfolder within input_dir
-    results_folder: "results" # Subfolder within output_dir
+    dataset_name: ""  # Subfolder within input_dir/results (empty: no dataset-split subfolder)
+    results_folder: "inference"  # Subfolder within output_dir
     file_pattern: "*_BF.tif"  # Glob pattern for selecting image files
     process_z_stacks: false  # Whether to process Z-stacks
-    save_overlays: true  # Whether to save overlay images
+    save_overlays: false  # Whether to save overlay images
     save_metadata: true  # Whether to save JSON metadata for predictions
+    label_format: "zarr"  # Segmentation label format: tif, zarr, or hdf5
 
-# Training parameters
-training:
-  learning_rate: 0.1
-  weight_decay: 1e-4
-  n_epochs: 100
-  batch_size: 8
-  min_train_masks: 5
-  SGD: true
-  channels: [0, 0]
-  normalize: true
+# # Training parameters
+# training:
+#   learning_rate: 0.1
+#   weight_decay: 1e-4
+#   n_epochs: 100
+#   batch_size: 8
+#   min_train_masks: 5
+#   SGD: true
+#   channels: [0, 0]
+#   normalize: true
 
 # Post-processing parameters
 postprocessing:
+  image_pattern: "*_BF_3d.tif"
+  mask_pattern: "*_mask_3d.zarr"
   enable_blur_filtering: true
   filter_before_tracking: true
   save_intermediate_results: false
@@ -78,16 +95,16 @@ postprocessing:
     min_track_length: 3
 
 
-feature_extraction:
-  # Processing options
-  n_jobs: -1  # Number of parallel jobs (-1 uses all cores)
+# feature_extraction:
+#   # Processing options
+#   n_jobs: -1  # Number of parallel jobs (-1 uses all cores)
   
-  # Feature types to compute
-  features:
-    morphology: true      # Area, perimeter, elongation, etc.
-    intensity: true       # Mean, std, CV, total intensity
-    spatial: true         # Centroids, center of mass
-    texture: true         # Gabor, skewness, kurtosis, entropy
+#   # Feature types to compute
+#   features:
+#     morphology: true      # Area, perimeter, elongation, etc.
+#     intensity: true       # Mean, std, CV, total intensity
+#     spatial: true         # Centroids, center of mass
+#     texture: true         # Gabor, skewness, kurtosis, entropy
     
 
   # # Feature extraction parameters
@@ -114,12 +131,12 @@ visualization:
     gamma: 1.0
     contrast_limits: [0, 65535]
 
-# Output formats
-output:
-  save_masks: true
-  save_outlines: true
-  save_flows: false
-  save_features: true
+# # Output formats
+# output:
+#   save_masks: true
+#   save_outlines: true
+#   save_flows: false
+#   save_features: true
 
 # Logging configuration
 logging:

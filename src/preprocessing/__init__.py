@@ -8,12 +8,9 @@ This module provides utilities for data preprocessing, including:
 """
 
 from .dataset_split import (
-    split_dataset,
+    split_dataset_dict,
     train_test_split_directory,
     get_groups_from_filenames,
-    copy_file,
-    copy_without_split,
-    copy_with_split
 )
 
 from .blur_analysis import (
@@ -23,12 +20,9 @@ from .blur_analysis import (
 
 __all__ = [
     # Dataset splitting
-    "split_dataset",
+    "split_dataset_dict",
     "train_test_split_directory",
     "get_groups_from_filenames",
-    "copy_file",
-    "copy_without_split",
-    "copy_with_split",
     # Blur analysis
     "generate_blur_heatmap_batch",
 ]

@@ -26,8 +26,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from src.inference.inference_pipeline import InferencePipeline
 
-from src.utils.logging_utils import setup_logging
+from src.utils.logging_utils import setup_logging, add_file_handler
 from src.utils.config import get_config_manager
+from src.dataset_analysis.run_manifest import create_or_load_manifest
 
 def get_inference_args():
     parser = argparse.ArgumentParser(description="Run inference on cell segmentation test dataset")
@@ -57,6 +58,7 @@ def get_inference_args():
     optional_arg("--config", type=str, help="Path to YAML config file")
     optional_arg("--log-level", type=str, choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging level")
     optional_arg("--override", "-O", action="append", help="Config overrides in dot notation")
+    optional_arg("--overwrite", action="store_true", help="Overwrite existing output files")
     
     return parser.parse_args()
 
@@ -92,6 +94,8 @@ def get_legacy_args(cli_args):
         legacy_overrides['segmentation.cellpose.diameter'] = cli_args['diameter']
     if 'model_name' in cli_args:
         legacy_overrides['segmentation.cellpose.model_type'] = cli_args['model_name']
+    if 'overwrite' in cli_args:
+        legacy_overrides['segmentation.inference.overwrite'] = cli_args['overwrite']
 
     return legacy_overrides
 
@@ -102,17 +106,22 @@ def run_inference_from_config(config : Dict[str, Any], input_dir: Optional[str] 
     Merges config file with CLI args, with CLI args taking precedence.
     """
 
-    pipeline = InferencePipeline.from_config(config=config)
-    validation = pipeline.validate_setup()
-    if not validation['overall']:
-        raise ValueError("Pipeline validation failed")
-
     inference_config = config.get('segmentation', {}).get('inference', {})
 
     if input_dir is None:
         input_dir = config.get('paths', {}).get('input_dir', 'data/test')
     if dataset_name is None:
         dataset_name = inference_config.get('dataset_name', 'test')
+
+    pipeline = InferencePipeline.from_config(config=config, dataset_name=dataset_name)
+
+    # Attach a per-run log file now that the output directory is resolved.
+    log_filename = config.get('logging', {}).get('filename', 'inference.log')
+    add_file_handler(pipeline.output_manager.output_dir / log_filename)
+
+    validation = pipeline.validate_setup()
+    if not validation['overall']:
+        raise ValueError("Pipeline validation failed")
 
     model_info = pipeline.get_model_info()
     logging.info(f"Model information: {model_info}")
@@ -129,6 +138,7 @@ def run_inference_from_config(config : Dict[str, Any], input_dir: Optional[str] 
     print("INFERENCE COMPLETED")
     print("="*50)
     print(f"Total files processed: {len(results['processed_files'])}")
+    print(f"Total files skipped (already exist): {len(results.get('skipped_files', []))}")
     print(f"Total cells detected: {results['total_cells']}")
     print(f"Failed files: {len(results['failed_files'])}")
     # print(f"Results saved to: {output_manager.output_dir}")
@@ -147,17 +157,12 @@ def run_inference_from_config_dist(config : Dict[str, Any], input_dir: Optional[
     Merges config file with CLI args, with CLI args taking precedence.
     """
 
-    dist.init_process_group(backend='nccl', init_method='env://')
     local_rank = int(os.environ['LOCAL_RANK'])
-    world_size = dist.get_world_size()
-    rank = dist.get_rank()
     torch_device = torch.device(f'cuda:{local_rank}')
     torch.cuda.set_device(torch_device)
-
-    pipeline = InferencePipeline.from_config(config=config, device=torch_device)
-    validation = pipeline.validate_setup()
-    if not validation['overall']:
-        raise ValueError("Pipeline validation failed")
+    dist.init_process_group(backend='nccl', init_method='env://', device_id=torch_device)
+    world_size = dist.get_world_size()
+    rank = dist.get_rank()
 
     inference_config = config.get('segmentation', {}).get('inference', {})
 
@@ -165,6 +170,16 @@ def run_inference_from_config_dist(config : Dict[str, Any], input_dir: Optional[
         input_dir = config.get('paths', {}).get('input_dir', 'data/test')
     if dataset_name is None:
         dataset_name = inference_config.get('dataset_name', 'test')
+
+    pipeline = InferencePipeline.from_config(config=config, dataset_name=dataset_name, device=torch_device)
+
+    # Attach a per-run log file now that the output directory is resolved.
+    log_filename = config.get('logging', {}).get('filename', 'inference.log')
+    add_file_handler(pipeline.output_manager.output_dir / log_filename)
+
+    validation = pipeline.validate_setup()
+    if not validation['overall']:
+        raise ValueError("Pipeline validation failed")
 
     model_info = pipeline.get_model_info()
     logging.info(f"Model information: {model_info}")
@@ -209,6 +224,16 @@ def run_inference_from_config_dist(config : Dict[str, Any], input_dir: Optional[
     logging.info("Inference completed successfully")
 
 
+def _get_segment_2d_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
+    cellpose_config = config.get("segmentation", {}).get("cellpose", {})
+    return {k: v for k, v in {
+        "model_type": cellpose_config.get("model_type"),
+        "flow_threshold": cellpose_config.get("flow_threshold"),
+        "cellprob_threshold": cellpose_config.get("cellprob_threshold"),
+        "diameter": cellpose_config.get("diameter"),
+    }.items() if v is not None}
+
+
 def main():
     """Main inference function with OmegaConf configuration support."""
     args = get_inference_args()
@@ -224,6 +249,14 @@ def main():
     logging.info("Final merged configuration:")
     logging.info(merged_config)
 
+    paths_config = merged_config.get("paths", {})
+    output_dir = paths_config.get("output_dir", "")
+    input_dir = paths_config.get("input_dir", "")
+    os.makedirs(output_dir, exist_ok=True)
+
+    manifest = create_or_load_manifest(output_dir, input_dir, merged_config)
+    snapshot = _get_segment_2d_snapshot(merged_config)
+    manifest.start_stage("segment-2d", config=snapshot)
     try:
         if merged_config.get('distributed', {}).get('enabled', False):
             logging.info("Starting distributed inference...")
@@ -231,10 +264,13 @@ def main():
         else:
             logging.info("Starting inference...")
             run_inference_from_config(merged_config)
-
+        manifest.complete_stage("segment-2d", output_dir=output_dir)
     except Exception as e:
         logging.error(f"Inference failed: {e}")
+        manifest.fail_stage("segment-2d", error=str(e))
+        logging.info(manifest.summary())
         sys.exit(1)
+    logging.info(manifest.summary())
 
 
 if __name__ == "__main__":

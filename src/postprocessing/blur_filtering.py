@@ -35,7 +35,7 @@ def blur_intensity_metric(regionmask: np.ndarray, intensity_image: np.ndarray) -
     """
     if not np.any(regionmask):
         return np.nan
-    return np.mean(intensity_image[regionmask])
+    return np.mean(intensity_image[regionmask]) # type: ignore
 
 
 class BlurFilter:
@@ -54,13 +54,14 @@ class BlurFilter:
         Args:
             config: Filter configuration. If None, uses default config.
         """
+        from src.utils.file_utils import BlurFileHandler
+
         self.config = config or FilterConfig()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        
-        # Cache for blur heatmaps
-        self.blur_cache: Dict[str, np.ndarray] = {}
-        
-    def get_or_compute_blur_heatmap(
+        self.blur_file_handler = BlurFileHandler()
+
+                
+    def get_blur_heatmap(
         self, 
         image_path: Union[str, Path],
         blur_cache_dir: Optional[Union[str, Path]] = None
@@ -75,25 +76,18 @@ class BlurFilter:
         Returns:
             Blur heatmap array
         """
-        image_path = Path(image_path)
-        cache_key = str(image_path)
-        
-        # Check memory cache first
-        if cache_key in self.blur_cache:
-            return self.blur_cache[cache_key]
-        
+                
         from src.utils.blur_measure import get_or_compute_blur_heatmap
-        from src.utils.file_utils import BlurFileHandler
 
-        if blur_cache_dir is not None:
-            blur_file_handler = BlurFileHandler()
-            blur_suffix = f"{self.config.blur_map_suffix}_{self.config.patch_size}_{self.config.stride_size}"
-            blur_file_name = blur_file_handler.rename_image(image_path, blur_suffix)
-            blur_path = Path(blur_cache_dir) / blur_file_name
-
-        else:
+        # if cache_dir is not given, we won't save the computed blur map, but we can still compute it
+        if blur_cache_dir is None:
+            self.logger.info("No blur cache directory provided. Blur heatmap will be computed but not cached.")
             blur_path = None
-
+        else:
+            blur_suffix = f"{self.config.blur_map_suffix}_{self.config.patch_size}_{self.config.stride_size}"
+            blur_file_name = self.blur_file_handler.rename_image(str(image_path), blur_suffix)
+            blur_path = Path(blur_cache_dir) / blur_file_name
+            self.logger.info(f"Using blur cache directory: {blur_cache_dir}. Blur heatmap will be saved to: {blur_path}")
             
         blur_map = get_or_compute_blur_heatmap(
             image_path,
@@ -102,51 +96,7 @@ class BlurFilter:
             stride_size=self.config.stride_size,
             normalize=self.config.normalize_blur
         )
-
-        print(f"Blur heatmap shape: {blur_map.shape}") # Debugging line to check shape
-        
-        # Check disk cache
-        # blur_map = None
-        # if blur_cache_dir is not None:
-        #     blur_cache_dir = Path(blur_cache_dir)
-        #     blur_filename = (image_path.stem + 
-        #                    f"{self.config.blur_map_suffix}_{self.config.patch_size}_{self.config.stride_size}.tif")
-        #     blur_path = blur_cache_dir / blur_filename
-            
-        #     if blur_path.exists():
-        #         try:
-        #             blur_map = tifffile.imread(str(blur_path))
-        #             self.logger.debug(f"Loaded blur heatmap from cache: {blur_path}")
-        #         except Exception as e:
-        #             self.logger.warning(f"Failed to load cached blur map {blur_path}: {e}")
-        
-        # # Compute if not cached
-        # if blur_map is None:
-        #     self.logger.info(f"Computing blur heatmap for {image_path}")
-        #     blur_map = measure_blur_heatmap(
-        #         str(image_path),
-        #         patch_size=self.config.patch_size,
-        #         stride_size=self.config.stride_size,
-        #         normalize=self.config.normalize_blur
-        #     )
-            
-        #     # Save to disk cache if directory provided
-        #     if blur_cache_dir is not None:
-        #         raise (NotImplementedError("File renaming is not implemented yet."))
-        #         try:
-        #             blur_cache_dir.mkdir(parents=True, exist_ok=True)
-        #             blur_filename = (image_path.stem + 
-        #                            f"{self.config.blur_map_suffix}_{self.config.patch_size}_{self.config.stride_size}.tif")
-        #             blur_path = blur_cache_dir / blur_filename
-        #             tifffile.imwrite(str(blur_path), blur_map.astype(np.float32))
-        #             self.logger.debug(f"Saved blur heatmap to cache: {blur_path}")
-        #         except Exception as e:
-        #             self.logger.warning(f"Failed to save blur map to cache: {e}")
-        
-        # Store in memory cache
-        if self.config.cache_blur_maps:
-            self.blur_cache[cache_key] = blur_map
-            
+                    
         return blur_map
     
     def filter_cells_by_blur(
@@ -168,6 +118,10 @@ class BlurFilter:
         Returns:
             Tuple of (filtered_mask, quality_stats)
         """
+
+        # Will be deprecated in favor of filter_cells_by_blur_fast, but keeping for now for clarity and testing
+        self.logger.warning("filter_cells_by_blur is not optimized for large images. Consider using filter_cells_by_blur_fast instead.")
+
         blur_threshold = blur_threshold or self.config.blur_threshold
         invert_threshold = invert_threshold if invert_threshold is not None else self.config.invert_threshold
         
@@ -326,7 +280,7 @@ class BlurFilter:
         self,
         segmentation_stack: np.ndarray,
         blur_heatmaps: Union[np.ndarray, List[np.ndarray]],
-        n_jobs: int = -1,
+        n_jobs: int | None = None,
         **kwargs
     ) -> Tuple[np.ndarray, List[pd.DataFrame]]:
         """
@@ -354,6 +308,9 @@ class BlurFilter:
             )
 
         n_slices = segmentation_stack.shape[0]
+        # Patched up code for slurm parallel execution 
+        if n_jobs is None:
+            n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1))
         self.logger.info(f"Filtering 3D stack with {n_slices} slices using {n_jobs} parallel jobs.")
 
         # Parallel processing across z-slices
@@ -375,93 +332,6 @@ class BlurFilter:
 
         return filtered_stack, list(quality_stats_list)
 
-'''
-def filter_cells_by_blur(
-    segmentation_path: Union[str, Path],
-    image_path: Union[str, Path],
-    output_path: Union[str, Path],
-    config: Optional[FilterConfig] = None,
-    blur_cache_dir: Optional[Union[str, Path]] = None
-) -> Dict[str, Any]:
-    """
-    High-level function to filter cells by blur quality.
-    
-    Args:
-        segmentation_path: Path to segmentation mask file
-        image_path: Path to corresponding image file
-        output_path: Path to save filtered results
-        config: Filter configuration
-        blur_cache_dir: Directory for caching blur heatmaps
-        
-    Returns:
-        Dictionary with filtering results and statistics
-    """
-    config = config or FilterConfig()
-    blur_filter = BlurFilter(config)
-    
-    # Load segmentation
-    logger.info(f"Loading segmentation from {segmentation_path}")
-    segmentation_stack = tifffile.imread(str(segmentation_path)).astype(int)
-    
-    # Get or compute blur heatmap
-    blur_heatmap = blur_filter.get_or_compute_blur_heatmap(
-        image_path, blur_cache_dir
-    )
-    
-    # Handle 3D vs 2D
-    if segmentation_stack.ndim == 3:
-        if blur_heatmap.ndim == 2:
-            # Replicate 2D blur map for all z-slices
-            blur_heatmaps = [blur_heatmap] * segmentation_stack.shape[0]
-        else:
-            blur_heatmaps = blur_heatmap
-        
-        filtered_stack, quality_stats = blur_filter.filter_3d_stack(
-            segmentation_stack, blur_heatmaps
-        )
-        
-        # Combine quality stats
-        combined_stats = pd.concat(quality_stats, ignore_index=True)
-        
-    else:
-        # 2D case
-        filtered_stack, combined_stats = blur_filter.filter_cells_by_blur(
-            segmentation_stack, blur_heatmap
-        )
-    
-    # Save results
-    logger.info(f"Saving filtered results to {output_path}")
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    tifffile.imwrite(str(output_path), filtered_stack)
-    
-    # Save quality stats
-    stats_path = Path(output_path).with_suffix('.csv')
-    combined_stats.to_csv(stats_path, index=False)
-    
-    # Compute summary statistics
-    total_cells = len(combined_stats)
-    passed_cells = combined_stats['passes_threshold'].sum()
-    avg_blur = combined_stats['blur_intensity'].mean()
-    
-    results = {
-        'segmentation_path': str(segmentation_path),
-        'image_path': str(image_path),
-        'output_path': str(output_path),
-        'stats_path': str(stats_path),
-        'input_shape': segmentation_stack.shape,
-        'output_shape': filtered_stack.shape,
-        'total_cells': total_cells,
-        'passed_cells': passed_cells,
-        'filter_rate': passed_cells / total_cells if total_cells > 0 else 0,
-        'avg_blur_intensity': avg_blur,
-        'config': config
-    }
-    
-    logger.info(f"Blur filtering completed: {passed_cells}/{total_cells} cells passed "
-               f"(rate: {results['filter_rate']:.2%})")
-    
-    return results
-'''
 
 '''
 def assess_segmentation_quality(

@@ -5,9 +5,13 @@ import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 
-from radiomics import featureextractor
 import SimpleITK as sitk
 from joblib import Parallel, delayed
+
+try:
+    from radiomics import featureextractor
+except ImportError:
+    featureextractor = None
 
 
 def extract_radiomic_features(
@@ -70,7 +74,7 @@ def extract_radiomic_features(
 def get_radiomics_features_2d(
         brightfield_image_sitk : sitk.Image,
         segmentation_image_sitk : sitk.Image,
-        extractor: featureextractor.RadiomicsFeatureExtractor,
+        extractor: "featureextractor.RadiomicsFeatureExtractor",
         n_jobs: int = -1,
     ) -> pd.DataFrame:
 

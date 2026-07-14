@@ -5,35 +5,81 @@ This module provides functions to convert between 2D slice-based image datasets
 and 3D volumetric image datasets, supporting both raw images and segmentation masks.
 """
 
-import os
+import logging
 import re
 import numpy as np
 import tifffile as tiff
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Optional, Union
 from collections import defaultdict
 from tqdm import tqdm
-from glob import glob
+
+from src.utils.image_utils import LABEL_FORMATS, save_labels, load_labels
+
+
+def _validate_label_format(format_name: str, arg_name: str) -> None:
+    if format_name not in LABEL_FORMATS:
+        raise ValueError(f"{arg_name} must be one of {list(LABEL_FORMATS)}; got {format_name!r}")
+
+
+def _strip_known_extension(filename: str, extension: str) -> str:
+    if filename.lower().endswith(extension.lower()):
+        return filename[:-len(extension)]
+    return filename
+
+
+def _match_slice_pattern(pattern: str, stem: str, filename: str) -> Optional[re.Match[str]]:
+    match = re.fullmatch(pattern, stem)
+    if match:
+        return match
+    return re.fullmatch(pattern, filename)
+
 
 def combine_2d_to_3d(
     input_dir: Union[str, Path],
     output_dir: Union[str, Path],
-    pattern: str = r"(.+?)_z(\d+)(?:_(BF|Cells))?\.(tif|tiff)",
-    recursive: bool = False
+    pattern: str = r"(.+?)_z(\d+)(?:_(BF|Cells))?",
+    recursive: bool = False,
+    z_min: Optional[int] = 1,
+    z_max: Optional[int] = None,
+    output_format: str = "tif",
+    input_format: Optional[str] = None,
+    overwrite: bool = False,
 ):
     """
-    Combine 2D TIFF images into 3D volumetric TIFF files.
+    Combine saved 2D label slices into 3D volumetric files.
 
     Args:
-        input_dir: Directory containing 2D TIFF images
-        output_dir: Directory to save 3D TIFF volumes
+        input_dir: Directory containing 2D label slices
+        output_dir: Directory to save 3D volumes
         pattern: Regular expression pattern to extract base name, z-index, and suffix
         recursive: Whether to search subdirectories recursively
+        z_min: Minimum z-index to include (inclusive). Defaults to 1 to skip z0,
+            which is typically a 2D projection rather than an optical section.
+        z_max: Maximum z-index to include (inclusive). Defaults to None (no upper limit).
+        output_format: Format for the combined 3D volume. One of ``"tif"`` (default),
+            ``"zarr"``, or ``"hdf5"``.
+        input_format: Format of the input 2D label slices. Defaults to
+            ``output_format``. Cross-format conversion is not supported.
+        overwrite: If False (default), skip groups whose 3D output file already exists.
 
     Example:
         Converts files like "sample_z1_BF.tif", "sample_z2_BF.tif", ...
-        to a single 3D file "sample_BF_3d.tif"
+        to a single 3D file "sample_BF_3d.tif" (or .zarr / .h5)
     """
+    if input_format is None:
+        input_format = output_format
+
+    _validate_label_format(output_format, "output_format")
+    _validate_label_format(input_format, "input_format")
+    if input_format != output_format:
+        raise ValueError(
+            "combine_2d_to_3d only supports matching input_format and output_format; "
+            f"got input_format={input_format!r}, output_format={output_format!r}"
+        )
+
+    input_ext = LABEL_FORMATS[input_format]
+    output_ext = LABEL_FORMATS[output_format]
 
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
@@ -44,102 +90,134 @@ def combine_2d_to_3d(
 
     # Group files by base name and suffix (_BF or _Cells)
     file_groups = defaultdict(list)
-    file_names = []
-    file_extensions = [".tif"]
-    for ext in file_extensions:
-        ext = f"**/*{ext}" if recursive else f"*{ext}"
-        file_names.extend(glob(os.path.join(input_dir, ext), recursive=recursive))
+    glob_pattern = f"*{input_ext}"
+    file_names = sorted(input_dir.rglob(glob_pattern) if recursive else input_dir.glob(glob_pattern))
     if not file_names:
-        print(f"No TIFF files found in {input_dir}. Please check the directory and file pattern.")
+        print(f"No {input_format} files found in {input_dir}. Please check the directory and file pattern.")
         return
 
-    # No need to check extension again; already filtered by glob
     for file_name in tqdm(file_names, desc="Finding 2D files"):
-        fname_only = os.path.basename(file_name)
-        match = re.match(pattern, fname_only)
+        fname_only = file_name.name
+        stem = _strip_known_extension(fname_only, input_ext)
+        match = _match_slice_pattern(pattern, stem, fname_only)
         if match:
             base_name = match.group(1)
             z_index = int(match.group(2))
-            suffix = match.group(3)
+            suffix = match.group(3) if match.lastindex and match.lastindex >= 3 else None
+            if z_min is not None and z_index < z_min:
+                continue
+            if z_max is not None and z_index > z_max:
+                continue
             if suffix is None:
                 key = f"{base_name}"
             else:
-                key = f"{base_name}_{suffix}"
+                key = f"{base_name}_{suffix.strip('_')}"
             file_groups[key].append((z_index, file_name))
+
+    if z_min is not None and z_max is not None:
+        expected_slices = z_max - z_min + 1
+        bad_groups = {
+            key: len(files)
+            for key, files in file_groups.items()
+            if len(files) != expected_slices
+        }
+        if bad_groups:
+            lines = "\n".join(
+                f"  {k}: {v} slices (expected {expected_slices})"
+                for k, v in bad_groups.items()
+            )
+            raise ValueError(
+                f"z-slice count mismatch for {len(bad_groups)} group(s) "
+                f"(expected {expected_slices} slices each, z_min={z_min}, z_max={z_max}):\n{lines}"
+            )
 
     print(f"Found {len(file_groups)} groups of 2D images to combine into 3D volumes.")
     print("Example groups:")
     for key in list(file_groups.keys())[:5]:  # Show first 5 groups
         print(f"  {key}: {len(file_groups[key])} files")
 
-    # Combine 2D TIFFs into 3D TIFFs
+    # Combine 2D labels into 3D volumes
     for key, files in tqdm(file_groups.items(), desc="Combining to 3D"):
         # Sort files by z-index
         files.sort(key=lambda x: x[0])
 
         images = []
         for _, file_path in files:
-            img = tiff.imread(file_path)
+            img = load_labels(file_path)
             images.append(img)
 
         # Skip if no images found
         if not images:
             continue
 
-        # Ensure consistent dtype with input images
-        output_dtype = images[0].dtype
-
-        # Save as 3D TIFF
-        output_path = os.path.join(output_dir, f"{key}_3d.tif")
-        tiff.imwrite(output_path, np.stack(images, axis=0).astype(output_dtype), photometric='minisblack')
+        output_path = output_dir / f"{key}_3d{output_ext}"
+        if output_path.exists() and not overwrite:
+            logging.debug(f"Skipping {output_path.name} — 3D stack already exists")
+            continue
+        volume = np.stack(images, axis=0).astype(images[0].dtype)
+        save_labels(volume, output_path)
 
     print(f"Successfully combined {len(file_groups)} 2D image sets into 3D volumes in {output_dir}")
 
 
-def split_3d_to_2d(input_path: str, output_dir: Union[str, Path], suffix: Optional[str] = None):
+def split_3d_to_2d(
+    input_path: Union[str, Path],
+    output_dir: Union[str, Path],
+    suffix: Optional[str] = None,
+    output_format: str = "tif",
+):
     """
-    Split a 3D TIFF file into separate 2D TIFF slices.
+    Split a 3D label volume into separate 2D slices.
     
     Args:
-        input_path: Path to 3D TIFF file
-        output_dir: Directory to save 2D TIFF slices
+        input_path: Path to 3D label volume
+        output_dir: Directory to save 2D label slices
         suffix: Optional suffix to remove from input_file and/or add to output files (e.g., "BF", "Cells")
+        output_format: Format for the output 2D slices. One of ``"tif"`` (default),
+            ``"zarr"``, or ``"hdf5"``.
         
     Example:
         Converts "sample_3d.tif" to "sample_z1.tif", "sample_z2.tif", ...
         or with suffix to "sample_z1_BF.tif", "sample_z2_BF.tif", ...
     """
+    _validate_label_format(output_format, "output_format")
+    output_ext = LABEL_FORMATS[output_format]
+
+    input_path = Path(input_path)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Assume all files are tiff
     if suffix:
-        if suffix.endswith('.tif'):
-            suffix = suffix[:-4]
+        for ext in (".tiff", *LABEL_FORMATS.values()):
+            if suffix.endswith(ext):
+                suffix = suffix[:-len(ext)]
+                break
         if suffix.endswith('_3d'):
             suffix = suffix[:-3]
         suffix = suffix.strip('_')
 
-    # Load 3D TIFF
-    volume = tiff.imread(input_path)
+    volume = load_labels(input_path)
     
     # Get base filename
-    base_name = Path(input_path).stem
+    base_name = input_path.stem
     if base_name.endswith('_3d'):
         base_name = base_name[:-3]
     if suffix and base_name.endswith(suffix):
         base_name = base_name[:-(len(suffix))]
     base_name = base_name.rstrip('_')
     
-    # Save each z-slice as a separate 2D TIFF
+    # Save each z-slice as a separate 2D label file.
     for z in tqdm(range(volume.shape[0]), desc=f"Splitting {base_name}"):
         slice_name = f"{base_name}_z{z+1}"
         if suffix:
             slice_name += f"_{suffix}"
-        slice_name += ".tif"
+        slice_name += output_ext
         
-        output_path = os.path.join(output_dir, slice_name)
-        tiff.imwrite(output_path, volume[z], photometric='minisblack')
+        output_path = output_dir / slice_name
+        if output_format == "tif":
+            tiff.imwrite(output_path, volume[z], photometric='minisblack')
+        else:
+            save_labels(volume[z], output_path)
     
     print(f"Successfully split {input_path} into {volume.shape[0]} 2D slices in {output_dir}")
 
@@ -147,29 +225,78 @@ def split_3d_to_2d(input_path: str, output_dir: Union[str, Path], suffix: Option
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="Convert between 2D and 3D TIFF images")
+    parser = argparse.ArgumentParser(
+        description="Convert between 2D slices and 3D label volumes."
+    )
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
     
     # Combine 2D to 3D command
-    combine_parser = subparsers.add_parser("combine", help="Combine 2D TIFFs into 3D volumes")
-    combine_parser.add_argument("--input", required=True, help="Input directory containing 2D TIFF images")
-    combine_parser.add_argument("--output", required=True, help="Output directory for 3D TIFF volumes")
-    combine_parser.add_argument("--pattern", default=r"(.+?)_z(\d+)(?:_(BF|Cells))?\.(tif|tiff)", 
-                             help="Regular expression pattern to extract base name, z-index, and suffix")
+    combine_parser = subparsers.add_parser("combine", help="Combine 2D label slices into 3D volumes")
+    combine_parser.add_argument("--input", required=True, help="Input directory containing 2D label slices")
+    combine_parser.add_argument("--output", required=True, help="Output directory for 3D label volumes")
+    combine_parser.add_argument(
+        "--pattern",
+        default=r"(.+?)_z(\d+)(?:_(BF|Cells))?",
+        help=(
+            "Regex used to extract base name, z-index, and optional suffix. "
+            "By default it is matched against the filename stem; legacy patterns "
+            "that include the extension are also supported."
+        ),
+    )
     combine_parser.add_argument("--recursive", action="store_true", 
-                             help="Search subdirectories recursively for 2D TIFF files")
+                             help="Search subdirectories recursively for 2D label slices")
+    combine_parser.add_argument("--z-min", type=int, default=1, help="Minimum z-index to include")
+    combine_parser.add_argument("--z-max", type=int, default=None, help="Maximum z-index to include")
+    combine_parser.add_argument(
+        "--input-format",
+        choices=sorted(LABEL_FORMATS),
+        default=None,
+        help="Input slice format. Defaults to --output-format.",
+    )
+    combine_parser.add_argument(
+        "--output-format",
+        choices=sorted(LABEL_FORMATS),
+        default="tif",
+        help="Output volume format. Cross-format combine is not supported.",
+    )
+    combine_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing 3D volumes if they already exist.",
+    )
     
     # Split 3D to 2D command
-    split_parser = subparsers.add_parser("split", help="Split 3D TIFF volumes into 2D slices")
-    split_parser.add_argument("--input", required=True, help="Input 3D TIFF file")
-    split_parser.add_argument("--output", required=True, help="Output directory for 2D TIFF slices")
+    split_parser = subparsers.add_parser("split", help="Split 3D label volumes into 2D slices")
+    split_parser.add_argument("--input", required=True, help="Input 3D label volume")
+    split_parser.add_argument("--output", required=True, help="Output directory for 2D label slices")
     split_parser.add_argument("--suffix", help="Optional suffix to add to output files (e.g., BF, Cells)")
+    split_parser.add_argument(
+        "--output-format",
+        choices=sorted(LABEL_FORMATS),
+        default="tif",
+        help="Output slice format.",
+    )
     
     args = parser.parse_args()
     
     if args.command == "combine":
-        combine_2d_to_3d(args.input, args.output, args.pattern)
+        combine_2d_to_3d(
+            args.input,
+            args.output,
+            pattern=args.pattern,
+            recursive=args.recursive,
+            z_min=args.z_min,
+            z_max=args.z_max,
+            output_format=args.output_format,
+            input_format=args.input_format,
+            overwrite=args.overwrite,
+        )
     elif args.command == "split":
-        split_3d_to_2d(args.input, args.output, args.suffix)
+        split_3d_to_2d(
+            args.input,
+            args.output,
+            suffix=args.suffix,
+            output_format=args.output_format,
+        )
     else:
         parser.print_help()

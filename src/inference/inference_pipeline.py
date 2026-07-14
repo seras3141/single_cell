@@ -4,15 +4,26 @@ Main inference pipeline for running cell segmentation predictions.
 This module provides a high-level interface for running inference
 on datasets using various segmentation models with organized output.
 """
+from __future__ import annotations
 
 import os
+import re
 import numpy as np
 from typing import Dict, Any, Optional, Union, List, Callable
 from pathlib import Path
 import logging
 import tifffile as tiff
-import torch
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
+
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    torch = None
+    TORCH_AVAILABLE = False
+    logger.warning("torch not available. GPU inference will not be supported.")
 
 from .base_predictor import BasePredictor
 from .cellpose_predictor import CellposePredictor
@@ -47,11 +58,8 @@ class InferencePipeline:
         self.predictor = predictor
         self.output_manager = output_manager
         self.log_config = log_config or {}
-        
-        # Set up logging
-        self._setup_logging()
-        
-        logging.info(f"Inference pipeline initialized with {predictor.model_name}")
+
+        logger.info(f"Inference pipeline initialized with {predictor.model_name}")
 
     @classmethod
     def _resolve_config(
@@ -96,9 +104,9 @@ class InferencePipeline:
         config: Optional[Dict[str, Any]] = None,
         config_path: Optional[Union[str, Path]]=None,
         output_dir: Optional[Union[str, Path]]=None,
-        dataset_name: Optional[str] = "test",
+        dataset_name: Optional[str] = None,
         model_name: Optional[str]=None,
-        device: Optional[Union[str, torch.device]]=None,
+        device: Optional[Union[str, Any]]=None,
         **kwargs
     ) -> "InferencePipeline":
         """
@@ -152,16 +160,20 @@ class InferencePipeline:
         inference_config = segmentation_config.get("inference", {})
         paths_config = resolved_config.get("paths", {})
         results_folder = inference_config.get("results_folder", "results")
+        label_format = inference_config.get("label_format", "zarr")
 
         model_name = cellpose_cfg.get("model_type", "cyto3")
         output_dir = output_dir or Path(paths_config.get("output_dir", "results")) / results_folder        
-        dataset_name = dataset_name or inference_config.get("dataset_name", "test")
+        dataset_name = dataset_name if dataset_name is not None else inference_config.get("dataset_name", "")
         
         # Initialize output manager
+        overwrite = inference_config.get("overwrite", False)
         output_manager = OutputManager(
             base_output_dir=output_dir,     # type: ignore
             model_name=model_name,          # type: ignore
-            dataset_name=dataset_name       # type: ignore
+            dataset_name=dataset_name,      # type: ignore
+            label_format=label_format,
+            overwrite=overwrite,
         )
 
         log_config = resolved_config.get("logging", {})
@@ -229,17 +241,18 @@ class InferencePipeline:
         elif input_files is None:
             raise ValueError("Either `input_dir` or `input_files` must be provided.")
         
-        logging.info(f"Found {len(input_files)} files to process")
+        logger.info(f"Found {len(input_files)} files to process")
         
         # Process files
         results = {
             'processed_files': [],
+            'skipped_files': [],
             'failed_files': [],
             'total_cells': 0,
             'total_files': len(input_files),
             '2d_files': 0,
         }
-        
+
         for idx, file_path in enumerate(tqdm(input_files, desc="Processing files")):
             try:
                 # Process single file
@@ -249,18 +262,25 @@ class InferencePipeline:
                     save_overlays=save_overlays,
                     save_metadata=save_metadata
                 )
-                
+
+                # Empty dict means the output already existed and was skipped
+                if not file_result:
+                    results['skipped_files'].append(str(file_path))
+                    if progress_callback:
+                        progress_callback(idx + 1, len(input_files), file_path)
+                    continue
+
                 results['processed_files'].append(file_result)
                 results['total_cells'] += file_result.get('num_cells', 0)
                 if file_result.get('is_2d', False):
                     results['2d_files'] += 1
-                
+
                 # Call progress callback if provided
                 if progress_callback:
                     progress_callback(idx + 1, len(input_files), file_path)
-                
+
             except Exception as e:
-                logging.error(f"Failed to process {file_path}: {e}")
+                logger.error(f"Failed to process {file_path}: {e}")
                 results['failed_files'].append({
                     'file': str(file_path),
                     'error': str(e)
@@ -274,11 +294,11 @@ class InferencePipeline:
         summary_path = self.output_manager.finalize_run()
         results['summary_path'] = summary_path
         
-        logging.info(f"Inference completed. Processed {len(results['processed_files'])} files successfully")
-        logging.info(f"Total cells detected: {results['total_cells']}")
+        logger.info(f"Inference completed. Processed {len(results['processed_files'])} files successfully")
+        logger.info(f"Total cells detected: {results['total_cells']}")
         
         if results['failed_files']:
-            logging.warning(f"Failed to process {len(results['failed_files'])} files")
+            logger.warning(f"Failed to process {len(results['failed_files'])} files")
         
         return results
     
@@ -288,12 +308,25 @@ class InferencePipeline:
         """
         from src.utils.conversion import combine_2d_to_3d
 
-        logging.info("Combining 2D masks into 3D volumes")
+        logger.info("Combining 2D masks into 3D volumes")
         mask_dir = self.output_manager.masks_dir
         output_dir = self.output_manager.masks_dir.parent / (self.output_manager.masks_dir.name + "_3d")
 
-        pattern = r"(.+?)_z(\d+)(?:_(masks))?\.(tif|tiff)"
-        combine_2d_to_3d(str(mask_dir), str(output_dir), pattern=pattern)
+        pred_mask_suffix = self.output_manager.pred_mask_suffix
+        if pred_mask_suffix.startswith("_"):
+            suffix_pattern = rf"(?:_({re.escape(pred_mask_suffix[1:])}))?"
+        elif pred_mask_suffix:
+            suffix_pattern = rf"(?:({re.escape(pred_mask_suffix)}))?"
+        else:
+            suffix_pattern = ""
+        pattern = rf"(.+?)_z(\d+){suffix_pattern}"
+
+        combine_2d_to_3d(
+            str(mask_dir),
+            str(output_dir),
+            pattern=pattern,
+            output_format=self.output_manager.label_format,
+        )
     
     def run_inference_single(
         self,
@@ -344,7 +377,7 @@ class InferencePipeline:
             try:
                 image = load_image(file_path)        
             except Exception as e:
-                logging.error(f"Failed to load image {file_path}: {e}")
+                logger.error(f"Failed to load image {file_path}: {e}")
                 raise
             
             if image.ndim == 3:
@@ -390,25 +423,13 @@ class InferencePipeline:
             }
             
         except Exception as e:
-            logging.error(f"Failed to process {file_path}: {e}")
+            logger.error(f"Failed to process {file_path}: {e}")
             return {
                 'file_path': str(file_path),
                 'status': 'failed',
                 'error': str(e)
             }
 
-    
-    def _setup_logging(self) -> None:
-        """Set up logging configuration."""
-
-        from src.utils.logging_utils import setup_logging
-
-        log_level = self.log_config.get('level', 'INFO')
-        log_file = self.log_config.get('filename', 'inference.log')
-        log_file = self.output_manager.output_dir / log_file
-
-        setup_logging(log_level, log_file) # type: ignore
-            
     def get_model_info(self) -> Dict[str, Any]:
         """Get information about the loaded model."""
         return self.predictor.get_model_info()
@@ -431,6 +452,6 @@ class InferencePipeline:
         
         if not all_valid:
             issues = [k for k, v in validation.items() if not v and k != 'overall']
-            logging.warning(f"Pipeline validation failed. Issues: {issues}")
+            logger.warning(f"Pipeline validation failed. Issues: {issues}")
         
         return validation

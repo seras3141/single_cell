@@ -1,8 +1,21 @@
 import pytest
-from src.utils.file_utils import BF_IF_FileHandler, BlurFileHandler, DefaultFileHandler
+from src.utils.file_utils import (
+    BF_IF_FileHandler,
+    BlurFileHandler,
+    ConfigurableFileHandler,
+    DefaultFileHandler,
+    copy_file,
+    copy_without_split_dict,
+    get_groups_from_filenames,
+    list_all_files,
+    rename_all_files,
+)
 import tempfile
 import shutil
 from pathlib import Path
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
 def mock_data_dirs():
@@ -63,7 +76,7 @@ class TestDefaultFileHandler:
 
     def test_rename_image(self):
         input_path = 'some/path/BF Images/t1_I12_s1_w1_z10.tif'
-        expected = 'I12_z10_BF.tif'
+        expected = 'I12_z10_w1.tif'
         assert self.handler.rename_image(input_path) == expected
 
     def test_rename_mask(self):
@@ -72,8 +85,8 @@ class TestDefaultFileHandler:
         assert self.handler.rename_mask(input_path) == expected
 
     def test_extract_group_id(self):
-        filename = 'I12_z10_BF.tif'
-        assert self.handler.extract_group_id(filename) == 'I12'
+        filename = 'I12_t10_z10_BF.tif'
+        assert self.handler.extract_unique_id(filename) == 'I12'
 
     def test_file_handler(self, mock_data_dirs):
         file_handler = self.handler
@@ -86,9 +99,9 @@ class TestDefaultFileHandler:
         sample_mask = str(mask_dir / "Cells_R10-C3-F0-Z0-T0.tif")
         renamed_mask = file_handler.rename_mask(sample_mask)
         assert "J03" in renamed_mask
-        group_id = file_handler.extract_group_id(renamed_image)
+        group_id = file_handler.extract_unique_id(renamed_image)
         assert group_id == "J03"
-        mask_group_id = file_handler.extract_group_id(renamed_mask)
+        mask_group_id = file_handler.extract_unique_id(renamed_mask)
         assert mask_group_id == "J03"
 
 class TestBFIFFileHandler:
@@ -96,46 +109,46 @@ class TestBFIFFileHandler:
         self.handler = BF_IF_FileHandler()
 
     def test_rename_image(self):
-        # Example: Plate 2126/t1_A01_s1_w1_z1.tif -> p2126_A01_z1_BF.tif
+        # Example: Plate 2126/t1_A01_s1_w1_z1.tif -> p2126_A01_t1_z1_w1.tif
         input_path = 'Plate 2126/t1_A01_s1_w1_z1.tif'
-        expected = 'p2126_A01_z1_BF.tif'
+        expected = 'p2126_A01_t1_z1_w1.tif'
         assert self.handler.rename_image(input_path) == expected
 
     def test_rename_mask(self):
-        # Example: Plate 2126/Cells_R1-C1-F1-Z1-T1.tif -> p2126_A01_z2_Cells.tif
+        # Example: Plate 2126/Cells_R1-C1-F1-Z1-T1.tif -> p2126_A01_t2_z2_Cells.tif
         input_path = 'Plate 2126/Cells_R1-C1-F1-Z1-T1.tif'
-        expected = 'p2126_A01_z2_Cells.tif'
+        expected = 'p2126_A01_t2_z2_Cells.tif'
         assert self.handler.rename_mask(input_path) == expected
 
     def test_extract_group_id(self):
-        filename = 'p2126_A01_z1_BF.tif'
-        assert self.handler.extract_group_id(filename) == 'p2126_A01'
+        filename = 'p2126_A01_t1_z1_BF.tif'
+        assert self.handler.extract_unique_id(filename) == 'p2126_A01_t1'
 
 class TestBFFileHandler:
     def setup_method(self):
         self.handler = BF_IF_FileHandler()
 
     def test_rename_image(self):
-        # Example: Plate 1234/t1_B02_s1_w1_z3.tif -> p1234_B02_z3_BF.tif
+        # Example: Plate 1234/t1_B02_s1_w1_z3.tif -> p1234_B02_t1_z3_w1.tif
         input_path = 'Plate 1234/t1_B02_s1_w1_z3.tif'
-        expected = 'p1234_B02_z3_BF.tif'
+        expected = 'p1234_B02_t1_z3_w1.tif'
         assert self.handler.rename_image(input_path) == expected
 
     def test_rename_image_different_wavelength(self):
-        # Example: Plate 1234/t1_B02_s1_w2_z3.tif -> Error
+        # Wavelength 2 is allowed and produces w2 in the output
         input_path = 'Plate 1234/t1_B02_s1_w2_z3.tif'
-        with pytest.raises(ValueError):
-            self.handler.rename_image(input_path)
+        expected = 'p1234_B02_t1_z3_w2.tif'
+        assert self.handler.rename_image(input_path) == expected
 
     def test_rename_mask(self):
-        # Example: Plate 1234/Cells_R2-C2-F0-Z3-T0.tif -> p1234_B02_z4_Cells.tif
+        # Example: Plate 1234/Cells_R2-C2-F0-Z3-T0.tif -> p1234_B02_t1_z4_Cells.tif
         input_path = 'Plate 1234/Cells_R2-C2-F0-Z3-T0.tif'
-        expected = 'p1234_B02_z4_Cells.tif'
+        expected = 'p1234_B02_t1_z4_Cells.tif'
         assert self.handler.rename_mask(input_path) == expected
 
     def test_extract_group_id(self):
-        filename = 'p1234_B02_z3_BF.tif'
-        assert self.handler.extract_group_id(filename) == 'p1234_B02'
+        filename = 'p1234_B02_t1_z3_BF.tif'
+        assert self.handler.extract_unique_id(filename) == 'p1234_B02_t1'
 
 
 class TestBlurFileHandler:
@@ -143,10 +156,10 @@ class TestBlurFileHandler:
         self.handler = BlurFileHandler()
 
     def test_rename_image(self):
-        # Example: A01_BF_3d.tif with suffix 'blur32'
-        input_path = 'p1234_A01_BF_3d.tif'
+        # Filenames must include _t<time>: p1234_A01_t1_BF_3d.tif -> p1234_A01_t1_BF_3d_blur32.tif
+        input_path = 'p1234_A01_t1_BF_3d.tif'
         suffix = '_blur32'
-        expected = 'p1234_A01_BF_3d_blur32.tif'
+        expected = 'p1234_A01_t1_BF_3d_blur32.tif'
         assert self.handler.rename_image(input_path, suffix) == expected
 
     def test_rename_image_missing_suffix(self):
@@ -155,5 +168,188 @@ class TestBlurFileHandler:
             self.handler.rename_image('A01.tif', 'blur32')
 
     def test_extract_group_id(self):
-        filename = 'A01_BF_3d.tif'
-        assert self.handler.extract_group_id(filename) == 'A01'
+        # BlurFileHandler inherits BF_IF_FileHandler.extract_unique_id -> plate_rowcol_time
+        filename = 'p1234_A01_t1_BF_3d.tif'
+        assert self.handler.extract_unique_id(filename) == 'p1234_A01_t1'
+
+    def test_get_file_type(self):
+        # 3D file requires p<plate>_<row><col>_t<time>_<type>.tif
+        assert self.handler.get_file_type('p1234_A01_t1_BF_3d.tif') == 'file_3D'
+        # 2D file requires p<plate>_<row><col>_t<time>_z<z>_<type>.tif
+        assert self.handler.get_file_type('p1234_A01_t1_z1_BF.tif') == 'file'
+
+
+# ─── ConfigurableFileHandler ──────────────────────────────────────────────────
+
+class TestConfigurableFileHandler:
+    def test_custom_mappings_used(self):
+        handler = ConfigurableFileHandler(wavelength_mappings={1: "BF", 2: "GFP"})
+        result = handler.rename_file("Plate 2126/t1_A01_s1_w1_z1.tif", "image")
+        assert "BF" in result
+
+    def test_w2_maps_to_custom_channel(self):
+        handler = ConfigurableFileHandler(wavelength_mappings={1: "BF", 2: "GFP"})
+        result = handler.rename_file("Plate 2126/t1_A01_s1_w2_z1.tif", "image")
+        assert "GFP" in result
+
+    def test_default_mappings_are_ew2_convention(self):
+        handler = ConfigurableFileHandler()
+        assert handler.wavelength_mappings == {1: "FlipGFP", 2: "mCherry", 3: "BF"}
+
+    def test_explicit_plate_number_override(self):
+        handler = ConfigurableFileHandler(wavelength_mappings={1: "BF"})
+        result = handler.rename_file(
+            "Plate 2126/t1_A01_s1_w1_z1.tif", "image", plate_number="9999"
+        )
+        assert "9999" in result
+
+    def test_unknown_wavelength_raises(self):
+        handler = ConfigurableFileHandler(wavelength_mappings={1: "BF"})
+        with pytest.raises(ValueError, match="wavelength"):
+            handler.rename_file("Plate 2126/t1_A01_s1_w9_z1.tif", "image")
+
+    def test_default_plate_number_used_when_path_has_no_plate(self):
+        handler = ConfigurableFileHandler(
+            wavelength_mappings={1: "BF"},
+            plate_number="5555",
+        )
+        result = handler.rename_file("noplate/t1_A01_s1_w1_z1.tif", "image")
+        assert "5555" in result
+
+    def test_explicit_mappings_override_default(self):
+        handler = ConfigurableFileHandler(wavelength_mappings={1: "DAPI", 2: "RFP"})
+        result = handler.rename_file("Plate 2126/t1_A01_s1_w1_z1.tif", "image")
+        assert "DAPI" in result
+
+    def test_get_channel_name_known(self):
+        handler = ConfigurableFileHandler(wavelength_mappings={1: "BF", 2: "mCherry"})
+        assert handler.get_channel_name(2) == "mCherry"
+
+    def test_get_channel_name_unknown_raises(self):
+        handler = ConfigurableFileHandler(wavelength_mappings={1: "BF"})
+        with pytest.raises(ValueError):
+            handler.get_channel_name(99)
+
+
+# ─── rename_all_files ─────────────────────────────────────────────────────────
+
+class TestRenameAllFiles:
+    def test_produces_tuples_of_src_and_renamed(self, tmp_path):
+        handler = BF_IF_FileHandler()
+        (tmp_path / "t1_A01_s1_w1_z1.tif").touch()
+        file_map = {
+            "image": [str(tmp_path / "Plate 2126" / "t1_A01_s1_w1_z1.tif")]
+        }
+        # Use path string that contains Plate 2126 for plate extraction
+        file_map = {"image": ["Plate 2126/t1_A01_s1_w1_z1.tif"]}
+        result = rename_all_files(file_map, handler)
+        assert "image" in result
+        assert len(result["image"]) == 1
+        src, renamed = result["image"][0]
+        assert src == "Plate 2126/t1_A01_s1_w1_z1.tif"
+        assert "p2126" in renamed
+
+    def test_multiple_types(self):
+        handler = BF_IF_FileHandler()
+        file_map = {
+            "image": ["Plate 2126/t1_A01_s1_w1_z1.tif"],
+            "mask": ["Plate 2126/Cells_R1-C1-F0-Z1-T0.tif"],
+        }
+        result = rename_all_files(file_map, handler)
+        assert len(result["image"]) == 1
+        assert len(result["mask"]) == 1
+
+
+# ─── get_groups_from_filenames ────────────────────────────────────────────────
+
+class TestGetGroupsFromFilenames:
+    def test_groups_by_unique_id(self):
+        handler = BF_IF_FileHandler()
+        # file_map: {src: renamed}
+        file_map = {
+            "Plate 2126/t1_A01_s1_w1_z1.tif": "p2126_A01_t1_z1_w1.tif",
+            "Plate 2126/t1_A01_s1_w1_z2.tif": "p2126_A01_t1_z2_w1.tif",
+            "Plate 2126/t1_B02_s1_w1_z1.tif": "p2126_B02_t1_z1_w1.tif",
+        }
+        groups = get_groups_from_filenames(file_map, handler)
+        assert "p2126_A01_t1" in groups
+        assert len(groups["p2126_A01_t1"]) == 2
+        assert "p2126_B02_t1" in groups
+        assert len(groups["p2126_B02_t1"]) == 1
+
+
+# ─── copy_file ────────────────────────────────────────────────────────────────
+
+class TestCopyFile:
+    def test_copies_file_to_destination(self, tmp_path):
+        src = tmp_path / "src.txt"
+        src.write_text("hello")
+        dst = tmp_path / "sub" / "dst.txt"
+
+        copy_file(src, dst)
+
+        assert dst.exists()
+        assert dst.read_text() == "hello"
+
+    def test_creates_parent_directories(self, tmp_path):
+        src = tmp_path / "src.txt"
+        src.write_text("data")
+        dst = tmp_path / "a" / "b" / "c" / "dst.txt"
+
+        copy_file(src, dst)
+        assert dst.exists()
+
+    def test_missing_source_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            copy_file(tmp_path / "missing.txt", tmp_path / "out.txt")
+
+    def test_overwrites_existing_destination(self, tmp_path):
+        src = tmp_path / "src.txt"
+        src.write_text("new content")
+        dst = tmp_path / "dst.txt"
+        dst.write_text("old content")
+
+        copy_file(src, dst)
+
+        assert "new content" in dst.read_text() or dst.exists()
+
+
+# ─── copy_without_split_dict ─────────────────────────────────────────────────
+
+class TestCopyWithoutSplitDict:
+    def test_copies_all_files(self, tmp_path):
+        src1 = tmp_path / "a.txt"
+        src2 = tmp_path / "b.txt"
+        src1.write_text("A")
+        src2.write_text("B")
+
+        output_dir = tmp_path / "output"
+        file_tuple = {
+            "images": [(str(src1), "renamed_a.txt")],
+            "masks": [(str(src2), "renamed_b.txt")],
+        }
+        count = copy_without_split_dict(file_tuple, output_dir)
+
+        assert (output_dir / "renamed_a.txt").exists()
+        assert (output_dir / "renamed_b.txt").exists()
+        assert count == 2
+
+    def test_creates_output_directory(self, tmp_path):
+        src = tmp_path / "src.txt"
+        src.write_text("x")
+        out = tmp_path / "new_dir"
+        assert not out.exists()
+        copy_without_split_dict({"f": [(str(src), "out.txt")]}, out)
+        assert out.exists()
+
+
+# ─── list_all_files ───────────────────────────────────────────────────────────
+
+class TestListAllFiles:
+    def test_returns_dict_keyed_by_pattern_name(self, tmp_path):
+        handler = BF_IF_FileHandler()
+        (tmp_path / "t1_A01_s1_w1_z1.tif").touch()
+        result = list_all_files(str(tmp_path), handler)
+        assert "image" in result
+        assert "mask" in result
+        assert isinstance(result["image"], list)

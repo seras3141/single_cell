@@ -42,6 +42,10 @@ def measure_patchwise_blur(
         If center_values=True, output size matches input size.
         If center_values=False, output size is reduced based on patch/stride sizes.
     """
+
+    # This function will be removed in the future and replaced with measure_patchwise_blur_fast, which is more efficient.
+    logger.info("Warning: measure_patchwise_blur is deprecated and will be removed in the future. Please use measure_patchwise_blur_fast instead for better performance.")
+
     if isinstance(patch_size, int):
         patch_size = (patch_size, patch_size)
     if isinstance(stride_size, int):
@@ -120,9 +124,6 @@ def measure_patchwise_blur_fast(
         img: 2D grayscale image array.
         patch_size: (height, width) or int, window size for local variance.
         stride_size: (height, width) or int, stride for sampling blur values.
-        center_values: 
-            If True, output is same size as input (values centered per pixel).
-            If False, output is subsampled according to stride.
 
     Returns:
         2D numpy array of Laplacian variance (blur map).
@@ -132,25 +133,21 @@ def measure_patchwise_blur_fast(
 
     H, W = img.shape
 
-    # --- Step 1: Compute Laplacian once ---
-    lap = laplace(img)
+    # Compute Laplacian globally
+    lap = laplace(img.astype(np.float64))
 
-    # --- Step 2: Compute local mean and variance via uniform filters ---
+    # Compute local variance: Var(X) = E[X²] - E[X]²
     mean = uniform_filter(lap, size=patch_size, mode='reflect')
     mean_sq = uniform_filter(lap**2, size=patch_size, mode='reflect')
-    var_map = mean_sq - mean**2  # local variance
+    var_map = np.maximum(mean_sq - mean**2, 0)  # clamp negatives from float error
 
-
-
-    # # --- Step 3: Handle centering & stride sampling ---
-    #     # If stride > 1 but we want to preserve full resolution, 
-    #     # you can still stride-smooth to reduce redundancy:
-    #     if stride_size > 1:
-    #         out = uniform_filter(var_map, size=stride_size, mode='reflect')
-    #     else:
-    #         out = var_map
-
-    out = var_map[::stride_size, ::stride_size]
+    # Subsample at stride intervals, centered like the slow version
+    if stride_size > 1:
+        out = var_map[::stride_size, ::stride_size]
+        # half = patch_size // 2
+        # out = var_map[half::stride_size, half::stride_size]
+    else:
+        out = var_map
 
     return out
 
@@ -302,27 +299,27 @@ def measure_blur_heatmap(
         # Process each slice and stack results in parallel using joblib.Parallel
         n_jobs = kwargs.get('n_jobs', -1)  # Use all available cores by default
 
-        def process_slice(z):
-            return measure_patchwise_blur(
+        def process_slice(z) -> np.ndarray:
+            return measure_patchwise_blur_fast(
             img[z], 
             patch_size=patch_size, 
             stride_size=stride_size,
-            center_values=center_values
+            # center_values=center_values
             )
 
         slices = Parallel(n_jobs=n_jobs)(
             delayed(process_slice)(z) for z in range(img.shape[0])
         )
         # Stack results to create a 3D blur heatmap
-        blur_heatmap = np.stack(slices)
+        blur_heatmap = np.stack(slices) # type: ignore
     else:
         assert img.ndim == 2 and not normalize, "Only 3D images (z-stacks) can be processed with normalization"
         # Process single 2D image
-        blur_heatmap = measure_patchwise_blur(
+        blur_heatmap = measure_patchwise_blur_fast(
             img,
             patch_size=patch_size,
             stride_size=stride_size,
-            center_values=center_values
+            # center_values=center_values
         )
     
     # Normalize if requested and for multi-dimensional data
@@ -350,6 +347,7 @@ def measure_blur_heatmap(
 
 def load_blur_heatmap(blur_path: Union[str, Path]) -> np.ndarray:
     """Load a blur heatmap from disk."""
+    # TODO: support zarr/h5 blur cache formats (currently tif only)
     blur_path = Path(blur_path)
     if not blur_path.exists():
         raise FileNotFoundError(f"Blur heatmap file not found: {blur_path}")
@@ -357,6 +355,38 @@ def load_blur_heatmap(blur_path: Union[str, Path]) -> np.ndarray:
         blur_map = tiff.imread(blur_path).astype(np.float32)
     except Exception as e:
         raise Warning(f"Failed to load cached blur map {blur_path}: {e}")
+
+    return blur_map
+
+def generate_blur_heatmap(
+    image_path: str | Path,
+    blur_path: str | Path | None = None,
+    patch_size: int = 32,
+    stride_size: int = 8,
+    normalize: bool = True,
+    center_values: bool = True
+) -> np.ndarray:
+    """Generate a blur heatmap for a single image and save it."""
+    image_path = Path(image_path)
+    image = load_image(image_path)
+
+    blur_map = measure_blur_heatmap(
+        image,
+        patch_size=patch_size,
+        stride_size=stride_size,
+        normalize=normalize,
+        center_values=center_values,
+    )
+
+    if blur_path is not None:
+        try:
+            blur_cache_dir = Path(blur_path).parent
+            blur_cache_dir.mkdir(parents=True, exist_ok=True)
+            # TODO: support zarr/h5 blur cache formats (currently tif only)
+            tiff.imwrite(str(blur_path), blur_map.astype(np.float32))
+
+        except Exception as e:
+            raise Warning(f"Failed to save blur map to cache: {e}")
 
     return blur_map
         
@@ -368,7 +398,8 @@ def get_or_compute_blur_heatmap(
     normalize: bool = True,
     center_values: bool = True,
 ) -> np.ndarray:
-    """    Get or compute a blur heatmap for an image.
+    """
+    Read or compute a blur heatmap for an image.
     Args:
         image_path: Path to the input image file
         blur_path: Optional path to save or load the blur heatmap
@@ -383,29 +414,16 @@ def get_or_compute_blur_heatmap(
     if blur_path is not None and Path(blur_path).exists():
         blur_map = load_blur_heatmap(blur_path)
         logger.debug(f"Loaded cached blur heatmap from {blur_path}")
-
     else:
-        image_path = Path(image_path)
-        image = load_image(image_path)
-
-        blur_map = measure_blur_heatmap(
-            image,
+        blur_map = generate_blur_heatmap(
+            image_path,
+            blur_path,
             patch_size=patch_size,
             stride_size=stride_size,
             normalize=normalize,
             center_values=center_values,
         )
-
-        if blur_path is not None:
-            try:
-                blur_cache_dir = Path(blur_path).parent
-                blur_cache_dir.mkdir(parents=True, exist_ok=True)
-                tiff.imwrite(str(blur_path), blur_map.astype(np.float32))
-
-            except Exception as e:
-                raise Warning(f"Failed to save blur map to cache: {e}")
-
-        logger.debug(f"Blur heatmap for {image_path.name} computed with shape {blur_map.shape}")
+        logger.debug(f"Blur heatmap for {Path(image_path).name} computed with shape {blur_map.shape}")
 
     return blur_map
 

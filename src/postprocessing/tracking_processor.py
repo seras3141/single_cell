@@ -11,10 +11,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
 import numpy as np
 import pandas as pd
-import tifffile as tiff
 from tqdm import tqdm
 import json
 import time
+from joblib import Parallel, delayed
+
+from src.utils.image_utils import LABEL_FORMATS, save_labels, load_labels
 
 from .cell_tracking import CellTracker3D
 from .blur_filtering import BlurFilter, blur_intensity_metric
@@ -92,7 +94,7 @@ class CellTrackingPipeline:
                            filename_prefix: Optional[str] = None) -> Dict[str, Any]:
         """ Process a single segmentation file with its corresponding image file.
         Args:
-            segmentation_path: Path to the segmentation file (TIFF format)
+            segmentation_path: Path to the segmentation file (tif, zarr, or h5)
             image_path: Path to the corresponding image file (TIFF format)
             output_dir: Directory to save the output results
             blur_cache_dir: Optional directory to read or cache blur heatmaps
@@ -109,7 +111,7 @@ class CellTrackingPipeline:
 
         if output_manager is None:
             assert output_dir is not None, "output_dir must be provided if output_manager is not set"
-            output_manager = TrackingOutputManager(output_dir)
+            output_manager = TrackingOutputManager(output_dir, overwrite=self.config.overwrite_existing)
 
         if filename_prefix is None:
             filename_prefix = segmentation_path.stem
@@ -117,7 +119,7 @@ class CellTrackingPipeline:
 
         # Time: Loading segmentation
         step_start = time.time()
-        segmentation_stack = tiff.imread(str(segmentation_path)).astype(np.uint16)
+        segmentation_stack = load_labels(segmentation_path).astype(np.uint16)
         if not segmentation_stack.ndim == 3:
             raise ValueError(f"Segmentation file {segmentation_path} is not a 3D stack.")
         timing_results['load_segmentation'] = time.time() - step_start
@@ -194,7 +196,7 @@ class CellTrackingPipeline:
         # Total time
         total_time = time.time() - start_time
         timing_results['total'] = total_time
-        results['timing'] = timing_results
+        # results['timing'] = timing_results
         
         self.logger.info(f"Total processing time: {total_time:.2f}s")
         self.logger.info(f"Timing breakdown: {json.dumps(timing_results, indent=2)}")
@@ -213,7 +215,7 @@ class CellTrackingPipeline:
             filename_prefix: Optional[str] = None) -> Dict[str, Any]:
         """ Process a single segmentation file with its corresponding image file.
         Args:
-            segmentation_path: Path to the segmentation file (TIFF format)
+            segmentation_path: Path to the segmentation file (tif, zarr, or h5)
             image_path: Path to the corresponding image file (TIFF format)
             output_dir: Directory to save the output results
             blur_cache_dir: Optional directory to read or cache blur heatmaps
@@ -230,7 +232,7 @@ class CellTrackingPipeline:
 
         if output_manager is None:
             assert output_dir is not None, "output_dir must be provided if output_manager is not set"
-            output_manager = TrackingOutputManager(output_dir)
+            output_manager = TrackingOutputManager(output_dir, overwrite=self.config.overwrite_existing)
 
         if filename_prefix is None:
             filename_prefix = segmentation_path.stem
@@ -238,7 +240,7 @@ class CellTrackingPipeline:
 
         # Time: Loading segmentation
         t0 = time.time()
-        segmentation_stack = tiff.imread(str(segmentation_path)).astype(np.uint16)
+        segmentation_stack = load_labels(segmentation_path).astype(np.uint16)
         if not segmentation_stack.ndim == 3:
             raise ValueError(f"Segmentation file {segmentation_path} is not a 3D stack.")
         timing_results['load_segmentation'] = time.time() - t0
@@ -299,12 +301,41 @@ class CellTrackingPipeline:
         # Total time
         total_time = time.time() - start_time
         timing_results['total'] = total_time
-        results['timing'] = timing_results
+        # results['timing'] = timing_results
         
         self.logger.info(f"Total processing time: {total_time:.2f}s")
         self.logger.info(f"Timing breakdown: {json.dumps(timing_results, indent=2)}")
 
         return results
+
+    def _process_single_wrapper(
+        self,
+        seg_file: Path,
+        image_dir: Path,
+        mask_suffix: str,
+        image_suffix: str,
+        blur_cache_dir: Optional[Path],
+        output_manager: "TrackingOutputManager",
+    ) -> Optional[Dict[str, Any]]:
+        """Error-handling wrapper around process_single_file_opt for parallel execution."""
+        filename_prefix = seg_file.stem
+        if output_manager.final_exists(filename_prefix) and not output_manager.overwrite:
+            self.logger.info(f"Skipping {seg_file.name} — final output already exists")
+            return {'input_segmentation': str(seg_file), 'skipped': True}
+
+        image_file = self._get_candidate_image_for_segmentation(seg_file, image_dir, mask_suffix, image_suffix)
+        if image_file is None:
+            return None
+        try:
+            return self.process_single_file_opt(
+                seg_file, image_file,
+                segmentation_suffix=mask_suffix,
+                blur_cache_dir=blur_cache_dir,
+                output_manager=output_manager,
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to process {seg_file.name}: {e}")
+            return {'input_segmentation': str(seg_file), 'error': str(e)}
 
     def process_batch(
         self,
@@ -314,6 +345,7 @@ class CellTrackingPipeline:
         blur_cache_dir: Optional[Union[str, Path]] = None,
         image_pattern: Optional[str] = None,
         mask_pattern: Optional[str] = None,
+        n_jobs: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """ Process a batch of segmentation files with their corresponding image files.
         Args:
@@ -327,7 +359,7 @@ class CellTrackingPipeline:
         image_dir = Path(image_dir)
         mask_dir = Path(mask_dir)
 
-        output_manager = TrackingOutputManager(output_dir)
+        output_manager = TrackingOutputManager(output_dir, overwrite=self.config.overwrite_existing)
 
         image_pattern = image_pattern or self.config.image_pattern
         mask_pattern = mask_pattern or self.config.mask_pattern
@@ -339,20 +371,24 @@ class CellTrackingPipeline:
         if not seg_files:
             self.logger.warning(f"No segmentation files found in {mask_dir} with suffix {mask_suffix}")
             return []
-        
-        results = []
-        for seg_file in tqdm(seg_files, desc="Processing files"):
 
-            image_file = self._get_candidate_image_for_segmentation(seg_file, image_dir, mask_suffix, image_suffix)
-            if image_file is None:
-                continue
+        # Patched up code for slurm parallel execution 
+        # TODO : will be refactored in the future when we have a more robust file handling system in place
+        if n_jobs is None:
+            n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1))
+        self.logger.info(f"Processing {len(seg_files)} files with {n_jobs} workers")
 
-            try:
-                result = self.process_single_file_opt(seg_file, image_file, segmentation_suffix=mask_suffix, blur_cache_dir=blur_cache_dir, output_manager=output_manager)
-                results.append(result)
-            except Exception as e:
-                self.logger.error(f"Failed to process {seg_file.name}: {e}")
-                results.append({'input_segmentation': str(seg_file), 'error': str(e)})
+        blur_cache_path = Path(blur_cache_dir) if blur_cache_dir else None
+
+        raw_results = Parallel(n_jobs=n_jobs, backend='loky')(
+            delayed(self._process_single_wrapper)(
+                seg_file, image_dir, mask_suffix, image_suffix,
+                blur_cache_path, output_manager,
+            )
+            for seg_file in tqdm(seg_files, desc="Processing files")
+        )
+
+        results = [r for r in raw_results if r is not None]
 
         # Save batch summary as JSON
         output_manager.save_batch_summary(results)
@@ -360,7 +396,21 @@ class CellTrackingPipeline:
 
 class TrackingOutputManager:
     """Handles saving of intermediate and final outputs for cell tracking pipeline."""
-    def __init__(self, output_dir: Union[str, Path]):
+
+    def __init__(self, output_dir: Union[str, Path], label_format: str = "zarr", overwrite: bool = False):
+        """
+        Args:
+            output_dir: Root directory for all tracking outputs.
+            label_format: Format for saving segmentation labels. One of
+                ``"tif"``, ``"zarr"`` (default), or ``"hdf5"``.
+            overwrite: If False (default), skip files whose final output already exists.
+        """
+        if label_format not in LABEL_FORMATS:
+            raise ValueError(f"label_format must be one of {list(LABEL_FORMATS)}; got {label_format!r}")
+        self.label_format = label_format
+        self._label_ext = LABEL_FORMATS[label_format]
+        self.overwrite = overwrite
+
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.subdirs = {
@@ -373,25 +423,29 @@ class TrackingOutputManager:
         for subdir in self.subdirs.values():
             subdir.mkdir(parents=True, exist_ok=True)
 
-    def save_blur_filtered(self, arr: np.ndarray, filename_prefix: str):
-        path = self.subdirs['blur_filtered'] / f"{filename_prefix}.tif"
-        tiff.imwrite(str(path), arr)
+    def _save(self, arr: np.ndarray, path: Path) -> str:
+        save_labels(arr, path)
         return str(path)
+
+    def save_blur_filtered(self, arr: np.ndarray, filename_prefix: str):
+        path = self.subdirs['blur_filtered'] / f"{filename_prefix}{self._label_ext}"
+        return self._save(arr, path)
 
     def save_tracked(self, arr: np.ndarray, filename_prefix: str):
-        path = self.subdirs['tracked'] / f"{filename_prefix}.tif"
-        tiff.imwrite(str(path), arr)
-        return str(path)
+        path = self.subdirs['tracked'] / f"{filename_prefix}{self._label_ext}"
+        return self._save(arr, path)
 
     def save_tracked_blur_filtered(self, arr: np.ndarray, filename_prefix: str):
-        path = self.subdirs['tracked_blur_filtered'] / f"{filename_prefix}.tif"
-        tiff.imwrite(str(path), arr)
-        return str(path)
+        path = self.subdirs['tracked_blur_filtered'] / f"{filename_prefix}{self._label_ext}"
+        return self._save(arr, path)
+
+    def final_exists(self, filename_prefix: str) -> bool:
+        path = self.subdirs['final'] / f"{filename_prefix}{self._label_ext}"
+        return path.exists()
 
     def save_final(self, arr: np.ndarray, filename_prefix: str):
-        path = self.subdirs['final'] / f"{filename_prefix}.tif"
-        tiff.imwrite(str(path), arr)
-        return str(path)
+        path = self.subdirs['final'] / f"{filename_prefix}{self._label_ext}"
+        return self._save(arr, path)
 
     def save_batch_summary(self, results: list, filename: str = "batch_summary.json"):
         summary_path = self.output_dir / filename

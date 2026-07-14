@@ -37,6 +37,17 @@ class PreprocessingConfig:
     split_by_group: bool = True
     split_folder: str = "split_data"
     out_3d_folder: str = "3d_images"  # Directory for 3D images
+    # File handler options
+    wavelength_mappings: Any = None  # Per-experiment override. Use EXPERIMENT_WAVELENGTH_MAPPINGS[experiment_name] from file_utils.py. Ew2: {1:"FlipGFP",2:"mCherry",3:"BF"}; HD/SA: {1:"BF",2:"mCherry",3:"FlipGFP"}.
+    plate_number: Optional[str] = None  # Default plate number; overrides auto-detection from filepath
+    # Z-range filtering for 2D-to-3D combination
+    z_min: Optional[int] = 1  # Skip z-indices below this value (z0 is typically the 2D projection)
+    z_max: Optional[int] = None  # Skip z-indices above this value (None = no upper limit)
+    # Skip stages
+    skip_split: bool = False
+    skip_3d: bool = False
+    skip_blur: bool = False
+    overwrite: bool = False
 
 
 @dataclass
@@ -74,6 +85,8 @@ class InferenceConfig:
     process_z_stacks: bool = False  # Whether to process Z-stacks
     save_overlays: bool = True  # Whether to save overlay images
     save_metadata: bool = True  # Whether to save JSON metadata for predictions
+    label_format: str = "zarr"  # Segmentation label format: tif, zarr, or hdf5
+    overwrite: bool = False
 
 @dataclass
 class SegmentationConfig:
@@ -151,7 +164,7 @@ class PostprocessingConfig:
     enable_blur_filtering: bool = True
     filter_before_tracking: bool = True
     save_intermediate_results: bool = False
-    mask_pattern: str = "*_masks_3d.tif"
+    mask_pattern: str = "*_mask_3d.tif"
     image_pattern: str = "*_BF_3d.tif"
     blur_heatmap_suffix: str = "_blur_heatmap"
     output_suffix: str = "_tracked"
@@ -170,6 +183,17 @@ class RadiomicsConfig:
     interpolator: str = "sitkLinear"
     resampledPixelSpacing: Optional[List[float]] = None
     padDistance: int = 10
+
+
+@dataclass
+class ScportraitConfig:
+    """scPortrait deep-learning feature extraction configuration."""
+    project_location: str = "tmp/scportrait_projects"
+    config_path: str = "src/feature_extraction/scportrait_project/config.yml"
+    channel_names: List[str] = field(default_factory=lambda: ["brightfield", "brightfield_ch1"])
+    overwrite: bool = True
+    debug: bool = False
+    save_plots: bool = True
 
 
 @dataclass
@@ -198,13 +222,14 @@ class FeatureExtractionConfig:
     n_jobs: int = -1  # Use all available cores (or set to 0)
 
     method: str = "incarta"
+    image_pattern: str = "*_BF.tif"
+    mask_pattern: str = "*_pred_mask.tif"
             
     preprocessing: Dict[str, Any] = field(default_factory=lambda: {
         "normalize_intensity": True,
         "clip_percentiles": [1, 99]
     })
     output: Dict[str, Any] = field(default_factory=lambda: {
-        "folder_name": "features",  # Subdirectory for features
         "save_individual_files": True,
         "save_combined_file": True,
         "include_metadata": True,
@@ -212,6 +237,8 @@ class FeatureExtractionConfig:
         "combined_filename": "all_features.csv",
         "create_subdirs": True,
     })
+
+    scportrait: ScportraitConfig = field(default_factory=ScportraitConfig)
 
 
 # =============================================================================
@@ -282,7 +309,7 @@ class VisualizationConfig:
     # Interactive plotting (plotly, bokeh, etc.)
     interactive: Dict[str, Any] = field(default_factory=lambda: {
         "enabled": False,
-        "hover_data": ["instance_id", "z_stack", "sample_id"],
+        "hover_data": ["cell_id", "z_index", "z_stack", "sample_id"],
         "plot_width": 800,
         "plot_height": 600
     })
@@ -301,7 +328,8 @@ class VisualizationConfig:
         ],
         # Features to exclude from dimensionality reduction
         "exclude_from_reduction": [
-            "instance_id", "filename", "image_path", "sample_id",
+            "cell_id", "scportrait_cell_id", "instance_id", "filename",
+            "image_path", "sample_id", "timepoint", "z_index",
             "z_stack", "sample_z_id", "centroid_x", "centroid_y",
             "center_of_mass_x", "center_of_mass_y",
         ]
@@ -355,7 +383,7 @@ class DimensionalityReductionConfig:
     # Interactive plotting
     interactive: Dict[str, Any] = field(default_factory=lambda: {
         "enabled": False,
-        "hover_data": ["instance_id", "z_stack", "sample_id"],
+        "hover_data": ["cell_id", "z_index", "z_stack", "sample_id"],
         "plot_width": 800,
         "plot_height": 600
     })
@@ -378,10 +406,14 @@ class DimensionalityReductionConfig:
         ],
         # Features to exclude from dimensionality reduction
         "exclude_from_reduction": [
+            "cell_id",
+            "scportrait_cell_id",
             "instance_id",
             "filename",
             "image_path",
             "sample_id",
+            "timepoint",
+            "z_index",
             "z_stack",
             "sample_z_id",
             "centroid_x",
@@ -479,6 +511,6 @@ def validate_pipeline_config(config: PipelineConfig) -> None:
         raise ValueError("Blur threshold should typically be between 0 and 1")
     
     # Feature extraction validation
-    valid_methods = ['incarta', 'regionprops', 'pyradiomics']
+    valid_methods = ['incarta', 'regionprops', 'pyradiomics', 'scportrait']
     if config.feature_extraction.method not in valid_methods:
         raise ValueError(f"Feature extraction method must be one of {valid_methods}, got '{config.feature_extraction.method}'")

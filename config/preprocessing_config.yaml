@@ -12,7 +12,21 @@ preprocessing:
   random_state: 42
   split_by_group: true
   split_folder: "split_data"
-  out_3d_folder: "3d_data"  
+  out_3d_folder: "3d_data"
+
+  # Wavelength-to-channel mappings differ by experiment — set the correct one here or via --experiment-name CLI.
+  # Ew2-1, Ew2-2:          {1: FlipGFP, 2: mCherry, 3: BF}
+  # HD1509, HD1883, SA110: {1: BF,      2: mCherry, 3: FlipGFP}
+  # Leave null to use the default (Ew2 convention).
+  wavelength_mappings:
+
+  # Optional: default plate number for file renaming (overrides auto-detection from filepath)
+  # plate_number: "2126"
+
+  # Z-range for 2D-to-3D combination
+  # z0 is the 2D projection and is skipped by default (z_min: 1)
+  z_min: 1       # first z-slice to include (inclusive)
+  # z_max: 20   # last z-slice to include (inclusive); omit for no upper limit
   
 # Image quality assessment
 quality:

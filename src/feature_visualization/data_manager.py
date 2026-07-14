@@ -50,10 +50,11 @@ class FeatureDataManager(BaseDataManager):
         # 'asm', 'angular_second_moment'
     ]
     
-    # Columns to exclude from feature analysis
+    # Columns to exclude from feature analysis (see src/utils/feature_list.py).
     METADATA_COLUMNS = [
-        'instance_id', 'filename', 'image_path', 'image_filename', 'mask_filename',
-        'sample_id', 'z_stack', 'sample_z_id', 'processing_timestamp',
+        'cell_id', 'scportrait_cell_id', 'instance_id', 'filename', 'image_path',
+        'image_filename', 'mask_filename', 'sample_id', 'timepoint', 'z_index',
+        'z_stack', 'sample_z_id', 'processing_timestamp',
         'feature_extraction_version', 'dataset_name'
     ]
     

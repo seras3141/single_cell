@@ -8,13 +8,14 @@ in a dataset, which can be used for quality assessment and filtering during anal
 import os
 import logging
 from pathlib import Path
+import traceback
 from typing import Union, List, Optional, Dict, Tuple
 from glob import glob
 from tqdm import tqdm
 import numpy as np
 
 
-from src.utils.blur_measure import get_or_compute_blur_heatmap
+from src.utils.blur_measure import generate_blur_heatmap
 from src.utils.file_utils import BlurFileHandler
 from src.utils.logging_utils import setup_logging
 
@@ -87,8 +88,8 @@ def generate_blur_heatmap_batch(
                 results[str(img_path)] = str(output_path)
                 continue
             
-            # Generate blur heatmap
-            blur_heatmap = get_or_compute_blur_heatmap(
+            # Generate blur heatmap and save it
+            _ = generate_blur_heatmap(
                 img_path,
                 blur_path=output_path,
                 patch_size=patch_size,
@@ -101,7 +102,8 @@ def generate_blur_heatmap_batch(
             logger.debug(f"Generated blur heatmap for {img_path.name}")
             
         except Exception as e:
-            logger.error(f"Failed to process {img_path}: {e}")
+            logger.error(f"Failed to process {img_path}: {e}", exc_info=True)
+            print(traceback.format_exc())
             failed_files.append(str(img_path))
     
     # Log summary
