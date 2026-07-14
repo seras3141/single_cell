@@ -51,7 +51,7 @@ segmentation:
     invert: false
     gpu: true
   inference:
-    dataset_name: "test"  # Subfolder within input_dir
+    dataset_name: ""  # Subfolder within input_dir (empty = flat split_data, matches production/inference_config.yaml)
     results_folder: "inference"  # Subfolder within output_dir
     file_pattern: "*_BF.tif"  # Glob pattern for selecting image files
     process_z_stacks: false  # Whether to process Z-stacks

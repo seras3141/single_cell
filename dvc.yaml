@@ -56,7 +56,7 @@ stages:
       - config/config.yaml:
           - segmentation
     outs:
-      - ${paths.output_dir}/${segmentation.inference.results_folder}/${segmentation.cellpose.model_type}/${segmentation.inference.dataset_name}:
+      - ${paths.output_dir}/${segmentation.inference.results_folder}/${segmentation.cellpose.model_type}:
           cache: false
 
   track:
@@ -64,13 +64,13 @@ stages:
       python scripts/run_postprocessing.py
       --config config/config.yaml
       --image-dir "${paths.output_dir}/${preprocessing.out_3d_folder}"
-      --mask-dir "${paths.output_dir}/${segmentation.inference.results_folder}/${segmentation.cellpose.model_type}/${segmentation.inference.dataset_name}/masks_3d"
+      --mask-dir "${paths.output_dir}/${segmentation.inference.results_folder}/${segmentation.cellpose.model_type}/masks_3d"
       --blur-dir "${paths.output_dir}/blur_heatmaps"
-      --output-dir "${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}/${segmentation.inference.dataset_name}"
+      --output-dir "${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}"
       --run-dir "${paths.output_dir}"
     deps:
       - ${paths.output_dir}/${preprocessing.out_3d_folder}
-      - ${paths.output_dir}/${segmentation.inference.results_folder}/${segmentation.cellpose.model_type}/${segmentation.inference.dataset_name}/masks_3d
+      - ${paths.output_dir}/${segmentation.inference.results_folder}/${segmentation.cellpose.model_type}/masks_3d
       - ${paths.output_dir}/blur_heatmaps
       - scripts/run_postprocessing.py
       - src/postprocessing
@@ -78,7 +78,7 @@ stages:
       - config/config.yaml:
           - postprocessing
     outs:
-      - ${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}/${segmentation.inference.dataset_name}:
+      - ${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}:
           cache: false
 
   # extract: reads inference_tracked/.../final_2d, writes features to a SEPARATE
@@ -91,13 +91,13 @@ stages:
       python scripts/run_feature_extraction.py
       --config config/config.yaml
       --image-dir "${paths.output_dir}/${preprocessing.split_folder}"
-      --mask-dir "${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}/${segmentation.inference.dataset_name}/final_2d"
-      --output-dir "${paths.output_dir}/features/${segmentation.cellpose.model_type}/${segmentation.inference.dataset_name}"
+      --mask-dir "${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}/final_2d"
+      --output-dir "${paths.output_dir}/features/${segmentation.cellpose.model_type}"
     deps:
       - ${paths.output_dir}/${preprocessing.split_folder}
-      - ${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}/${segmentation.inference.dataset_name}/final_2d
+      - ${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}/final_2d
       - scripts/run_feature_extraction.py
       - src/feature_extraction
     outs:
-      - ${paths.output_dir}/features/${segmentation.cellpose.model_type}/${segmentation.inference.dataset_name}:
+      - ${paths.output_dir}/features/${segmentation.cellpose.model_type}:
           cache: false
