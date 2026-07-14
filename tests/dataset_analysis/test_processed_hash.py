@@ -51,6 +51,25 @@ def test_hash_folder_real_dir(tmp_path):
     assert hash_folder(tmp_path, jobs=2)["folder_md5"] != before
 
 
+def test_hash_folder_empty_dir_no_spurious_line(tmp_path):
+    """A folder with zero regular files must hash as empty (no spurious xargs md5sum line)."""
+    (tmp_path / "empty").mkdir()
+    res = hash_folder(tmp_path / "empty", jobs=2)
+    assert res is not None
+    assert res["nfiles"] == 0 and res["n_symlinks"] == 0 and res["total_bytes"] == 0
+    assert res["folder_md5"] == aggregate_hash([])  # deterministic empty-folder hash
+
+
+def test_hash_folder_symlink_only_dir(tmp_path):
+    """A symlink-only dir (no regular file) counts symlinks only — no spurious file entry."""
+    (tmp_path / "raw.tif").write_bytes(b"x")
+    d = tmp_path / "links"
+    d.mkdir()
+    (d / "a.tif").symlink_to(tmp_path / "raw.tif")
+    res = hash_folder(d, jobs=2)
+    assert res["nfiles"] == 1 and res["n_symlinks"] == 1  # 1 symlink, 0 real files
+
+
 def test_hash_folder_symlinks_by_target(tmp_path):
     """split_data-style symlink trees: hashed by target path (selection), not target bytes."""
     target_dir = tmp_path / "raw"

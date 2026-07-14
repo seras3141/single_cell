@@ -80,7 +80,10 @@ def hash_folder(path: Path, jobs: int = 8) -> Optional[Dict[str, object]]:
         stdout=subprocess.PIPE,
     )
     md5 = subprocess.run(
-        ["xargs", "-0", "-P", str(jobs), "-n", "64", "md5sum"],
+        # -r/--no-run-if-empty: with zero regular files, `find` emits nothing and without
+        # this xargs would still run `md5sum` once on empty stdin, emitting a spurious
+        # "d41d8cd98f00b204e9800998ecf8427e  -" line (bogus nfiles=1 / folder hash).
+        ["xargs", "-0", "-r", "-P", str(jobs), "-n", "64", "md5sum"],
         cwd=str(path),
         stdin=find.stdout,
         capture_output=True,

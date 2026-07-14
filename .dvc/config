@@ -3,7 +3,5 @@
 [core]
     autostage = false
     remote = store
-['remote "desy"']
-    url = webdavs://syncandshare.desy.de/remote.php/dav/files/serena.sritharan@helmholtz-munich.de/Single Cell/dvc-store
 ['remote "store"']
     url = /ictstr01/groups/aiconsultants/datasets/single_cell_drug_response/dvc-store
