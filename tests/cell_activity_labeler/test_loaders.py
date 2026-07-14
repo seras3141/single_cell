@@ -48,8 +48,8 @@ def test_legacy_id_columns_rejected(legacy_column):
     df = _base_frame(legacy_column)
     with pytest.raises(ValueError, match="cell_id"):
         loaders.validate_metrics_input_dataframe(df)
-    # error also points at the migration script
-    with pytest.raises(ValueError, match="migrate_label_id_to_cell_id"):
+    # legacy id columns are no longer supported and are rejected
+    with pytest.raises(ValueError, match="no longer supported"):
         loaders.normalize_metrics_dataframe(df)
 
 
