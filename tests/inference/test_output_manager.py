@@ -216,6 +216,36 @@ class TestOutputManagerInit:
         assert manager.pred_mask_suffix == "_masks"
 
 
+class TestExpectedMaskPath:
+    @pytest.mark.parametrize("fmt,ext", FORMAT_CASES)
+    def test_matches_save_prediction_output(self, temp_output_dir, masks_2d, fmt, ext):
+        manager = OutputManager(
+            base_output_dir=temp_output_dir,
+            model_name="model",
+            dataset_name=f"ds_{fmt}",
+            label_format=fmt,
+        )
+        input_path = Path("p2126_A01_t1_z1_BF.tif")
+        result = manager.save_prediction(
+            masks=masks_2d,
+            metadata={"num_cells": 10, "parameters": {}},
+            input_path=input_path,
+            save_overlay=False,
+        )
+        assert manager.expected_mask_path(input_path) == result["masks"]
+
+    def test_respects_custom_pred_mask_suffix(self, temp_output_dir):
+        manager = OutputManager(temp_output_dir, pred_mask_suffix="_masks")
+        expected = manager.masks_dir / "p2126_A01_t1_z1_masks.zarr"
+        assert manager.expected_mask_path("p2126_A01_t1_z1_BF.tif") == expected
+
+    def test_does_not_require_file_to_exist(self, temp_output_dir):
+        manager = OutputManager(temp_output_dir)
+        path = manager.expected_mask_path("p2126_A01_t1_z1_BF.tif")
+        assert not path.exists()
+        assert path.parent == manager.masks_dir
+
+
 class TestSavePrediction:
     @pytest.mark.parametrize("fmt,ext", FORMAT_CASES)
     def test_label_formats(self, temp_output_dir, masks_2d, fmt, ext):
