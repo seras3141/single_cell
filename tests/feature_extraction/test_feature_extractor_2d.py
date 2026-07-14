@@ -218,14 +218,35 @@ class TestComputeTextureFeatures:
         """Test texture features edge cases."""
         mask = np.ones((2, 2), dtype=np.uint8)
         image = np.array([[0, 255], [255, 0]], dtype=np.uint8)
-        
+
         features = compute_texture_features(mask, image)
-        
+
         # Should not crash and return valid numbers
         assert isinstance(features["gabor_mean"], float)
         assert isinstance(features["gabor_std"], float)
         assert isinstance(features["entropy"], float)
         assert not np.isnan(features["entropy"])
+
+    def test_entropy_uint16_not_nan(self):
+        """Regression: entropy must be finite for uint16 brightfield data.
+
+        The real BF inputs are uint16 (values ~1000-11000). A prior hardcoded
+        histogram ``range=(0, 255)`` put every pixel outside the window, so the
+        ``density=True`` normalization divided by zero and entropy was NaN for
+        every cell. All other tests used uint8 in [0, 255], masking the bug.
+        """
+        mask = np.ones((16, 16), dtype=np.uint8)
+        rng = np.random.default_rng(0)
+        image = rng.integers(1000, 11000, size=(16, 16)).astype(np.uint16)
+
+        features = compute_texture_features(mask, image)
+
+        assert not np.isnan(features["entropy"])
+        assert features["entropy"] > 0  # varied high-value data -> real entropy
+
+        # Uniform uint16 cell: finite (near-zero), never NaN.
+        uniform = compute_texture_features(mask, np.full((16, 16), 5000, np.uint16))
+        assert not np.isnan(uniform["entropy"])
 
 
 class TestExtractInstanceFeatures:
