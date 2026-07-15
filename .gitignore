@@ -224,3 +224,8 @@ notebooks/output*
 notebooks/archive/
 
 demo_files/
+results/
+
+tests/cell_activity_labeler/
+test_sample_summary_comprehensive.py
+tests/feature_visualization/
