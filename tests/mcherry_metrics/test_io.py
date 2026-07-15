@@ -18,7 +18,7 @@ def test_write_instance_metrics_preserves_contract_order(tmp_path: Path) -> None
         {
             "image_path": ["/tmp/p2426_A01_t1_z1_mCherry.tif"],
             "label_path": ["/tmp/p2426_A01_t1_z1_Cells.tif"],
-            "label_id": [1],
+            "cell_id": [1],
             "area": [20],
             "mean_intensity": [100.0],
             "max_intensity": [150.0],

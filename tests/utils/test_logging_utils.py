@@ -6,11 +6,12 @@ from pathlib import Path
 
 import pytest
 
+from src.utils import logging_utils
 from src.utils.logging_utils import setup_logging
 
 
 def _reset_logging():
-    """Remove all handlers from the root logger so each test starts clean."""
+    """Remove all handlers and clear the idempotency guard so each test starts clean."""
     root = logging.getLogger()
     for h in root.handlers[:]:
         root.removeHandler(h)
@@ -18,6 +19,7 @@ def _reset_logging():
             h.close()
         except Exception:
             pass
+    logging_utils._LOGGING_CONFIGURED = False
 
 
 @pytest.fixture(autouse=True)

@@ -47,7 +47,7 @@ def test_metrics_extractor_returns_expected_contract(tmp_path: Path) -> None:
     )
     metrics_df = extractor.run([image_path], [label_path])
 
-    assert list(metrics_df["label_id"]) == [1, 2]
+    assert list(metrics_df["cell_id"]) == [1, 2]
     assert metrics_df["image_path"].nunique() == 1
     assert metrics_df["label_path"].nunique() == 1
     assert metrics_df["sample_id"].tolist() == ["A01", "A01"]
@@ -55,8 +55,8 @@ def test_metrics_extractor_returns_expected_contract(tmp_path: Path) -> None:
     assert metrics_df["timepoint"].tolist() == ["1", "1"]
     assert metrics_df["image"].tolist() == [image_path.name, image_path.name]
 
-    first = metrics_df.loc[metrics_df["label_id"] == 1].iloc[0]
-    second = metrics_df.loc[metrics_df["label_id"] == 2].iloc[0]
+    first = metrics_df.loc[metrics_df["cell_id"] == 1].iloc[0]
+    second = metrics_df.loc[metrics_df["cell_id"] == 2].iloc[0]
 
     assert first["area"] == 2
     assert first["mean_intensity"] == pytest.approx(15.0)
