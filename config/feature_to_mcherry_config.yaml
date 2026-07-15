@@ -6,16 +6,20 @@
 # `--override feature_csv=... --override target_csv=...` on the CLI.
 
 feature_to_mcherry:
-  feature_csv: ???
-  target_csv: ???
-  id_column: instance_id  # e.g. "instance_id" for regionprops, "label_id" if a backend already uses that name
-  sample_id_column: null  # null => derive from image_filename
-  timepoint_column: null  # null => derive from image_filename
+  feature_csv: ???  # a single feature CSV, or a directory of per-(well, timepoint, z) CSVs (e.g. incarta split_data)
+  target_csv: ???  # a single instance_metrics.csv, or a directory of per-(well, timepoint, z) target CSVs (e.g. mcherry_metrics split_data)
+  id_column: instance_id  # e.g. "instance_id" for regionprops/incarta; renamed to "cell_id" internally
+  sample_id_column: null  # null => use an already-present "sample_id" column, else derive from image_filename
+  timepoint_column: null  # null => use an already-present "timepoint" column, else derive from image_filename
+  z_index_column: null  # null => use an already-present "z_index" column, else derive from image_filename
   target_columns: [percentile_75, percentile_90, percentile_95]
+  exclude_feature_columns: []  # feature-CSV columns to drop before modeling (e.g. a column that's all-NaN in a given backend's output)
   group_by: sample_id  # sample_id | timepoint
   n_splits: 5
   ridge_alpha: 1.0
   quantile_alpha: 0.0
   quantile_solver: highs
+  quantile_train_subsample_size: null  # null => fit on full training fold; set (e.g. 25000) to cap it for real-scale datasets, since QuantileRegressor's LP solver scales poorly past tens of thousands of rows
+  quantile_train_subsample_seed: 0
   sort_quantiles: true
   output_dir: results/feature_to_mcherry

@@ -14,7 +14,12 @@ import pandas as pd
 
 from ..data.contract import CELL_KEY, taus_from_target_columns
 from ..data.join import build_matrix
-from ..data.loaders import load_features, load_targets
+from ..data.loaders import (
+    load_features,
+    load_features_from_directory,
+    load_targets,
+    load_targets_from_directory,
+)
 from .config import InformativenessConfig
 from .features import select_morphology_features
 from .floor import FloorResult, compute_floor
@@ -94,15 +99,31 @@ def run(config: InformativenessConfig) -> ResultsBundle:
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    targets_df = load_targets(
-        Path(config.target_csv), target_columns=config.target_columns
-    )
-    features_df_full = load_features(
-        Path(config.feature_csv),
-        id_column=config.id_column,
-        sample_id_column=config.sample_id_column,
-        timepoint_column=config.timepoint_column,
-    )
+    target_path = Path(config.target_csv)
+    if target_path.is_dir():
+        targets_df = load_targets_from_directory(
+            target_path, target_columns=config.target_columns
+        )
+    else:
+        targets_df = load_targets(target_path, target_columns=config.target_columns)
+
+    feature_path = Path(config.feature_csv)
+    if feature_path.is_dir():
+        features_df_full = load_features_from_directory(
+            feature_path,
+            id_column=config.id_column,
+            sample_id_column=config.sample_id_column,
+            timepoint_column=config.timepoint_column,
+            z_index_column=config.z_index_column,
+        )
+    else:
+        features_df_full = load_features(
+            feature_path,
+            id_column=config.id_column,
+            sample_id_column=config.sample_id_column,
+            timepoint_column=config.timepoint_column,
+            z_index_column=config.z_index_column,
+        )
 
     candidate_columns = [
         column for column in features_df_full.columns if column not in CELL_KEY

@@ -31,7 +31,8 @@ def test_normalize_cell_key_casts_to_string() -> None:
         {
             "sample_id": ["C09", "C09"],
             "timepoint": [11, 11],
-            "label_id": [1, 2],
+            "z_index": [10, 10],
+            "cell_id": [1, 2],
             "other": [1.0, 2.0],
         }
     )

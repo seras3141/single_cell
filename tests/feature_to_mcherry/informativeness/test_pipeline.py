@@ -35,12 +35,13 @@ def _write_synthetic_csvs(
         base = 2 * area + perimeter + noise
 
         for i in range(n_per_well):
-            label_id = i + 1
+            cell_id = i + 1
             rows_features.append(
                 {
-                    "instance_id": label_id,
+                    "instance_id": cell_id,
                     "well": well,
                     "frame": 1,
+                    "z": 1,
                     "area": area[i],
                     "perimeter": perimeter[i],
                     "mean_intensity": mean_intensity[i],
@@ -50,7 +51,8 @@ def _write_synthetic_csvs(
                 {
                     "sample_id": well,
                     "timepoint": 1,
-                    "label_id": label_id,
+                    "z_index": 1,
+                    "cell_id": cell_id,
                     "percentile_75": base[i],
                     "percentile_90": base[i] + 5.0,
                     "percentile_95": base[i] + 10.0,
@@ -64,6 +66,112 @@ def _write_synthetic_csvs(
     return feature_csv, target_csv
 
 
+def _write_synthetic_directory_csvs(
+    tmp_path: Path, n_per_well: int = 15, seed: int = 0
+) -> Tuple[Path, Path]:
+    """Ew2-2-style layout: ``feature_csv`` is a directory of per-well CSVs, each
+    already carrying ``sample_id``/``timepoint``/``z_index``/``cell_id`` columns."""
+    rng = np.random.default_rng(seed)
+
+    feature_dir = tmp_path / "features"
+    feature_dir.mkdir()
+    rows_targets = []
+    for well in WELLS:
+        area = rng.uniform(0, 10, size=n_per_well)
+        perimeter = rng.uniform(0, 10, size=n_per_well)
+        mean_intensity = rng.uniform(0, 10, size=n_per_well)
+        noise = rng.normal(0, 0.3, size=n_per_well)
+        base = 2 * area + perimeter + noise
+
+        rows_features = []
+        for i in range(n_per_well):
+            cell_id = i + 1
+            rows_features.append(
+                {
+                    "cell_id": cell_id,
+                    "sample_id": well,
+                    "timepoint": 1,
+                    "z_index": 1,
+                    "area": area[i],
+                    "perimeter": perimeter[i],
+                    "mean_intensity": mean_intensity[i],
+                }
+            )
+            rows_targets.append(
+                {
+                    "sample_id": well,
+                    "timepoint": 1,
+                    "z_index": 1,
+                    "cell_id": cell_id,
+                    "percentile_75": base[i],
+                    "percentile_90": base[i] + 5.0,
+                    "percentile_95": base[i] + 10.0,
+                }
+            )
+        pd.DataFrame(rows_features).to_csv(
+            feature_dir / f"p_{well}_t1_z1_features.csv", index=False
+        )
+
+    target_csv = tmp_path / "instance_metrics.csv"
+    pd.DataFrame(rows_targets).to_csv(target_csv, index=False)
+    return feature_dir, target_csv
+
+
+def _write_synthetic_directory_feature_and_target_csvs(
+    tmp_path: Path, n_per_well: int = 15, seed: int = 0
+) -> Tuple[Path, Path]:
+    """mcherry_metrics split_data-style layout: both ``feature_csv`` and
+    ``target_csv`` are directories of per-well CSVs, each already carrying
+    ``sample_id``/``timepoint``/``z_index``/``cell_id`` columns."""
+    rng = np.random.default_rng(seed)
+
+    feature_dir = tmp_path / "features"
+    feature_dir.mkdir()
+    target_dir = tmp_path / "targets"
+    target_dir.mkdir()
+    for well in WELLS:
+        area = rng.uniform(0, 10, size=n_per_well)
+        perimeter = rng.uniform(0, 10, size=n_per_well)
+        mean_intensity = rng.uniform(0, 10, size=n_per_well)
+        noise = rng.normal(0, 0.3, size=n_per_well)
+        base = 2 * area + perimeter + noise
+
+        rows_features = []
+        rows_targets = []
+        for i in range(n_per_well):
+            cell_id = i + 1
+            rows_features.append(
+                {
+                    "cell_id": cell_id,
+                    "sample_id": well,
+                    "timepoint": 1,
+                    "z_index": 1,
+                    "area": area[i],
+                    "perimeter": perimeter[i],
+                    "mean_intensity": mean_intensity[i],
+                }
+            )
+            rows_targets.append(
+                {
+                    "sample_id": well,
+                    "timepoint": 1,
+                    "z_index": 1,
+                    "cell_id": cell_id,
+                    "percentile_75": base[i],
+                    "percentile_90": base[i] + 5.0,
+                    "percentile_95": base[i] + 10.0,
+                }
+            )
+        pd.DataFrame(rows_features).to_csv(
+            feature_dir / f"p_{well}_t1_z1_features.csv", index=False
+        )
+        pd.DataFrame(rows_targets).to_csv(
+            target_dir / f"p_{well}_t1_z1_mCherry_metrics.csv", index=False
+        )
+
+    return feature_dir, target_dir
+
+
 def test_pipeline_end_to_end_writes_all_outputs(tmp_path: Path) -> None:
     feature_csv, target_csv = _write_synthetic_csvs(tmp_path)
     output_dir = tmp_path / "results"
@@ -74,6 +182,7 @@ def test_pipeline_end_to_end_writes_all_outputs(tmp_path: Path) -> None:
         id_column="instance_id",
         sample_id_column="well",
         timepoint_column="frame",
+        z_index_column="z",
         group_by="sample_id",
         n_splits=2,
         morphology_feature_patterns=["area", "perimeter"],
@@ -126,6 +235,7 @@ def test_pipeline_skips_without_suspect_variant_when_no_clean_features_remain(
         id_column="instance_id",
         sample_id_column="well",
         timepoint_column="frame",
+        z_index_column="z",
         group_by="sample_id",
         n_splits=2,
         morphology_feature_patterns=["mean_intensity"],
@@ -142,3 +252,71 @@ def test_pipeline_skips_without_suspect_variant_when_no_clean_features_remain(
 
     noise_ceiling = pd.read_csv(output_dir / "noise_ceiling.csv")
     assert noise_ceiling["ceiling"].isna().all()
+
+
+def test_pipeline_end_to_end_with_directory_feature_csv(tmp_path: Path) -> None:
+    feature_dir, target_csv = _write_synthetic_directory_csvs(tmp_path)
+    output_dir = tmp_path / "results"
+
+    config = InformativenessConfig(
+        feature_csv=str(feature_dir),
+        target_csv=str(target_csv),
+        id_column="cell_id",
+        group_by="sample_id",
+        n_splits=2,
+        morphology_feature_patterns=["area", "perimeter"],
+        suspect_feature_patterns=["mean_intensity"],
+        plate_layout_json=str(REAL_LAYOUT_PATH),
+        output_dir=str(output_dir),
+    )
+
+    bundle = run(config)
+
+    assert bundle.n_cells == len(WELLS) * 15
+    assert bundle.n_features_all == 3
+    assert bundle.n_features_clean == 2
+
+    assert (output_dir / "univariate_correlations.csv").exists()
+    assert (output_dir / "floor_metrics.csv").exists()
+    assert (output_dir / "summary.json").exists()
+    assert (output_dir / "report.md").exists()
+    assert any((output_dir / "figures").glob("*.png"))
+
+    floor_metrics = pd.read_csv(output_dir / "floor_metrics.csv")
+    assert floor_metrics["r2"].apply(np.isfinite).all()
+
+
+def test_pipeline_end_to_end_with_directory_feature_and_target_csv(
+    tmp_path: Path,
+) -> None:
+    feature_dir, target_dir = _write_synthetic_directory_feature_and_target_csvs(
+        tmp_path
+    )
+    output_dir = tmp_path / "results"
+
+    config = InformativenessConfig(
+        feature_csv=str(feature_dir),
+        target_csv=str(target_dir),
+        id_column="cell_id",
+        group_by="sample_id",
+        n_splits=2,
+        morphology_feature_patterns=["area", "perimeter"],
+        suspect_feature_patterns=["mean_intensity"],
+        plate_layout_json=str(REAL_LAYOUT_PATH),
+        output_dir=str(output_dir),
+    )
+
+    bundle = run(config)
+
+    assert bundle.n_cells == len(WELLS) * 15
+    assert bundle.n_features_all == 3
+    assert bundle.n_features_clean == 2
+
+    assert (output_dir / "univariate_correlations.csv").exists()
+    assert (output_dir / "floor_metrics.csv").exists()
+    assert (output_dir / "summary.json").exists()
+    assert (output_dir / "report.md").exists()
+    assert any((output_dir / "figures").glob("*.png"))
+
+    floor_metrics = pd.read_csv(output_dir / "floor_metrics.csv")
+    assert floor_metrics["r2"].apply(np.isfinite).all()

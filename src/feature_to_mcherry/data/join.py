@@ -87,7 +87,7 @@ def build_matrix(
         raise ValueError(
             "Join between feature and target tables produced zero matched cells. "
             "Check that both CSVs describe the same cells (same segmentation source, "
-            "same sample_id/timepoint/label_id numbering)."
+            "same sample_id/timepoint/z_index/cell_id numbering)."
         )
 
     if group_by not in merged.columns:

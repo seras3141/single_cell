@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -13,7 +13,12 @@ import pandas as pd
 from .config import FeatureToMcherryConfig
 from .data.contract import taus_from_target_columns
 from .data.join import build_matrix
-from .data.loaders import load_features, load_targets
+from .data.loaders import (
+    load_features,
+    load_features_from_directory,
+    load_targets,
+    load_targets_from_directory,
+)
 from .evaluation.cv import grouped_kfold_indices
 from .evaluation.metrics import per_target_regression_metrics, quantile_crossing_rate
 from .models.linear_quantile import LinearQuantileRegressor
@@ -63,14 +68,36 @@ def _run_model(
     target_names: List[str],
     apply_sort: bool,
     model_name: str,
+    train_subsample_size: Optional[int] = None,
+    train_subsample_seed: int = 0,
 ) -> ModelResult:
-    """Run one model through grouped CV, collecting out-of-fold predictions/metrics."""
+    """Run one model through grouped CV, collecting out-of-fold predictions/metrics.
+
+    ``train_subsample_size``, if set, caps the number of *training* rows passed to
+    ``model.fit`` in each fold (a fixed seed, so the subsample is reproducible run to
+    run). Validation is always done on the full fold — every cell still gets a
+    real out-of-fold prediction; only fitting is subsampled. Intended for models
+    whose fit cost scales poorly with n (e.g. ``QuantileRegressor``'s LP solver),
+    not for Ridge-style closed-form fits, which don't need it.
+    """
     oof_predictions = np.full_like(y, np.nan, dtype=float)
     per_fold_metrics: List[List[Dict[str, Any]]] = []
+    rng = np.random.default_rng(train_subsample_seed)
 
     for train_idx, val_idx in grouped_kfold_indices(X, groups, n_splits, group_by):
+        if train_subsample_size is not None and len(train_idx) > train_subsample_size:
+            fit_idx = rng.choice(train_idx, size=train_subsample_size, replace=False)
+            logger.info(
+                "%s: subsampled training fold from %d to %d rows (seed=%d)",
+                model_name,
+                len(train_idx),
+                train_subsample_size,
+                train_subsample_seed,
+            )
+        else:
+            fit_idx = train_idx
         model = model_factory()
-        model.fit(X[train_idx], y[train_idx])
+        model.fit(X[fit_idx], y[fit_idx])
         preds = model.predict(X[val_idx])
         if apply_sort:
             preds = _sort_quantiles(preds)
@@ -149,15 +176,41 @@ def _write_report(results: ResultsBundle, output_dir: Path) -> None:
 
 def run(config: FeatureToMcherryConfig) -> ResultsBundle:
     """Run the full pipeline: load, join, CV-fit, evaluate, and report both models."""
-    targets_df = load_targets(
-        Path(config.target_csv), target_columns=config.target_columns
-    )
-    features_df = load_features(
-        Path(config.feature_csv),
-        id_column=config.id_column,
-        sample_id_column=config.sample_id_column,
-        timepoint_column=config.timepoint_column,
-    )
+    target_path = Path(config.target_csv)
+    if target_path.is_dir():
+        targets_df = load_targets_from_directory(
+            target_path, target_columns=config.target_columns
+        )
+    else:
+        targets_df = load_targets(target_path, target_columns=config.target_columns)
+
+    feature_path = Path(config.feature_csv)
+    if feature_path.is_dir():
+        features_df = load_features_from_directory(
+            feature_path,
+            id_column=config.id_column,
+            sample_id_column=config.sample_id_column,
+            timepoint_column=config.timepoint_column,
+            z_index_column=config.z_index_column,
+        )
+    else:
+        features_df = load_features(
+            feature_path,
+            id_column=config.id_column,
+            sample_id_column=config.sample_id_column,
+            timepoint_column=config.timepoint_column,
+            z_index_column=config.z_index_column,
+        )
+
+    if config.exclude_feature_columns:
+        to_drop = [
+            column
+            for column in config.exclude_feature_columns
+            if column in features_df.columns
+        ]
+        if to_drop:
+            logger.info("Excluding configured feature columns: %s", to_drop)
+            features_df = features_df.drop(columns=to_drop)
 
     X, y, groups, feature_names = build_matrix(
         features_df,
@@ -194,6 +247,8 @@ def run(config: FeatureToMcherryConfig) -> ResultsBundle:
         target_names=config.target_columns,
         apply_sort=config.sort_quantiles,
         model_name="linear_quantile",
+        train_subsample_size=config.quantile_train_subsample_size,
+        train_subsample_seed=config.quantile_train_subsample_seed,
     )
 
     results = ResultsBundle(
