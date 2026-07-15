@@ -196,6 +196,7 @@ test_output*/
 tmp*
 tmp/
 tmp1/
+test_output
 
 # scPortrait featurizer/project scratch dirs (created in cwd during
 # featurization; leak into the repo root when a job is cancelled/crashes)
@@ -247,3 +248,8 @@ notebooks/output*
 notebooks/archive/
 
 demo_files/
+results/
+
+tests/cell_activity_labeler/
+test_sample_summary_comprehensive.py
+tests/feature_visualization/

@@ -164,7 +164,12 @@ class OutputManager:
             raise
         
         return saved_files
-    
+
+    def expected_mask_path(self, input_path: Union[str, Path]) -> Path:
+        """Return the mask path save_prediction would use/has used for input_path."""
+        base_name = self._get_output_filename(Path(input_path))
+        return self.masks_dir / f"{base_name}{self.pred_mask_suffix}{self._label_ext}"
+
     def save_z_stack_prediction(
         self,
         masks_stack: np.ndarray,

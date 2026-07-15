@@ -92,6 +92,11 @@ sam = [
 dvc = [
     "dvc[webdav]>=3.55",
 ]
+informativeness = [
+    "lightgbm>=4.0.0",
+    "seaborn>=0.11.0",
+    "plotly>=5.0.0",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/helmholtz/single-cell-analysis"
