@@ -1,0 +1,103 @@
+# DVC reproducibility DAG for one configured experiment (Phase 3).
+# Coexists with scripts/run_pipeline.py (the linear orchestrator); each stage wraps the
+# existing run_* entry point and derives paths from config/config.yaml via `vars` (Decision D).
+# Params/paths come from config/config.yaml — keep that file interpolation-free (no ${...}).
+#
+# OUTPUT TRACKING = HASH-ONLY (`cache: false`).
+#   Every stage `out` is a directory tracked WITHOUT caching: DVC records a single
+#   per-folder md5 (`<hash>.dir`) in dvc.lock (committed, tiny text) and does NOT copy the
+#   bytes into .dvc/cache or git. The actual data stays where the pipeline wrote it (on
+#   Lustre via the data/ symlink). This is deliberate: large pipeline outputs must not live
+#   inside the repo or be committed — only their fingerprints are. It also sidesteps DVC's
+#   "output is outside of git repository" rule that cached outs hit under the data/ symlink.
+#   Consequence: `dvc repro` still detects changes and skips up-to-date stages via these
+#   hashes, but `dvc push`/`pull` won't move these outs (byte versioning is Phase 4's job).
+#   To version an output's bytes instead, drop its `cache: false`.
+#
+# Not modelled here (documented follow-ups): foreach fan-out across all 5 experiments;
+# the optional `mcherry` stage (run_pipeline skips it unless paths.mcherry_dir is set — it
+# is not, so it is omitted); retiring run_pipeline.py's if-chain.
+vars:
+  - config/config.yaml
+
+stages:
+  prepare:
+    cmd: >-
+      python scripts/run_preprocessing.py
+      --config config/config.yaml
+      --input-dir "${paths.input_dir}"
+      --output-dir "${paths.output_dir}"
+    deps:
+      - ${paths.input_dir}
+      - scripts/run_preprocessing.py
+      - src/preprocessing
+    params:
+      - config/config.yaml:
+          - preprocessing
+    outs:
+      - ${paths.output_dir}/${preprocessing.split_folder}:
+          cache: false
+      - ${paths.output_dir}/${preprocessing.out_3d_folder}:
+          cache: false
+      - ${paths.output_dir}/blur_heatmaps:
+          cache: false
+
+  segment-2d:
+    cmd: >-
+      python scripts/run_inference.py
+      --config config/config.yaml
+      --input-dir "${paths.output_dir}/${preprocessing.split_folder}"
+      --output-dir "${paths.output_dir}"
+    deps:
+      - ${paths.output_dir}/${preprocessing.split_folder}
+      - scripts/run_inference.py
+      - src/inference
+    params:
+      - config/config.yaml:
+          - segmentation
+    outs:
+      - ${paths.output_dir}/${segmentation.inference.results_folder}/${segmentation.cellpose.model_type}:
+          cache: false
+
+  track:
+    cmd: >-
+      python scripts/run_postprocessing.py
+      --config config/config.yaml
+      --image-dir "${paths.output_dir}/${preprocessing.out_3d_folder}"
+      --mask-dir "${paths.output_dir}/${segmentation.inference.results_folder}/${segmentation.cellpose.model_type}/masks_3d"
+      --blur-dir "${paths.output_dir}/blur_heatmaps"
+      --output-dir "${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}"
+      --run-dir "${paths.output_dir}"
+    deps:
+      - ${paths.output_dir}/${preprocessing.out_3d_folder}
+      - ${paths.output_dir}/${segmentation.inference.results_folder}/${segmentation.cellpose.model_type}/masks_3d
+      - ${paths.output_dir}/blur_heatmaps
+      - scripts/run_postprocessing.py
+      - src/postprocessing
+    params:
+      - config/config.yaml:
+          - postprocessing
+    outs:
+      - ${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}:
+          cache: false
+
+  # extract: reads inference_tracked/.../final_2d, writes features to a SEPARATE
+  # features/<model>/<dataset> dir (not under split_data/ or final_2d/) to avoid a DVC
+  # out nested inside another stage's out. No `params` block: the feature_extraction
+  # section in config/config.yaml is currently commented out, so referencing it would
+  # break `${...}`/params resolution; add it back here once that config section exists.
+  extract:
+    cmd: >-
+      python scripts/run_feature_extraction.py
+      --config config/config.yaml
+      --image-dir "${paths.output_dir}/${preprocessing.split_folder}"
+      --mask-dir "${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}/final_2d"
+      --output-dir "${paths.output_dir}/features/${segmentation.cellpose.model_type}"
+    deps:
+      - ${paths.output_dir}/${preprocessing.split_folder}
+      - ${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}/final_2d
+      - scripts/run_feature_extraction.py
+      - src/feature_extraction
+    outs:
+      - ${paths.output_dir}/features/${segmentation.cellpose.model_type}:
+          cache: false

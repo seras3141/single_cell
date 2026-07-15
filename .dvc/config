@@ -1,0 +1,7 @@
+[cache]
+    type = "hardlink,symlink"
+[core]
+    autostage = false
+    remote = store
+['remote "store"']
+    url = /ictstr01/groups/aiconsultants/datasets/single_cell_drug_response/dvc-store

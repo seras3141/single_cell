@@ -1,0 +1,287 @@
+{
+  "description": "Tier-2 processed folder hashes (hash-only; no bytes stored/committed). folder_md5 = md5 of the sorted recursive per-file md5 listing \u2014 changes on any nested file change or added/removed file/subfolder (e.g. a new model).",
+  "generated_by": "scripts/hash_processed_tier2.py",
+  "processed_root": "data/MF5V1_processed Timelapse samples 19.03.2024",
+  "experiments": {
+    "HD1509 MF5V1 0-72h 23-02-26": {
+      "split_data": {
+        "folder_md5": "4982249faf3af76e529ff57c4d97c869",
+        "nfiles": 4769,
+        "n_symlinks": 4768,
+        "total_bytes": 10000015114
+      },
+      "3d_data": {
+        "folder_md5": "c6c615b079e097e52c2fbd79c28b286e",
+        "nfiles": 63,
+        "n_symlinks": 0,
+        "total_bytes": 2618751831
+      },
+      "blur_heatmaps": {
+        "folder_md5": "cc511e06dd20d2f93e76c88258e4de7a",
+        "nfiles": 63,
+        "n_symlinks": 0,
+        "total_bytes": 5285053242
+      },
+      "inference": {
+        "folder_md5": "b0488131fa23382c80a5ea8815cf001e",
+        "nfiles": 16223,
+        "n_symlinks": 0,
+        "total_bytes": 188180665,
+        "models": {
+          "cellpose_sam": {
+            "folder_md5": "02f531ccacc0c1f2684e356a99fcc407",
+            "nfiles": 16223,
+            "n_symlinks": 0,
+            "total_bytes": 188180665
+          }
+        }
+      },
+      "inference_tracked": {
+        "folder_md5": "f53eef2719b1f0c4922289756241d7f0",
+        "nfiles": 2584,
+        "n_symlinks": 0,
+        "total_bytes": 2672945289,
+        "models": {
+          "cellpose_sam": {
+            "folder_md5": "a91e0db571c94915388e6811f3f0b3f4",
+            "nfiles": 2584,
+            "n_symlinks": 0,
+            "total_bytes": 2672945289
+          }
+        }
+      }
+    },
+    "SA110 MF5V1 0-72h 13-02-26": {
+      "split_data": {
+        "folder_md5": "32c5b7d9f94aeec68b939e65752c1094",
+        "nfiles": 4972,
+        "n_symlinks": 4971,
+        "total_bytes": 10425770826
+      },
+      "3d_data": {
+        "folder_md5": "db5dd73c3d50259339d254dd1d5b3768",
+        "nfiles": 67,
+        "n_symlinks": 0,
+        "total_bytes": 2578004027
+      },
+      "blur_heatmaps": {
+        "folder_md5": "a0cf93e2d65ea5928d4ea1bc0c722b1f",
+        "nfiles": 67,
+        "n_symlinks": 0,
+        "total_bytes": 5587056322
+      },
+      "inference": {
+        "folder_md5": "cd4b4becbd6dab3683ed56bccb838882",
+        "nfiles": 13499,
+        "n_symlinks": 0,
+        "total_bytes": 73765369,
+        "models": {
+          "cellpose_sam": {
+            "folder_md5": "f53acafc411764fce733e6f2531b3852",
+            "nfiles": 13499,
+            "n_symlinks": 0,
+            "total_bytes": 73765369
+          }
+        }
+      },
+      "inference_tracked": {
+        "folder_md5": "2e1de2c67e46451cd0ec1f91cc14a910",
+        "nfiles": 2732,
+        "n_symlinks": 0,
+        "total_bytes": 2295885279,
+        "models": {
+          "cellpose_sam": {
+            "folder_md5": "13f8b21407c67b2bf0feb3e308061910",
+            "nfiles": 2732,
+            "n_symlinks": 0,
+            "total_bytes": 2295885279
+          }
+        }
+      }
+    },
+    "HD1883 MF5V1 0-72h 20-03-26": {
+      "split_data": {
+        "folder_md5": "d53cd2a71fbf703dd5ffad2aa70cd0d4",
+        "nfiles": 20412,
+        "n_symlinks": 20411,
+        "total_bytes": 42808369040
+      },
+      "3d_data": {
+        "folder_md5": "14463cfd24a0282e03fc01d6811bd992",
+        "nfiles": 324,
+        "n_symlinks": 0,
+        "total_bytes": 13189645622
+      },
+      "blur_heatmaps": {
+        "folder_md5": "ac3eca4103a8a837cd980edc4b0af061",
+        "nfiles": 324,
+        "n_symlinks": 0,
+        "total_bytes": 27176079334
+      },
+      "inference": {
+        "folder_md5": "a2f6ee68d2b94c5074930b888db76499",
+        "nfiles": 63027,
+        "n_symlinks": 0,
+        "total_bytes": 520660222,
+        "models": {
+          "cellpose_sam": {
+            "folder_md5": "a8116031f451b5a41a0456da48954404",
+            "nfiles": 63027,
+            "n_symlinks": 0,
+            "total_bytes": 520660222
+          }
+        }
+      },
+      "inference_tracked": {
+        "folder_md5": "8f3fc9f3997b91f013f38368b3fa878a",
+        "nfiles": 18891,
+        "n_symlinks": 0,
+        "total_bytes": 12746209778,
+        "models": {
+          "cellpose_sam": {
+            "folder_md5": "556ab1409780e52d9683d4d1045d1ffc",
+            "nfiles": 18891,
+            "n_symlinks": 0,
+            "total_bytes": 12746209778
+          }
+        }
+      }
+    },
+    "Ew2-1 MF5V1 0-72h 06-03-26": {
+      "split_data": {
+        "folder_md5": "15a553f7f1ad627468dcd8aa874a867f",
+        "nfiles": 20409,
+        "n_symlinks": 20408,
+        "total_bytes": 42802077074
+      },
+      "3d_data": {
+        "folder_md5": "70f77637531d541ecb07e4d2efc27e8a",
+        "nfiles": 324,
+        "n_symlinks": 0,
+        "total_bytes": 13076726015
+      },
+      "blur_heatmaps": {
+        "folder_md5": "c1289971b36d96aec675be420353894d",
+        "nfiles": 324,
+        "n_symlinks": 0,
+        "total_bytes": 27180273816
+      },
+      "inference": {
+        "folder_md5": "b90378e72473630abcbe897bce0f0464",
+        "nfiles": 52626,
+        "n_symlinks": 0,
+        "total_bytes": 201817404,
+        "models": {
+          "cellpose_sam": {
+            "folder_md5": "a4e89f4064b1e659b0df381f536d46c7",
+            "nfiles": 52626,
+            "n_symlinks": 0,
+            "total_bytes": 201817404
+          }
+        }
+      },
+      "inference_tracked": {
+        "folder_md5": "0c8ba5e7850e3a426445b96327870420",
+        "nfiles": 18906,
+        "n_symlinks": 0,
+        "total_bytes": 11682569969,
+        "models": {
+          "cellpose_sam": {
+            "folder_md5": "cdd8f64780b83ee6324c263b09a61893",
+            "nfiles": 18906,
+            "n_symlinks": 0,
+            "total_bytes": 11682569969
+          }
+        }
+      },
+      "inference_scportrait": {
+        "folder_md5": "8e9c5593ded484da07f3efd6da53168b",
+        "nfiles": 652,
+        "n_symlinks": 0,
+        "total_bytes": 2153766346,
+        "models": {
+          "features": {
+            "folder_md5": "ea4b89f1434ce436edbb24d378ab3554",
+            "nfiles": 328,
+            "n_symlinks": 0,
+            "total_bytes": 1475532610
+          },
+          "scportrait": {
+            "folder_md5": "87628117ed58071b1ba258e5be0caccf",
+            "nfiles": 324,
+            "n_symlinks": 0,
+            "total_bytes": 678233736
+          }
+        }
+      }
+    },
+    "Ew2-2 MF5V1 072h 17-04-26": {
+      "split_data": {
+        "folder_md5": "dd1d79514412322013991074bca8ba22",
+        "nfiles": 20413,
+        "n_symlinks": 20412,
+        "total_bytes": 42810466355
+      },
+      "3d_data": {
+        "folder_md5": "2c5059e048ce9db98bec6f23e6761918",
+        "nfiles": 324,
+        "n_symlinks": 0,
+        "total_bytes": 11989790155
+      },
+      "blur_heatmaps": {
+        "folder_md5": "272d6ed0f40c5ba447577569e1a3fe69",
+        "nfiles": 324,
+        "n_symlinks": 0,
+        "total_bytes": 27180273816
+      },
+      "inference": {
+        "folder_md5": "1846d2a77acef327475139932e62aab5",
+        "nfiles": 48346,
+        "n_symlinks": 0,
+        "total_bytes": 95873966,
+        "models": {
+          "cellpose_sam": {
+            "folder_md5": "5408f82b9176296caee8049721212d3e",
+            "nfiles": 48346,
+            "n_symlinks": 0,
+            "total_bytes": 95873966
+          }
+        }
+      },
+      "inference_tracked": {
+        "folder_md5": "e1674f688c195512eb2c34d82650099b",
+        "nfiles": 18303,
+        "n_symlinks": 0,
+        "total_bytes": 8088434060,
+        "models": {
+          "cellpose_sam": {
+            "folder_md5": "aaec7fdcc7956bd089250df73e87daa8",
+            "nfiles": 18303,
+            "n_symlinks": 0,
+            "total_bytes": 8088439714
+          }
+        }
+      },
+      "inference_scportrait": {
+        "folder_md5": "e81968b35d5a5f4e1a6513adb418c8f0",
+        "nfiles": 85,
+        "n_symlinks": 0,
+        "total_bytes": 147636206,
+        "models": {
+          "features": {
+            "folder_md5": "c2df8a329a6c3ba3897c5148b938a48c",
+            "nfiles": 43,
+            "n_symlinks": 0,
+            "total_bytes": 59717018
+          },
+          "scportrait": {
+            "folder_md5": "cc0be07fda1e5ab9cb4bc28806be215a",
+            "nfiles": 42,
+            "n_symlinks": 0,
+            "total_bytes": 87919188
+          }
+        }
+      }
+    }
+  }
+}

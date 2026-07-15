@@ -1,0 +1,14 @@
+md5: d0020370455f8c5666bf039511e93fb8
+frozen: true
+deps:
+- md5: 5d146467977bebc03c16155782ffe3f0
+  size: 1595
+  hash: md5
+  path: 
+    /ictstr01/groups/aiconsultants/datasets/single_cell_drug_response/MF5V1_processed
+    Timelapse samples 19.03.2024/Ew2-2 MF5V1 072h 17-04-26/manifest.json
+outs:
+- md5: 5d146467977bebc03c16155782ffe3f0
+  size: 1595
+  hash: md5
+  path: manifest.json

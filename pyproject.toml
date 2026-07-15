@@ -89,6 +89,9 @@ classifier = [
 sam = [
     "cellpose>=4.0.0",
 ]
+dvc = [
+    "dvc[webdav]>=3.55",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/helmholtz/single-cell-analysis"

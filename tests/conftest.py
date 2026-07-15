@@ -21,3 +21,10 @@ for _pkg in ("torch", "torchvision", "torchaudio", "cellpose"):
     # Pre-register common sub-modules so dotted imports resolve too
     for _sub in ("nn", "cuda", "optim", "utils", "plot", "models", "core"):
         _ensure_mock(f"{_pkg}.{_sub}")
+
+# scipy's array-api-compat runs `issubclass(cls, torch.Tensor)` at import time. A bare
+# MagicMock attr isn't a class, so that raises TypeError and breaks collection of any
+# test that (transitively) imports scipy. Give the torch mock a real, empty Tensor
+# class so the check degrades to False cleanly.
+if isinstance(sys.modules.get("torch"), MagicMock):
+    sys.modules["torch"].Tensor = type("Tensor", (), {})

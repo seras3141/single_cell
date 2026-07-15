@@ -176,7 +176,11 @@ cython_debug/
 # slurm files
 slurm/
 
-/data/
+# Ignore data contents but let Git descend to pick up DVC pointer files.
+/data/**
+!/data/**/
+!/data/**/*.dvc
+!/data/**/.gitignore
 /github/
 .vscode/
 
@@ -202,9 +206,19 @@ Project_*/
 
 .DS_Store
 
-# Temporary image files
+# Large binary / array data files — versioned via DVC or checksum manifest, never
+# committed to git directly. Covers the formats this project uses (see CLAUDE.md:
+# TIFF masks, Zarr and HDF5 for 3D). DVC pointer (*.dvc) and manifest (*.md5,
+# *.json) files are small text and remain tracked.
 *.png
 *.tif
+*.tiff
+*.zarr
+*.zarr/
+*.npy
+*.npz
+*.h5
+*.hdf5
 
 # Event files from TensorBoard
 events.out.tfevents.*

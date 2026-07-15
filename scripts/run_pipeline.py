@@ -21,7 +21,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from src.utils.logging_utils import setup_logging
 from src.utils.config import get_config_manager
-from src.dataset_analysis.run_manifest import create_or_load_manifest
+from src.dataset_analysis.run_manifest import (
+    complete_stage_with_dvc,
+    create_or_load_manifest,
+)
 from src.utils.file_utils import EXPERIMENT_WAVELENGTH_MAPPINGS
 
 
@@ -222,6 +225,9 @@ def main():
 
     os.makedirs(output_dir, exist_ok=True)
 
+    # Coexists with the DVC reproducibility DAG in `dvc.yaml` (Phase 3): that is the
+    # content-hash-aware alternative orchestrator (`dvc repro`). This linear if-chain
+    # is retained; retiring it in favour of `dvc.yaml` is a documented follow-up.
     manifest = create_or_load_manifest(output_dir, input_dir, config)
     logger.info(f"Manifest for '{manifest.experiment_id}'")
 
@@ -231,7 +237,7 @@ def main():
             manifest.start_stage("prepare")
             try:
                 run_data_preparation(input_dir, output_dir, config)
-                manifest.complete_stage("prepare", output_dir=output_dir)
+                complete_stage_with_dvc(manifest, "prepare", output_dir=output_dir)
             except Exception as e:
                 manifest.fail_stage("prepare", error=str(e))
                 raise
@@ -248,7 +254,7 @@ def main():
             manifest.start_stage("segment-2d", config=seg_config_snapshot)
             try:
                 run_2d_segmentation(split_dir, mask_dir, config)
-                manifest.complete_stage("segment-2d", output_dir=mask_dir)
+                complete_stage_with_dvc(manifest, "segment-2d", output_dir=mask_dir)
             except Exception as e:
                 manifest.fail_stage("segment-2d", error=str(e))
                 raise
@@ -269,7 +275,7 @@ def main():
             manifest.start_stage("track")
             try:
                 run_cell_tracking(image_dir, mask_dir, blur_dir, track_dir, config)
-                manifest.complete_stage("track", output_dir=track_dir)
+                complete_stage_with_dvc(manifest, "track", output_dir=track_dir)
             except Exception as e:
                 manifest.fail_stage("track", error=str(e))
                 raise
@@ -291,7 +297,9 @@ def main():
                         output_dir=Path(mcherry_output),
                         config=ExtractionConfig(),
                     )
-                    manifest.complete_stage("mcherry", output_dir=mcherry_output)
+                    complete_stage_with_dvc(
+                        manifest, "mcherry", output_dir=mcherry_output
+                    )
                 except Exception as e:
                     manifest.fail_stage("mcherry", error=str(e))
                     raise
@@ -309,7 +317,7 @@ def main():
             manifest.start_stage("extract")
             try:
                 run_feature_extraction(image_dir, ground_truth_dir, inference_dir, config=config)
-                manifest.complete_stage("extract", output_dir=inference_dir)
+                complete_stage_with_dvc(manifest, "extract", output_dir=inference_dir)
             except Exception as e:
                 manifest.fail_stage("extract", error=str(e))
                 raise
