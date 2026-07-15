@@ -1,0 +1,56 @@
+# Configuration for src/feature_to_mcherry/data_quality — distributional QC on
+# already-extracted feature/target tables (extreme-value clustering by
+# well/z-slice/timepoint, interactive per-well/timepoint distribution reports).
+#
+# `sources` has no valid default (no matched real sample currently exists in this
+# file) — must be set explicitly, either by editing this file or via
+# `--feature-csv/--target-csv/--label` on the CLI for a quick single-source run.
+#
+# feature_column_groups below is the MF5V1/incarta-specific categorization used
+# during the 2026-07 real-data investigation — for a *new* experiment with a
+# different feature-extraction backend, either update these patterns to match its
+# column names, or delete the block entirely (falls back to a single ungrouped
+# "Features" bucket, which works out of the box on any backend).
+
+data_quality:
+  sources:
+    - label: ???
+      feature_csv: ???  # a single feature CSV, or a directory of per-(well, timepoint, z) CSVs
+      target_csv: ???   # a single instance_metrics.csv, or a directory of per-(well, timepoint, z) target CSVs
+      id_column: instance_id  # e.g. "cell_id" for the incarta split_data layout
+      sample_id_column: null
+      timepoint_column: null
+      z_index_column: null
+      exclude_feature_columns: []  # e.g. [entropy] if a column is all-NaN in this backend's output
+  target_columns: [percentile_75, percentile_90, percentile_95]
+  extreme_quantile_lo: 0.001
+  extreme_quantile_hi: 0.999
+  feature_column_groups:
+    Size & shape:
+      - area
+      - perimeter
+      - major_axis
+      - minor_axis
+      - feret_diameter
+      - radius_of_gyration
+      - elongation
+      - compactness
+      - circularity
+    Texture:
+      - gabor_mean
+      - gabor_std
+      - skewness
+      - kurtosis
+    Intensity (suspect proxies):
+      - mean_intensity
+      - std_intensity
+      - cv_intensity
+      - total_intensity
+    Position:
+      - centroid_x
+      - centroid_y
+      - center_of_mass_x
+      - center_of_mass_y
+      - mass_displacement
+  flag_timepoints: []  # e.g. [11] to mark a timepoint found suspicious in a prior run
+  output_dir: results/data_quality
