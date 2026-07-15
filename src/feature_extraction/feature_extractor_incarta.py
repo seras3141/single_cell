@@ -81,7 +81,14 @@ def compute_texture_features(mask, image):
 
     img_skewness = skew(masked_values)
     img_kurtosis = kurtosis(masked_values)
-    hist, _ = np.histogram(masked_values, bins=256, range=(0, 255), density=True)
+    # Histogram over the ACTUAL intensity range of the masked pixels. A previous
+    # hardcoded ``range=(0, 255)`` assumed 8-bit imagery; the brightfield inputs
+    # are uint16 (values ~1000-11000), so no pixel fell in [0, 255], every bin
+    # count was 0, and ``density=True`` divided by a zero total -> an all-NaN
+    # histogram -> ``entropy`` returned NaN for every cell. Omitting ``range``
+    # lets numpy span [min, max] of the data. ``scipy.stats.entropy`` renormalizes
+    # ``pk`` internally, so ``density`` is immaterial here.
+    hist, _ = np.histogram(masked_values, bins=256, density=True)
     img_entropy = entropy(hist + 1e-10)  # Avoid log(0)
 
     return {

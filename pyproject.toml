@@ -113,7 +113,7 @@ include = ["src*"]
 
 [tool.black]
 line-length = 88
-target-version = ['py38']
+target-version = ['py310']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -153,7 +153,10 @@ filterwarnings = [
 ]
 
 [tool.mypy]
-python_version = "3.8"
+# Match the tested primary runtime (3.10). 3.8/3.9 are too low for mypy to parse
+# some installed deps: torch uses match statements (3.10+) and zarr v3 uses PEP
+# 695 generics (3.12+), both of which crash mypy under a lower target.
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

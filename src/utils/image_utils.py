@@ -71,7 +71,14 @@ def save_labels(masks: np.ndarray, output_path: Union[str, Path], chunks: Tuple 
                 "zarr is required to save .zarr labels. "
                 "Install it with: pip install zarr"
             )
-        chunks = chunks or ((1, masks.shape[-2], masks.shape[-1]) if masks.ndim == 3 else None)
+        # Always give an explicit chunk shape. zarr v3's create_array does
+        # tuple(chunk_shape) unconditionally, so chunks=None raises TypeError
+        # ('NoneType' is not iterable) rather than auto-chunking as under v2.
+        chunks = chunks or (
+            (1, masks.shape[-2], masks.shape[-1])
+            if masks.ndim == 3
+            else (masks.shape[-2], masks.shape[-1])
+        )
 
         if _ZARR_MAJOR >= 3:
             z = zarr.create_array(  # type: ignore[attr-defined]
@@ -98,7 +105,14 @@ def save_labels(masks: np.ndarray, output_path: Union[str, Path], chunks: Tuple 
                 "Install it with: pip install h5py"
             )
         import h5py
-        chunks = chunks or ((1, masks.shape[-2], masks.shape[-1]) if masks.ndim == 3 else None)
+        # Always give an explicit chunk shape. zarr v3's create_array does
+        # tuple(chunk_shape) unconditionally, so chunks=None raises TypeError
+        # ('NoneType' is not iterable) rather than auto-chunking as under v2.
+        chunks = chunks or (
+            (1, masks.shape[-2], masks.shape[-1])
+            if masks.ndim == 3
+            else (masks.shape[-2], masks.shape[-1])
+        )
         with h5py.File(output_path, "w") as f:
             f.create_dataset(
                 "labels", data=masks,

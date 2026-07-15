@@ -18,8 +18,8 @@ def validate_metrics_input_dataframe(metrics_df: pd.DataFrame) -> None:
     if CELL_ID_COLUMN not in metrics_df.columns:
         raise ValueError(
             "Metrics dataframe is missing required column 'cell_id'. Legacy CSVs "
-            "using 'label_id'/'label' must be migrated with "
-            "scripts/migrate_label_id_to_cell_id.py."
+            "using 'label_id'/'label' are no longer supported; re-run "
+            "mcherry_metrics extraction to emit 'cell_id' directly."
         )
     if missing:
         raise ValueError(
