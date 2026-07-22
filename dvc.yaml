@@ -15,8 +15,14 @@
 #   To version an output's bytes instead, drop its `cache: false`.
 #
 # Not modelled here (documented follow-ups): foreach fan-out across all 5 experiments;
-# the optional `mcherry` stage (run_pipeline skips it unless paths.mcherry_dir is set — it
-# is not, so it is omitted); retiring run_pipeline.py's if-chain.
+# retiring run_pipeline.py's if-chain.
+#
+# The `mcherry` stage mirrors run_pipeline.py's Step 5: per-cell mCherry intensity metrics,
+# reading the tracked 2D masks (inference_tracked/<model>/final_2d) + the mCherry images
+# (split_data) and writing mcherry_metrics/<model>. It is independent of `extract` (both
+# consume final_2d + split_data), so DVC runs them in either order. Per-experiment
+# wavelength/plate specifics stay in slurm/mcherry_metrics.sbatch (the real-run driver);
+# this stage relies on run_mcherry_metrics.py defaults, matching run_pipeline.py.
 vars:
   - config/config.yaml
 
@@ -79,6 +85,21 @@ stages:
           - postprocessing
     outs:
       - ${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}:
+          cache: false
+
+  mcherry:
+    cmd: >-
+      python scripts/run_mcherry_metrics.py
+      --mcherry-dir "${paths.output_dir}/${preprocessing.split_folder}"
+      --mask-dir "${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}/final_2d"
+      --output-dir "${paths.output_dir}/mcherry_metrics/${segmentation.cellpose.model_type}"
+    deps:
+      - ${paths.output_dir}/${preprocessing.split_folder}
+      - ${paths.output_dir}/inference_tracked/${segmentation.cellpose.model_type}/final_2d
+      - scripts/run_mcherry_metrics.py
+      - src/mcherry_metrics
+    outs:
+      - ${paths.output_dir}/mcherry_metrics/${segmentation.cellpose.model_type}:
           cache: false
 
   # extract: reads inference_tracked/.../final_2d, writes features to a SEPARATE

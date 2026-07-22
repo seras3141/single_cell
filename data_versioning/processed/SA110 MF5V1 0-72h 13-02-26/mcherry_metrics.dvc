@@ -1,0 +1,16 @@
+md5: 2353875ea727821a37211de46b13f1e0
+frozen: true
+deps:
+- md5: b6b29eca0c2c37ec6e05d7e41104843d.dir
+  size: 440164316
+  nfiles: 6173
+  hash: md5
+  path: 
+    /ictstr01/groups/aiconsultants/datasets/single_cell_drug_response/MF5V1_processed
+    Timelapse samples 19.03.2024/SA110 MF5V1 0-72h 13-02-26/mcherry_metrics
+outs:
+- md5: b6b29eca0c2c37ec6e05d7e41104843d.dir
+  size: 440164316
+  nfiles: 6173
+  hash: md5
+  path: mcherry_metrics
