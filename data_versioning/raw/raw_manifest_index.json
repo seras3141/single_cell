@@ -5,16 +5,16 @@
     {
       "experiment": "HD1509 MF5V1 0-72h 23-02-26",
       "manifest": "HD1509 MF5V1 0-72h 23-02-26.md5",
-      "n_files": 20412,
-      "total_bytes": 42815863422,
-      "folder_md5": "ee60052ee5fd358c1189ffdc75b4aa8c"
+      "n_files": 20413,
+      "total_bytes": 42819670766,
+      "folder_md5": "3fe11046246e2ffe367b21945a0235f1"
     },
     {
       "experiment": "SA110 MF5V1 0-72h 13-02-26",
       "manifest": "SA110 MF5V1 0-72h 13-02-26.md5",
-      "n_files": 20412,
-      "total_bytes": 42809556888,
-      "folder_md5": "ebeea1f79881bec1e701d1ec574ec721"
+      "n_files": 20413,
+      "total_bytes": 42813338313,
+      "folder_md5": "2d541c084701e862402bbac708dd45aa"
     },
     {
       "experiment": "HD1883 MF5V1 0-72h 20-03-26",

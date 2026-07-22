@@ -1,16 +1,16 @@
-md5: 427dd9f3292e8e83d2c533b12298e434
+md5: bb6f75c6b1eeb44ed44887187d0de552
 frozen: true
 deps:
-- md5: b07508fd3957e084cbdbb2996f39a123.dir
-  size: 1474288
-  nfiles: 3
+- md5: f3fa4fce8d5ae62ced66ffedfb62e99d.dir
+  size: 4809768
+  nfiles: 4
   hash: md5
   path: 
     /ictstr01/groups/aiconsultants/datasets/single_cell_drug_response/MF5V1_processed
     Timelapse samples 19.03.2024/HD1509 MF5V1 0-72h 23-02-26/processed_summary
 outs:
-- md5: b07508fd3957e084cbdbb2996f39a123.dir
-  size: 1474288
-  nfiles: 3
+- md5: f3fa4fce8d5ae62ced66ffedfb62e99d.dir
+  size: 4809768
+  nfiles: 4
   hash: md5
   path: processed_summary
