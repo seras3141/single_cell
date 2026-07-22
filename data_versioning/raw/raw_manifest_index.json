@@ -2,10 +2,40 @@
   "description": "Tier-1 raw TIFF folder checksum manifests (md5). No file bytes stored in DVC.",
   "generated_by": "slurm/dvc_ingest_tier1.sbatch",
   "experiments": [
-    {"experiment": "HD1509 MF5V1 0-72h 23-02-26", "manifest": "HD1509 MF5V1 0-72h 23-02-26.md5", "n_files": 4771, "total_bytes": 10001533706, "folder_md5": "9200f6b7383fa2f30db1d3225c8b6c55"},
-    {"experiment": "SA110 MF5V1 0-72h 13-02-26", "manifest": "SA110 MF5V1 0-72h 13-02-26.md5", "n_files": 4974, "total_bytes": 10427271378, "folder_md5": "052714e3c3f700267db22dd4dd16aa52"},
-    {"experiment": "HD1883 MF5V1 0-72h 20-03-26", "manifest": "HD1883 MF5V1 0-72h 20-03-26.md5", "n_files": 20414, "total_bytes": 42812284418, "folder_md5": "6b79e8d948a6e967290a6fb979b288dd"},
-    {"experiment": "Ew2-1 MF5V1 0-72h 06-03-26", "manifest": "Ew2-1 MF5V1 0-72h 06-03-26.md5", "n_files": 20411, "total_bytes": 42806081932, "folder_md5": "550bb683df039cf1c05b47d8be1f5a39"},
-    {"experiment": "Ew2-2 MF5V1 072h 17-04-26", "manifest": "Ew2-2 MF5V1 072h 17-04-26.md5", "n_files": 20415, "total_bytes": 42814344504, "folder_md5": "1041cb2c3f681a3e436166eec81a9cf0"}
+    {
+      "experiment": "HD1509 MF5V1 0-72h 23-02-26",
+      "manifest": "HD1509 MF5V1 0-72h 23-02-26.md5",
+      "n_files": 20412,
+      "total_bytes": 42815863422,
+      "folder_md5": "ee60052ee5fd358c1189ffdc75b4aa8c"
+    },
+    {
+      "experiment": "SA110 MF5V1 0-72h 13-02-26",
+      "manifest": "SA110 MF5V1 0-72h 13-02-26.md5",
+      "n_files": 20412,
+      "total_bytes": 42809556888,
+      "folder_md5": "ebeea1f79881bec1e701d1ec574ec721"
+    },
+    {
+      "experiment": "HD1883 MF5V1 0-72h 20-03-26",
+      "manifest": "HD1883 MF5V1 0-72h 20-03-26.md5",
+      "n_files": 20414,
+      "total_bytes": 42812284418,
+      "folder_md5": "6b79e8d948a6e967290a6fb979b288dd"
+    },
+    {
+      "experiment": "Ew2-1 MF5V1 0-72h 06-03-26",
+      "manifest": "Ew2-1 MF5V1 0-72h 06-03-26.md5",
+      "n_files": 20411,
+      "total_bytes": 42806081932,
+      "folder_md5": "550bb683df039cf1c05b47d8be1f5a39"
+    },
+    {
+      "experiment": "Ew2-2 MF5V1 072h 17-04-26",
+      "manifest": "Ew2-2 MF5V1 072h 17-04-26.md5",
+      "n_files": 20415,
+      "total_bytes": 42814344504,
+      "folder_md5": "1041cb2c3f681a3e436166eec81a9cf0"
+    }
   ]
 }

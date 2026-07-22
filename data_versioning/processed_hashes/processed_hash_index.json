@@ -5,96 +5,96 @@
   "experiments": {
     "HD1509 MF5V1 0-72h 23-02-26": {
       "split_data": {
-        "folder_md5": "4982249faf3af76e529ff57c4d97c869",
-        "nfiles": 4769,
-        "n_symlinks": 4768,
-        "total_bytes": 10000015114
+        "folder_md5": "8a409c66d005ed1da2cc59cba902f5f4",
+        "nfiles": 20413,
+        "n_symlinks": 20412,
+        "total_bytes": 42816772889
       },
       "3d_data": {
-        "folder_md5": "c6c615b079e097e52c2fbd79c28b286e",
-        "nfiles": 63,
+        "folder_md5": "ff46510dbcf0a4d08f6ef15f09399e20",
+        "nfiles": 324,
         "n_symlinks": 0,
-        "total_bytes": 2618751831
+        "total_bytes": 13444327706
       },
       "blur_heatmaps": {
-        "folder_md5": "cc511e06dd20d2f93e76c88258e4de7a",
-        "nfiles": 63,
+        "folder_md5": "305dcc22f8053e48dbd01cde032cadf6",
+        "nfiles": 324,
         "n_symlinks": 0,
-        "total_bytes": 5285053242
+        "total_bytes": 27180273816
       },
       "inference": {
-        "folder_md5": "b0488131fa23382c80a5ea8815cf001e",
-        "nfiles": 16223,
+        "folder_md5": "f1465ea940af5d6fda70d6f7abdb7817",
+        "nfiles": 27218,
         "n_symlinks": 0,
-        "total_bytes": 188180665,
+        "total_bytes": 832308834,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "02f531ccacc0c1f2684e356a99fcc407",
-            "nfiles": 16223,
+            "folder_md5": "78bfc66487a72ef7b835cd256cf153e4",
+            "nfiles": 27218,
             "n_symlinks": 0,
-            "total_bytes": 188180665
+            "total_bytes": 832308834
           }
         }
       },
       "inference_tracked": {
-        "folder_md5": "f53eef2719b1f0c4922289756241d7f0",
-        "nfiles": 2584,
+        "folder_md5": "5eaefe85d55d6178ef6eda759a58f95b",
+        "nfiles": 18909,
         "n_symlinks": 0,
-        "total_bytes": 2672945289,
+        "total_bytes": 14082801530,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "a91e0db571c94915388e6811f3f0b3f4",
-            "nfiles": 2584,
+            "folder_md5": "5597643fcb84e821da5c965c23f8b769",
+            "nfiles": 18909,
             "n_symlinks": 0,
-            "total_bytes": 2672945289
+            "total_bytes": 14082801530
           }
         }
       }
     },
     "SA110 MF5V1 0-72h 13-02-26": {
       "split_data": {
-        "folder_md5": "32c5b7d9f94aeec68b939e65752c1094",
-        "nfiles": 4972,
-        "n_symlinks": 4971,
-        "total_bytes": 10425770826
+        "folder_md5": "1d743b0f68b5d302fe2064e47ea2e2a4",
+        "nfiles": 20413,
+        "n_symlinks": 20412,
+        "total_bytes": 42810466355
       },
       "3d_data": {
-        "folder_md5": "db5dd73c3d50259339d254dd1d5b3768",
-        "nfiles": 67,
+        "folder_md5": "163730defc36a9d71f8e947d6e4bcc6e",
+        "nfiles": 324,
         "n_symlinks": 0,
-        "total_bytes": 2578004027
+        "total_bytes": 12490687265
       },
       "blur_heatmaps": {
-        "folder_md5": "a0cf93e2d65ea5928d4ea1bc0c722b1f",
-        "nfiles": 67,
+        "folder_md5": "655f41f7248d614b0d7c2057acd351b1",
+        "nfiles": 324,
         "n_symlinks": 0,
-        "total_bytes": 5587056322
+        "total_bytes": 27180273816
       },
       "inference": {
-        "folder_md5": "cd4b4becbd6dab3683ed56bccb838882",
-        "nfiles": 13499,
+        "folder_md5": "0a7f19d6c71a0ab5d89451b59177a946",
+        "nfiles": 27218,
         "n_symlinks": 0,
-        "total_bytes": 73765369,
+        "total_bytes": 288146889,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "f53acafc411764fce733e6f2531b3852",
-            "nfiles": 13499,
+            "folder_md5": "3e2dcc3f1645b2943af33be49fce470a",
+            "nfiles": 27218,
             "n_symlinks": 0,
-            "total_bytes": 73765369
+            "total_bytes": 288146889
           }
         }
       },
       "inference_tracked": {
-        "folder_md5": "2e1de2c67e46451cd0ec1f91cc14a910",
-        "nfiles": 2732,
+        "folder_md5": "313e4bc7bf3d69cad9ba0276ae737ce3",
+        "nfiles": 19439,
         "n_symlinks": 0,
-        "total_bytes": 2295885279,
+        "total_bytes": 11365589761,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "13f8b21407c67b2bf0feb3e308061910",
-            "nfiles": 2732,
+            "folder_md5": "477dea788456ce4ac80469fbd6c529cd",
+            "nfiles": 19439,
             "n_symlinks": 0,
-            "total_bytes": 2295885279
+            "total_bytes": 11365589761
           }
         }
       }
