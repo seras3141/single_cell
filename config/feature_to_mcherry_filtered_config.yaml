@@ -1,0 +1,34 @@
+# Filtered variant of feature_to_mcherry_config.yaml — points feature_csv/target_csv at
+# the representative-slice branch (inference_filtered/) instead of inference_tracked/.
+# Same modelling knobs; use this to compare the one-row-per-cell (filtered) baselines
+# against the per-slice (tracked) ones. Defaults to Ew2-1; a per-experiment driver
+# overrides feature_csv/target_csv/output_dir. See
+# docs/feature_to_mcherry/plan_representative_slice_per_cell.md.
+
+feature_to_mcherry:
+  feature_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/Ew2-1 MF5V1 0-72h 06-03-26/inference_filtered/cellpose_sam/features_incarta/split_data"
+  target_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/Ew2-1 MF5V1 0-72h 06-03-26/inference_filtered/cellpose_sam/mcherry_metrics/instance_metrics.csv"
+  id_column: cell_id            # incarta split_data emits cell_id (not instance_id)
+  sample_id_column: null        # already present as a column
+  timepoint_column: null        # already present as a column
+  z_index_column: null          # already present as a column
+  target_columns: [percentile_75, percentile_90, percentile_95]
+  # Drop positional columns (no morphology signal; intensity-weighted position risks
+  # FOV/illumination batch signal). Keep raw-intensity columns.
+  exclude_feature_columns:
+    - centroid_x
+    - centroid_y
+    - center_of_mass_x
+    - center_of_mass_y
+    - mass_displacement
+  group_by: sample_id           # grouped k-fold CV keeps a well whole
+  n_splits: 5
+  ridge_alpha: 1.0
+  quantile_alpha: 0.0
+  quantile_solver: highs
+  # ~5x fewer rows than the tracked per-slice tables (one row per cell), so the LP-solver
+  # cap rarely bites; kept for parity with the tracked config.
+  quantile_train_subsample_size: 25000
+  quantile_train_subsample_seed: 0
+  sort_quantiles: true
+  output_dir: results/feature_to_mcherry_filtered

@@ -26,10 +26,12 @@ from .tracking_processor import (
     PostprocessingConfig
 )
 
+from .representative_slice import run as run_representative_slice
+
 __all__ = [
     # Cell tracking
     "CellTracker3D",
-    "TrackingConfig", 
+    "TrackingConfig",
     "track_segmentation_masks",
     "filter_tracks_by_quality",
     # Blur filtering
@@ -39,5 +41,7 @@ __all__ = [
     # "assess_segmentation_quality",
     # Unified postprocessing pipeline
     "CellTrackingPipeline",
-    "PostprocessingConfig"
+    "PostprocessingConfig",
+    # Representative-slice-per-cell selection (inference_filtered/ branch)
+    "run_representative_slice",
 ]

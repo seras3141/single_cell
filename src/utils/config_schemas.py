@@ -172,6 +172,65 @@ class PostprocessingConfig:
     convert_to_2d: bool = True  # Convert final output to 2D if required
 
 
+@dataclass
+class RepresentativeSliceConfig:
+    """Config for the representative-slice-per-cell branch (inference_filtered/)."""
+    # Paths (explicit dirs; default "" -> validated at stage runtime, not globally,
+    # since validate_pipeline_config runs for every pipeline invocation)
+    input_masks_dir: str = ""   # inference/<model>/masks_3d (raw 3D masks)
+    bf_3d_dir: str = ""         # 3d_data (3D BF stacks, for sharpness)
+    output_dir: str = ""        # inference_filtered/<model> (masks + selection.csv)
+
+    # Selection criterion: blur gate, then chooser (see selection_metric)
+    sharpness_gate_fraction: float = 0.7  # keep slices with lap_var >= f * cell-max
+    # Chooser applied among gated slices: "area" (largest cross-section, the shipped
+    # default, most comparable morphology plane) or "sharpness" (sharpest slice; the
+    # Phase 6c z-edge check showed it avoids the oblique edge-slice area inflation). The
+    # other metric is the tie-break, then z nearest the area-weighted centroid.
+    selection_metric: str = "area"  # area | sharpness
+    min_area: int = 10          # guard: drop debris (also linker lower bound)
+    max_area: int = 100000      # generous (Phase 0: default 5000 drops big cells)
+
+    # Sharpness: compute laplacian_variance on the interior, not a zeroed crop
+    # (Phase 0: a background-zeroed crop is dominated by the mask edge)
+    sharpness_erosion_px: int = 1  # erode mask before lap_var (0 = unmasked bbox)
+
+    # Optional pre-link absolute blur-map cell filter (mirrors the tracked pipeline's
+    # filter_before_tracking): drops blurry detections BEFORE linking, so junk/off-focus
+    # cells are removed rather than kept by the per-cell relative blur gate. Default OFF
+    # (unfiltered = current behavior). Uses the cached blur heatmaps + the same threshold
+    # as postprocessing_config.yaml (blur_threshold=0.5, invert_threshold=False).
+    enable_blur_filter: bool = False
+    blur_heatmap_dir: str = ""   # dir of cached {prefix}_BF_3d_blur_heatmap.tif ("" -> compute)
+    blur_threshold: float = 0.5
+    blur_invert_threshold: bool = False
+
+    # trackpy z-linker. min_track_length is FORCED to 1 in code, not exposed here
+    # (Phase 0: the TrackingConfig default of 3 drops ~58% of cells).
+    search_range: float = 5.0
+    memory: int = 1
+
+    # Data convention (Phase 0): 3D-stack index i maps to split_data z(i + offset);
+    # split_data z0 is a projection excluded from the stack, so the offset is 1.
+    z_index_offset: int = 1
+
+    # Diagnostic mode: emit ALL linked slices (each cell at every z) instead of only the
+    # selected representative slice. Used for the per-slice vs one-per-cell comparison on
+    # identical masks. Default OFF (normal one-row-per-cell output).
+    emit_all_slices: bool = False
+
+    # I/O
+    mask_pattern: str = "*_pred_mask_3d.zarr"
+    # tif so downstream extraction can read it: incarta uses cv2.imread and
+    # mcherry_metrics uses tifffile.imread — neither reads .zarr (matches the tracked
+    # branch's final_2d/, which is also .tif).
+    output_label_format: str = "tif"
+
+    # Execution
+    n_jobs: Optional[int] = None  # None -> SLURM_CPUS_PER_TASK / cpu_count
+    overwrite_existing: bool = False
+
+
 # =============================================================================
 # Feature Extraction Configuration
 # =============================================================================
@@ -470,6 +529,8 @@ class PipelineConfig:
     segmentation: SegmentationConfig = field(default_factory=SegmentationConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     postprocessing: PostprocessingConfig = field(default_factory=PostprocessingConfig)
+    representative_slice: RepresentativeSliceConfig = field(
+        default_factory=RepresentativeSliceConfig)
     feature_extraction: FeatureExtractionConfig = field(default_factory=FeatureExtractionConfig)
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
@@ -509,7 +570,29 @@ def validate_pipeline_config(config: PipelineConfig) -> None:
     # Filtering validation
     if not 0 <= config.postprocessing.filtering.blur_threshold <= 1:
         raise ValueError("Blur threshold should typically be between 0 and 1")
-    
+
+    # Representative-slice validation (value ranges only; path checks are deferred to
+    # the stage entrypoint, since these defaults apply to every pipeline invocation)
+    rs = config.representative_slice
+    if not 0 < rs.sharpness_gate_fraction <= 1:
+        raise ValueError(
+            "representative_slice.sharpness_gate_fraction must be in (0, 1]"
+        )
+    if rs.selection_metric not in ("area", "sharpness"):
+        raise ValueError(
+            "representative_slice.selection_metric must be area|sharpness"
+        )
+    if rs.min_area >= rs.max_area:
+        raise ValueError("representative_slice.min_area must be less than max_area")
+    if rs.search_range <= 0:
+        raise ValueError("representative_slice.search_range must be positive")
+    if rs.z_index_offset < 0:
+        raise ValueError("representative_slice.z_index_offset must be >= 0")
+    if rs.output_label_format not in ("tif", "zarr", "hdf5"):
+        raise ValueError(
+            "representative_slice.output_label_format must be tif|zarr|hdf5"
+        )
+
     # Feature extraction validation
     valid_methods = ['incarta', 'regionprops', 'pyradiomics', 'scportrait']
     if config.feature_extraction.method not in valid_methods:

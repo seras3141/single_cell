@@ -11,7 +11,8 @@ from omegaconf.errors import ValidationError
 
 from .config_schemas import (
     PipelineConfig, SegmentationConfig, TrainingConfig, TrackingConfig,
-    FilterConfig, PostprocessingConfig, validate_pipeline_config
+    FilterConfig, PostprocessingConfig, RepresentativeSliceConfig,
+    validate_pipeline_config
 )
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,7 @@ class ConfigManager:
             'segmentation': SegmentationConfig,
             'training': TrainingConfig,
             'postprocessing': PostprocessingConfig,
+            'representative_slice': RepresentativeSliceConfig,
         }
         
         if section in section_map:

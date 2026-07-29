@@ -1,0 +1,44 @@
+# Filtered variant of morphology_informativeness_config.yaml — points feature_csv/
+# target_csv at the representative-slice branch (inference_filtered/) instead of
+# inference_tracked/. Same gate knobs; use this to compare the informativeness floor /
+# univariate associations on the one-row-per-cell (filtered) tables against the per-slice
+# (tracked) ones. Defaults to Ew2-1; a per-experiment driver overrides paths. See
+# docs/feature_to_mcherry/plan_representative_slice_per_cell.md.
+
+morphology_informativeness:
+  feature_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/Ew2-1 MF5V1 0-72h 06-03-26/inference_filtered/cellpose_sam/features_incarta/split_data"
+  target_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/Ew2-1 MF5V1 0-72h 06-03-26/inference_filtered/cellpose_sam/mcherry_metrics/instance_metrics.csv"
+  id_column: cell_id
+  sample_id_column: null
+  timepoint_column: null
+  z_index_column: null
+  target_columns: [percentile_75, percentile_90, percentile_95]
+  group_by: sample_id
+  n_splits: 5
+  # Interpretable incarta size/shape + texture. Positional columns (centroid_*,
+  # center_of_mass_*, mass_displacement) match nothing here -> ignored by design.
+  morphology_feature_patterns:
+    - area
+    - perimeter
+    - elongation
+    - compactness
+    - circularity
+    - feret_diameter
+    - radius_of_gyration
+    - major_axis
+    - minor_axis
+    - gabor_mean
+    - gabor_std
+    - skewness
+    - kurtosis
+    - entropy
+  # Raw brightfield intensity magnitude — size/thickness/focus/illumination proxies,
+  # not unambiguous morphology. Kept in the "with_suspect" floor, dropped from the
+  # "without_suspect" one. "*intensity" catches mean/std/cv/total_intensity.
+  suspect_feature_patterns:
+    - "*intensity"
+  ridge_alpha: 1.0
+  nonlinear_backend: auto        # LightGBM if importable, else sklearn GBR
+  top_k_features: 5
+  plate_layout_json: config/MF5v1_plate_layout.json   # well->drug/dose for the noise ceiling
+  output_dir: results/morphology_informativeness_filtered
