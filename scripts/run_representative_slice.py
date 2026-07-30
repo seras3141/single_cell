@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI for the representative-slice-per-cell stage (the inference_filtered/ branch).
+"""CLI for the representative-slice-per-cell stage (the representative-slice branch).
 
 Loads ``config/representative_slice_config.yaml`` (a central config section, via
 ``ConfigManager``), applies CLI overrides, and runs
@@ -14,7 +14,7 @@ Examples
     uv run scripts/run_representative_slice.py \\
         --input-masks-dir ".../inference/cellpose_sam/masks_3d" \\
         --bf-3d-dir ".../3d_data" \\
-        --output-dir ".../inference_filtered/cellpose_sam" \\
+        --output-dir ".../inference_filtered_sharpness/cellpose_sam" \\
         --n-jobs 8 --overwrite
 
     # arbitrary dot-notation override
@@ -60,7 +60,7 @@ _NAMED_OVERRIDES = {
 def get_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Select one representative z-slice per cell (inference_filtered/).",
+        description="Select one representative z-slice per cell (representative-slice branch).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -72,7 +72,7 @@ def get_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--input-masks-dir", help="Dir of raw 3D masks (masks_3d).")
     parser.add_argument("--bf-3d-dir", help="Dir of 3D BF stacks (3d_data).")
-    parser.add_argument("--output-dir", help="Output dir (inference_filtered/<model>).")
+    parser.add_argument("--output-dir", help="Output dir (inference_<filter>_<chooser>/<model>).")
     parser.add_argument("--mask-pattern", help="Glob for input 3D mask files.")
     parser.add_argument(
         "--selection-metric",

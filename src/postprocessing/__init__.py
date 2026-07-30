@@ -42,6 +42,6 @@ __all__ = [
     # Unified postprocessing pipeline
     "CellTrackingPipeline",
     "PostprocessingConfig",
-    # Representative-slice-per-cell selection (inference_filtered/ branch)
+    # Representative-slice-per-cell selection (representative-slice branch)
     "run_representative_slice",
 ]

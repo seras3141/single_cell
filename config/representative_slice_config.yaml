@@ -2,10 +2,10 @@
 #
 # This is an ALTERNATIVE branch to inference_tracked/: it links raw inference/<model>/
 # masks_3d slices across z with trackpy (as a z-linker only, min_track_length forced
-# to 1), then per physical cell applies a blur gate + max-area chooser to keep ONE
-# representative z-slice, writing only those slices' masks to inference_filtered/<model>
-# plus an auditable selection.csv. Feature/mCherry extraction then run unchanged
-# against inference_filtered/ -> one row per cell.
+# to 1), then per physical cell applies a blur gate + area/sharpness chooser to keep ONE
+# representative z-slice, writing only those slices' masks to an output dir named
+# inference_<filtered|unfiltered>_<chooser>/<model> (filtered = blur on) plus an auditable
+# selection.csv. Feature/mCherry extraction then run unchanged against it -> one row per cell.
 #
 # Paths default to Ew2-1 (cellpose_sam) so the config runs out of the box; a
 # per-experiment SLURM driver overrides input_masks_dir/bf_3d_dir/output_dir.
@@ -15,7 +15,7 @@ representative_slice:
   # --- Paths (explicit dirs) ---
   input_masks_dir: "data/MF5V1_processed Timelapse samples 19.03.2024/Ew2-1 MF5V1 0-72h 06-03-26/inference/cellpose_sam/masks_3d"
   bf_3d_dir: "data/MF5V1_processed Timelapse samples 19.03.2024/Ew2-1 MF5V1 0-72h 06-03-26/3d_data"
-  output_dir: "data/MF5V1_processed Timelapse samples 19.03.2024/Ew2-1 MF5V1 0-72h 06-03-26/inference_filtered/cellpose_sam"
+  output_dir: "data/MF5V1_processed Timelapse samples 19.03.2024/Ew2-1 MF5V1 0-72h 06-03-26/inference_unfiltered_area/cellpose_sam"
 
   # --- Selection criterion: blur gate, then chooser (selection_metric) ---
   sharpness_gate_fraction: 0.7   # keep slices with lap_var >= f * that cell's max

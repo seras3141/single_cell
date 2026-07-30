@@ -127,7 +127,7 @@ class TestYamlLoad:
         # Ew2-1 paths came through
         assert rs.input_masks_dir.endswith("inference/cellpose_sam/masks_3d")
         assert rs.bf_3d_dir.endswith("3d_data")
-        assert rs.output_dir.endswith("inference_filtered/cellpose_sam")
+        assert rs.output_dir.endswith("inference_unfiltered_area/cellpose_sam")
         # typed scalars survive the YAML round-trip
         assert rs.sharpness_gate_fraction == 0.7
         assert rs.selection_metric == "area"

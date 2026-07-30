@@ -278,7 +278,7 @@ class TestRunEndToEnd:
     def test_two_stacks(self, tmp_path):
         masks_dir = tmp_path / "masks_3d"
         bf_dir = tmp_path / "3d_data"
-        out_dir = tmp_path / "inference_filtered"
+        out_dir = tmp_path / "inference_unfiltered_area"
         masks_dir.mkdir()
         bf_dir.mkdir()
         for well in ("A01", "A02"):

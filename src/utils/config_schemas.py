@@ -174,12 +174,16 @@ class PostprocessingConfig:
 
 @dataclass
 class RepresentativeSliceConfig:
-    """Config for the representative-slice-per-cell branch (inference_filtered/)."""
+    """Config for the representative-slice-per-cell branch.
+
+    Output dirs are named inference_<filtered|unfiltered>_<chooser>/<model> by the driver
+    (filtered = blur on; chooser = area|sharpness), not fixed here.
+    """
     # Paths (explicit dirs; default "" -> validated at stage runtime, not globally,
     # since validate_pipeline_config runs for every pipeline invocation)
     input_masks_dir: str = ""   # inference/<model>/masks_3d (raw 3D masks)
     bf_3d_dir: str = ""         # 3d_data (3D BF stacks, for sharpness)
-    output_dir: str = ""        # inference_filtered/<model> (masks + selection.csv)
+    output_dir: str = ""        # inference_<filter>_<chooser>/<model> (masks + selection.csv)
 
     # Selection criterion: blur gate, then chooser (see selection_metric)
     sharpness_gate_fraction: float = 0.7  # keep slices with lap_var >= f * cell-max

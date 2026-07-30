@@ -1,13 +1,13 @@
 # Filtered variant of morphology_informativeness_config.yaml — points feature_csv/
-# target_csv at the representative-slice branch (inference_filtered/) instead of
-# inference_tracked/. Same gate knobs; use this to compare the informativeness floor /
+# target_csv at the representative-slice branch (here inference_unfiltered_area/) instead
+# of inference_tracked/. Same gate knobs; use this to compare the informativeness floor /
 # univariate associations on the one-row-per-cell (filtered) tables against the per-slice
 # (tracked) ones. Defaults to Ew2-1; a per-experiment driver overrides paths. See
 # docs/feature_to_mcherry/plan_representative_slice_per_cell.md.
 
 morphology_informativeness:
-  feature_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/Ew2-1 MF5V1 0-72h 06-03-26/inference_filtered/cellpose_sam/features_incarta/split_data"
-  target_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/Ew2-1 MF5V1 0-72h 06-03-26/inference_filtered/cellpose_sam/mcherry_metrics/instance_metrics.csv"
+  feature_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/Ew2-1 MF5V1 0-72h 06-03-26/inference_unfiltered_area/cellpose_sam/features_incarta/split_data"
+  target_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/Ew2-1 MF5V1 0-72h 06-03-26/inference_unfiltered_area/cellpose_sam/mcherry_metrics/instance_metrics.csv"
   id_column: cell_id
   sample_id_column: null
   timepoint_column: null
@@ -41,4 +41,4 @@ morphology_informativeness:
   nonlinear_backend: auto        # LightGBM if importable, else sklearn GBR
   top_k_features: 5
   plate_layout_json: config/MF5v1_plate_layout.json   # well->drug/dose for the noise ceiling
-  output_dir: results/morphology_informativeness_filtered
+  output_dir: results/morphology_informativeness_unfiltered_area

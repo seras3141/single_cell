@@ -1,4 +1,4 @@
-"""Representative-slice-per-cell selection (the ``inference_filtered/`` branch).
+"""Representative-slice-per-cell selection (the representative-slice branch).
 
 An alternative to the tracked pipeline: link raw ``masks_3d`` slices across z with
 trackpy (as a z-linker only, ``min_track_length=1``), then per physical cell apply a
