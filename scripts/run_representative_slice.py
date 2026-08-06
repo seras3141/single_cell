@@ -60,7 +60,7 @@ _NAMED_OVERRIDES = {
 def get_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Select one representative z-slice per cell (representative-slice branch).",
+        description="Select one representative z-slice per cell.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -72,7 +72,9 @@ def get_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--input-masks-dir", help="Dir of raw 3D masks (masks_3d).")
     parser.add_argument("--bf-3d-dir", help="Dir of 3D BF stacks (3d_data).")
-    parser.add_argument("--output-dir", help="Output dir (inference_<filter>_<chooser>/<model>).")
+    parser.add_argument(
+        "--output-dir", help="Output dir (inference_<filter>_<chooser>/<model>)."
+    )
     parser.add_argument("--mask-pattern", help="Glob for input 3D mask files.")
     parser.add_argument(
         "--selection-metric",

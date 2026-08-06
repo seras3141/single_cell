@@ -19,10 +19,11 @@ representative_slice:
 
   # --- Selection criterion: blur gate, then chooser (selection_metric) ---
   sharpness_gate_fraction: 0.7   # keep slices with lap_var >= f * that cell's max
-  # chooser among gated slices: area (largest cross-section, shipped default) or
-  # sharpness (sharpest slice; the Phase 6c z-edge check showed it avoids the oblique
-  # edge-slice area inflation). The other metric breaks ties, then z near the centroid.
-  selection_metric: area         # area | sharpness
+  # chooser among gated slices: sharpness (sharpest slice; the DEFAULT — the Phase 6c
+  # z-edge check showed it avoids the oblique edge-slice area inflation, at zero
+  # downstream cost) or area (largest cross-section). The other metric breaks ties,
+  # then z near the centroid.
+  selection_metric: sharpness    # sharpness | area
   min_area: 10                   # guard: drop debris (also linker lower bound)
   max_area: 100000               # generous; the tracker filters by max_area (default
                                  # 5000 would silently drop big cells)

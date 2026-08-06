@@ -136,7 +136,7 @@ class TestSelectRepresentative:
                 "z_stack_index": [4, 5],
                 "x": [0.0, 0.0],
                 "y": [0.0, 0.0],
-                "area": [200, 150],   # z=4 larger
+                "area": [200, 150],  # z=4 larger
                 "sharpness": [1.0, 1.0],  # tie on sharpness
             }
         )

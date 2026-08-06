@@ -187,11 +187,11 @@ class RepresentativeSliceConfig:
 
     # Selection criterion: blur gate, then chooser (see selection_metric)
     sharpness_gate_fraction: float = 0.7  # keep slices with lap_var >= f * cell-max
-    # Chooser applied among gated slices: "area" (largest cross-section, the shipped
-    # default, most comparable morphology plane) or "sharpness" (sharpest slice; the
-    # Phase 6c z-edge check showed it avoids the oblique edge-slice area inflation). The
-    # other metric is the tie-break, then z nearest the area-weighted centroid.
-    selection_metric: str = "area"  # area | sharpness
+    # Chooser applied among gated slices: "sharpness" (sharpest slice — the default;
+    # Phase 6c z-edge check showed it avoids the oblique edge-slice area inflation, at
+    # zero downstream cost per the Ew2-1 sharpness-vs-area run) or "area" (largest
+    # cross-section). The other metric breaks ties, then z nearest the centroid.
+    selection_metric: str = "sharpness"  # sharpness | area
     min_area: int = 10          # guard: drop debris (also linker lower bound)
     max_area: int = 100000      # generous (Phase 0: default 5000 drops big cells)
 

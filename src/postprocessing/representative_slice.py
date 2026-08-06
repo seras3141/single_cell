@@ -69,9 +69,7 @@ def _blur_heatmap_for_stack(
     """
     cached = None
     if config.blur_heatmap_dir:
-        cached = str(
-            Path(config.blur_heatmap_dir) / f"{prefix}_BF_3d_blur_heatmap.tif"
-        )
+        cached = str(Path(config.blur_heatmap_dir) / f"{prefix}_BF_3d_blur_heatmap.tif")
     return get_or_compute_blur_heatmap(
         bf_path, blur_path=cached, patch_size=32, stride_size=8, normalize=True
     )
@@ -309,9 +307,7 @@ def _parse_stack_keys(
     return sample_id, timepoint, prefix
 
 
-def process_stack(
-    mask_path: Path, config: RepresentativeSliceConfig
-) -> pd.DataFrame:
+def process_stack(mask_path: Path, config: RepresentativeSliceConfig) -> pd.DataFrame:
     """Process one (well, timepoint) 3D mask stack -> its selection rows.
 
     Links across z, computes BF metrics, selects one slice per cell, writes the per-z

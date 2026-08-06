@@ -30,7 +30,7 @@ class TestRepresentativeSliceConfigDefaults:
         assert cfg.output_dir == ""
         # selection criterion
         assert cfg.sharpness_gate_fraction == 0.7
-        assert cfg.selection_metric == "area"
+        assert cfg.selection_metric == "sharpness"
         assert cfg.min_area == 10
         assert cfg.max_area == 100000
         assert cfg.sharpness_erosion_px == 1
@@ -130,7 +130,7 @@ class TestYamlLoad:
         assert rs.output_dir.endswith("inference_unfiltered_area/cellpose_sam")
         # typed scalars survive the YAML round-trip
         assert rs.sharpness_gate_fraction == 0.7
-        assert rs.selection_metric == "area"
+        assert rs.selection_metric == "sharpness"
         assert rs.max_area == 100000
         assert rs.z_index_offset == 1
         assert rs.output_label_format == "tif"
