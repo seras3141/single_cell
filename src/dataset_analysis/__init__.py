@@ -25,6 +25,10 @@ from .layout import (
     get_well_annotation,
     load_plate_layout,
 )
+from .cell_population import (
+    compute_cell_population,
+    plot_population,
+)
 from .plotting import (
     plot_channel_completeness,
     plot_control_distribution,
