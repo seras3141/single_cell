@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
@@ -31,6 +32,11 @@ class FloorResult:
     backend: str
     pooled_metrics: List[Dict[str, Any]]
     oof_predictions: np.ndarray
+    feature_importances: Optional[pd.DataFrame] = None
+    """Per-(target, feature) importance averaged across CV folds, columns
+    ``target, feature, importance_mean, importance_std`` — only populated when the
+    fitted estimator exposes ``feature_importances_`` (e.g. LightGBM/GBM); ``None``
+    for models that don't (e.g. Ridge)."""
 
 
 def _make_nonlinear_regressor(backend: str) -> Tuple[Callable[[], Any], str]:
@@ -70,6 +76,51 @@ def _make_nonlinear_regressor(backend: str) -> Tuple[Callable[[], Any], str]:
     )
 
 
+def _extract_feature_importances(model: Any, n_targets: int) -> Optional[np.ndarray]:
+    """Per-target ``feature_importances_`` from a fitted ``MultiOutputRegressor``.
+
+    Returns an array shaped ``(n_targets, n_features)``, or ``None`` if ``model``
+    isn't a ``MultiOutputRegressor`` with one estimator per target, or any of its
+    per-target estimators doesn't expose ``feature_importances_`` (e.g. Ridge).
+    """
+    estimators = getattr(model, "estimators_", None)
+    if estimators is None or len(estimators) != n_targets:
+        return None
+    importances = []
+    for estimator in estimators:
+        values = getattr(estimator, "feature_importances_", None)
+        if values is None:
+            return None
+        importances.append(np.asarray(values))
+    return np.stack(importances)
+
+
+def _feature_importances_dataframe(
+    importances_per_fold: List[np.ndarray],
+    target_names: List[str],
+    feature_names: List[str],
+) -> Optional[pd.DataFrame]:
+    """Average per-fold ``(n_targets, n_features)`` importance arrays into a long
+    DataFrame, or ``None`` if no fold produced any."""
+    if not importances_per_fold:
+        return None
+    stacked = np.stack(importances_per_fold)  # (n_folds, n_targets, n_features)
+    mean_importance = stacked.mean(axis=0)
+    std_importance = stacked.std(axis=0)
+    rows = []
+    for j, target_name in enumerate(target_names):
+        for k, feature_name in enumerate(feature_names):
+            rows.append(
+                {
+                    "target": target_name,
+                    "feature": feature_name,
+                    "importance_mean": mean_importance[j, k],
+                    "importance_std": std_importance[j, k],
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def _run_model(
     model_factory: Callable[[], Any],
     X: np.ndarray,
@@ -79,13 +130,22 @@ def _run_model(
     group_by: str,
     taus: List[float],
     target_names: List[str],
-) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
-    """Grouped-CV fit/predict, returning out-of-fold predictions and pooled metrics."""
+    feature_names: Optional[List[str]] = None,
+) -> Tuple[np.ndarray, List[Dict[str, Any]], Optional[pd.DataFrame]]:
+    """Grouped-CV fit/predict, returning out-of-fold predictions, pooled metrics, and
+    (when ``feature_names`` is given and the fitted model exposes
+    ``feature_importances_``) a fold-averaged feature-importances table."""
     oof_predictions = np.full_like(y, np.nan, dtype=float)
+    importances_per_fold: List[np.ndarray] = []
     for train_idx, val_idx in grouped_kfold_indices(X, groups, n_splits, group_by):
         model = model_factory()
         model.fit(X[train_idx], y[train_idx])
         oof_predictions[val_idx] = np.asarray(model.predict(X[val_idx]))
+
+        if feature_names is not None:
+            fold_importances = _extract_feature_importances(model, len(target_names))
+            if fold_importances is not None:
+                importances_per_fold.append(fold_importances)
 
     if np.isnan(oof_predictions).any():
         raise RuntimeError(
@@ -96,7 +156,19 @@ def _run_model(
     pooled_metrics = per_target_regression_metrics(
         y, oof_predictions, taus, target_names
     )
-    return oof_predictions, pooled_metrics
+
+    feature_importances_df = None
+    if feature_names is not None:
+        feature_importances_df = _feature_importances_dataframe(
+            importances_per_fold, target_names, feature_names
+        )
+        if feature_importances_df is None:
+            logger.info(
+                "Fitted model does not expose feature_importances_; skipping "
+                "feature-importance collection."
+            )
+
+    return oof_predictions, pooled_metrics, feature_importances_df
 
 
 def compute_floor(
@@ -109,6 +181,7 @@ def compute_floor(
     n_splits: int,
     ridge_alpha: float,
     nonlinear_backend: str,
+    feature_names: Optional[List[str]] = None,
 ) -> Dict[str, FloorResult]:
     """Fit the linear (Ridge) and nonlinear (GBM) floor models under grouped CV.
 
@@ -118,12 +191,16 @@ def compute_floor(
     multi-output support, so it is wrapped in ``MultiOutputRegressor`` to fit one
     independent regressor per target column.
 
+    ``feature_names``, if given, enables fold-averaged feature-importance collection
+    on the nonlinear result (``FloorResult.feature_importances``) — not requested for
+    the linear (Ridge) result, since Ridge has no ``feature_importances_`` attribute.
+
     Returns
     -------
     dict[str, FloorResult]
         Keys ``"linear"`` and ``"nonlinear"``.
     """
-    linear_oof, linear_metrics = _run_model(
+    linear_oof, linear_metrics, _ = _run_model(
         lambda: RidgeMeanBaseline(alpha=ridge_alpha),
         X,
         y,
@@ -136,7 +213,7 @@ def compute_floor(
     logger.info("Linear (ridge) floor pooled metrics: %s", linear_metrics)
 
     nonlinear_factory, backend_used = _make_nonlinear_regressor(nonlinear_backend)
-    nonlinear_oof, nonlinear_metrics = _run_model(
+    nonlinear_oof, nonlinear_metrics, nonlinear_importances = _run_model(
         nonlinear_factory,
         X,
         y,
@@ -145,6 +222,7 @@ def compute_floor(
         group_by,
         taus,
         target_names,
+        feature_names=feature_names,
     )
     logger.info(
         "Nonlinear (%s) floor pooled metrics: %s", backend_used, nonlinear_metrics
@@ -162,5 +240,6 @@ def compute_floor(
             backend=backend_used,
             pooled_metrics=nonlinear_metrics,
             oof_predictions=nonlinear_oof,
+            feature_importances=nonlinear_importances,
         ),
     }

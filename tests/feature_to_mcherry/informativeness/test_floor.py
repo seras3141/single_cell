@@ -157,6 +157,63 @@ def test_compute_floor_auto_backend_falls_back_to_sklearn_when_lightgbm_missing(
     assert backend_used == "sklearn"
 
 
+def test_compute_floor_without_feature_names_skips_importance_collection() -> None:
+    X, y, groups = _synthetic_signal_data()
+
+    results = compute_floor(
+        X,
+        y,
+        groups,
+        TARGET_NAMES,
+        TAUS,
+        group_by="sample_id",
+        n_splits=3,
+        ridge_alpha=1.0,
+        nonlinear_backend="sklearn",
+    )
+
+    assert results["linear"].feature_importances is None
+    assert results["nonlinear"].feature_importances is None
+
+
+def test_compute_floor_with_feature_names_populates_nonlinear_importances_only() -> (
+    None
+):
+    X, y, groups = _synthetic_signal_data()
+    feature_names = ["feature_1", "feature_2"]
+
+    results = compute_floor(
+        X,
+        y,
+        groups,
+        TARGET_NAMES,
+        TAUS,
+        group_by="sample_id",
+        n_splits=3,
+        ridge_alpha=1.0,
+        nonlinear_backend="sklearn",
+        feature_names=feature_names,
+    )
+
+    # Ridge has no feature_importances_ attribute -> stays None even when requested.
+    assert results["linear"].feature_importances is None
+
+    importances = results["nonlinear"].feature_importances
+    assert importances is not None
+    assert set(importances["target"]) == set(TARGET_NAMES)
+    assert set(importances["feature"]) == set(feature_names)
+    assert len(importances) == len(TARGET_NAMES) * len(feature_names)
+    assert (importances["importance_mean"] >= 0).all()
+    # feature_2 has the larger coefficient (3x vs 2x) in the synthetic signal.
+    per_target = importances[importances["target"] == "percentile_75"].set_index(
+        "feature"
+    )
+    assert (
+        per_target.loc["feature_2", "importance_mean"]
+        > per_target.loc["feature_1", "importance_mean"]
+    )
+
+
 def test_grouped_kfold_indices_never_splits_a_group_across_train_and_val() -> None:
     X, y, groups = _synthetic_signal_data()
 

@@ -47,6 +47,9 @@ class ResultsBundle:
     n_cells: int
     n_features: int
     feature_names: List[str]
+    target_names: List[str]
+    groups: np.ndarray
+    y: np.ndarray
 
 
 def _sort_quantiles(y_pred: np.ndarray) -> np.ndarray:
@@ -174,6 +177,31 @@ def _write_report(results: ResultsBundle, output_dir: Path) -> None:
     logger.info("Wrote baseline ladder report to %s", output_dir)
 
 
+def _write_oof_predictions(results: ResultsBundle, output_dir: Path) -> None:
+    """Write the Ridge model's out-of-fold predictions to ``oof_predictions.csv``.
+
+    Long format (one row per cell x target): ``group_id, target_name, y_true,
+    y_pred``. Ridge only, since it's the model B4-style predicted-vs-actual figures
+    need — the data was already computed during the grouped-CV run and previously
+    discarded rather than persisted.
+    """
+    rows = []
+    for j, target_name in enumerate(results.target_names):
+        rows.append(
+            pd.DataFrame(
+                {
+                    "group_id": results.groups,
+                    "target_name": target_name,
+                    "y_true": results.y[:, j],
+                    "y_pred": results.ridge.oof_predictions[:, j],
+                }
+            )
+        )
+    table = pd.concat(rows, ignore_index=True)
+    table.to_csv(output_dir / "oof_predictions.csv", index=False)
+    logger.info("Wrote Ridge out-of-fold predictions to %s", output_dir)
+
+
 def run(config: FeatureToMcherryConfig) -> ResultsBundle:
     """Run the full pipeline: load, join, CV-fit, evaluate, and report both models."""
     target_path = Path(config.target_csv)
@@ -257,8 +285,13 @@ def run(config: FeatureToMcherryConfig) -> ResultsBundle:
         n_cells=len(y),
         n_features=len(feature_names),
         feature_names=feature_names,
+        target_names=list(config.target_columns),
+        groups=groups,
+        y=y,
     )
 
-    _write_report(results, Path(config.output_dir))
+    output_dir = Path(config.output_dir)
+    _write_report(results, output_dir)
+    _write_oof_predictions(results, output_dir)
 
     return results

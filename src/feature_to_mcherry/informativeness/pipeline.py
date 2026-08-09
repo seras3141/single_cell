@@ -158,6 +158,7 @@ def run(config: InformativenessConfig) -> ResultsBundle:
             config.n_splits,
             config.ridge_alpha,
             config.nonlinear_backend,
+            feature_names=feature_names,
         )
     }
 
@@ -222,6 +223,20 @@ def run(config: InformativenessConfig) -> ResultsBundle:
     univariate_df.to_csv(output_dir / "univariate_correlations.csv", index=False)
     floor_metrics_df.to_csv(output_dir / "floor_metrics.csv", index=False)
     noise_ceiling_df.to_csv(output_dir / "noise_ceiling.csv", index=False)
+
+    nonlinear_importances = floor_results["with_suspect"][
+        "nonlinear"
+    ].feature_importances
+    if nonlinear_importances is not None:
+        nonlinear_importances.to_csv(
+            output_dir / "feature_importances.csv", index=False
+        )
+    else:
+        logger.info(
+            "Nonlinear floor model exposed no feature_importances_; skipping "
+            "feature_importances.csv."
+        )
+
     _write_summary_json(bundle, output_dir)
     write_report(bundle, output_dir)
 

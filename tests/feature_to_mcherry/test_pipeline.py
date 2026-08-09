@@ -244,6 +244,20 @@ def test_pipeline_end_to_end_produces_finite_metrics_for_both_models(
     assert set(report["model"]) == {"ridge", "linear_quantile"}
     assert len(report) == 6  # 2 models x 3 targets
 
+    assert (output_dir / "oof_predictions.csv").exists()
+    oof = pd.read_csv(output_dir / "oof_predictions.csv")
+    assert len(oof) == results.n_cells * len(results.target_names)
+    assert set(oof["target_name"]) == set(results.target_names)
+    assert oof["y_pred"].notna().all()
+
+    for j, target_name in enumerate(results.target_names):
+        subset = oof[oof["target_name"] == target_name].reset_index(drop=True)
+        np.testing.assert_allclose(subset["y_true"].to_numpy(), results.y[:, j])
+        np.testing.assert_allclose(
+            subset["y_pred"].to_numpy(), results.ridge.oof_predictions[:, j]
+        )
+        assert list(subset["group_id"]) == list(results.groups)
+
 
 def test_pipeline_end_to_end_with_directory_feature_csv(tmp_path: Path) -> None:
     feature_dir, target_csv = _write_synthetic_directory_csvs(tmp_path)

@@ -1,0 +1,29 @@
+# Configuration for src/feature_to_mcherry/report_figures — generates the figures
+# specified in docs_local/figures/report_figures_brief.md from already-computed
+# feature_to_mcherry / morphology_informativeness / data_quality results.
+#
+# All fields have a real default (unlike feature_to_mcherry_config.yaml /
+# morphology_informativeness_config.yaml) since this module reads existing result
+# directories rather than raw per-cell tables. Override only what's different on
+# your machine.
+
+report_figures:
+  experiments: [HD1509, SA110, HD1883, Ew2-1, Ew2-2]
+  scportrait_experiments: [HD1509, SA110, Ew2-2]
+  a5_experiments: [HD1509, SA110]
+  a5_area_p90_dir: data/scportrait_diagnostics_area_p90
+  cohort_sizes:
+    HD1509: 851800
+    SA110: 439016
+    HD1883: 261014
+    Ew2-1: 445113
+    Ew2-2: 143887
+  feature_to_mcherry_dir: results/feature_to_mcherry
+  informativeness_dir: results/morphology_informativeness
+  data_quality_dir: results/data_quality
+  data_root: data/MF5V1_processed Timelapse samples 19.03.2024
+  plate_layout_json: config/MF5v1_plate_layout.json
+  output_dir: results/report_figures
+  dpi: 300
+  formats: [png, pdf]
+  seed: 0
