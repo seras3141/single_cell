@@ -184,15 +184,50 @@ class TestCombine2DTo3D:
         """Test that output directory is created if it doesn't exist."""
         input_dir = temp_dir["input"]
         output_dir = Path(temp_dir["temp"]) / "new_output"
-        
+
         # Create a sample file
         np.random.seed(42)
         img_data = np.random.randint(0, 255, (32, 32), dtype=np.uint8)
         tiff.imwrite(str(input_dir / "test_z1_BF.tif"), img_data)
-        
+
         assert not output_dir.exists()
         combine_2d_to_3d(input_dir, output_dir)
         assert output_dir.exists()
+
+    def test_no_uint8_label_wrap_on_mixed_dtype_stack(self, temp_dir):
+        """Regression: labels > 255 must survive when the FIRST retained slice
+        is uint8 (<=255 labels) and a deeper slice is uint16 (>255 labels).
+
+        The previous ``.astype(images[0].dtype)`` at conversion.py:157 cast the
+        whole promoted-to-uint16 stack back to the first slice's uint8, wrapping
+        every label > 255 modulo 256 and destroying those cells. See
+        docs/utils/plan_uint8_masks3d_wrap_fix.md.
+        """
+        input_dir = temp_dir["input"]
+        output_dir = temp_dir["output"]
+
+        # z1 (first retained slice): <=255 labels -> uint8
+        z1 = np.zeros((16, 16), dtype=np.uint8)
+        z1[0, 0] = 200
+        # z2: labels > 255 -> uint16 (these are what the bug wrapped)
+        z2 = np.zeros((16, 16), dtype=np.uint16)
+        z2[0, 0], z2[0, 1], z2[0, 2] = 300, 500, 900
+        # z3: <=255 labels -> uint8
+        z3 = np.zeros((16, 16), dtype=np.uint8)
+        z3[0, 0] = 100
+
+        tiff.imwrite(str(input_dir / "wrap_z1_Cells.tif"), z1)
+        tiff.imwrite(str(input_dir / "wrap_z2_Cells.tif"), z2)
+        tiff.imwrite(str(input_dir / "wrap_z3_Cells.tif"), z3)
+
+        combine_2d_to_3d(input_dir, output_dir)
+
+        volume = tiff.imread(str(output_dir / "wrap_Cells_3d.tif"))
+        # No wrap: the largest label is preserved exactly, not reduced mod 256.
+        assert int(volume.max()) == 900, "label > 255 was wrapped by dtype downcast"
+        assert volume.dtype == np.uint16
+        # Every distinct label from every slice survives.
+        assert set(np.unique(volume)) == {0, 100, 200, 300, 500, 900}
 
 
 class TestSplit3DTo2D:

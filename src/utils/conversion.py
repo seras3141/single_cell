@@ -154,7 +154,14 @@ def combine_2d_to_3d(
         if output_path.exists() and not overwrite:
             logging.debug(f"Skipping {output_path.name} — 3D stack already exists")
             continue
-        volume = np.stack(images, axis=0).astype(images[0].dtype)
+        # Do NOT cast to images[0].dtype: the first retained slice may be uint8
+        # (<=255 labels) while a deeper slice is uint16 (>255 labels). np.stack
+        # promotes the mixed stack to the widest input dtype (uint16), which is
+        # lossless for label counts < 65536; casting back to the first slice's
+        # uint8 would wrap every label > 255 modulo 256 and destroy those cells.
+        # save_labels applies its own _optimal_label_dtype, which safely downcasts
+        # only when the whole volume's max fits. See docs/utils/plan_uint8_masks3d_wrap_fix.md.
+        volume = np.stack(images, axis=0)
         save_labels(volume, output_path)
 
     print(f"Successfully combined {len(file_groups)} 2D image sets into 3D volumes in {output_dir}")
