@@ -28,7 +28,31 @@ def load_plate_layout(layout_path: Union[str, Path]) -> Dict[str, Any]:
     return layout
 
 
-def _empty_annotation(row: str, col: int, quadrant: int) -> Dict[str, Any]:
+def _locate_column(
+    col: int, layout: Mapping[str, Any]
+) -> "tuple[Optional[int], Optional[int]]":
+    """Return ``(quadrant_number, position_within_quadrant)`` for a data column.
+
+    Returns ``(None, None)`` if ``col`` is one of the plate's non-data spacer
+    columns. Quadrant boundaries are irregular (edge gaps at columns 1/24, a
+    2-column gap at the midline 12-13, and *no* gap between quadrants 1/2 or
+    3/4) and must be looked up explicitly against ``quadrants.empty_columns``
+    / ``quadrants.Q1``-``Q4`` in the layout JSON — never derived from a
+    modular formula like ``(col - 1) % 6 + 1``, which silently assumes a
+    uniform period-6 grid that the real plate does not have.
+    """
+    quadrants = layout.get("quadrants", {})
+    empty_columns = set(quadrants.get("empty_columns", []))
+    if col in empty_columns:
+        return None, None
+    for quadrant_number in (1, 2, 3, 4):
+        columns = quadrants.get(f"Q{quadrant_number}", {}).get("columns", [])
+        if col in columns:
+            return quadrant_number, columns.index(col) + 1
+    return None, None
+
+
+def _empty_annotation(row: str, col: int, quadrant: Optional[int]) -> Dict[str, Any]:
     return {
         "well_id": f"{row}{col:02d}",
         "row": row,
@@ -50,17 +74,16 @@ def _empty_annotation(row: str, col: int, quadrant: int) -> Dict[str, Any]:
 def _drug_annotation(
     row: str,
     col: int,
-    quadrant: int,
+    quadrant: Optional[int],
+    position: Optional[int],
     row_info: Mapping[str, Any],
     layout: Mapping[str, Any],
 ) -> Dict[str, Any]:
-    columns_per_quadrant = int(
-        layout.get("quadrants", {}).get("columns_per_quadrant", 6)
-    )
-    col_offset = (col - 1) % columns_per_quadrant + 1
-    conc_key = layout["column_pattern_within_quadrant"].get(f"offset_{col_offset}")
+    if position is None:
+        return _empty_annotation(row, col, quadrant)
 
-    if conc_key == "empty":
+    conc_key = layout["column_pattern_within_quadrant"].get(f"position_{position}")
+    if conc_key is None or conc_key == "empty":
         return _empty_annotation(row, col, quadrant)
 
     drug_name = row_info["drug"]
@@ -88,22 +111,19 @@ def _drug_annotation(
 def _control_annotation(
     row: str,
     col: int,
-    quadrant: int,
+    quadrant: Optional[int],
+    position: Optional[int],
     row_info: Mapping[str, Any],
     layout: Mapping[str, Any],
 ) -> Dict[str, Any]:
-    columns_per_quadrant = int(
-        layout.get("quadrants", {}).get("columns_per_quadrant", 6)
-    )
-    col_offset = (col - 1) % columns_per_quadrant + 1
+    if position is None:
+        return _empty_annotation(row, col, quadrant)
 
     if row_info.get("drug"):
         control_name = row_info["drug"]
-        if col_offset == 1:
-            return _empty_annotation(row, col, quadrant)
     else:
         control_name = layout["control_column_pattern_within_quadrant"].get(
-            f"offset_{col_offset}", "empty"
+            f"position_{position}", "empty"
         )
         if control_name == "empty":
             return _empty_annotation(row, col, quadrant)
@@ -141,10 +161,7 @@ def get_well_annotation(
     if normalized_col < 1 or normalized_col > max_col:
         raise ValueError(f"Column must be between 1 and {max_col}: {col}")
 
-    columns_per_quadrant = int(
-        layout.get("quadrants", {}).get("columns_per_quadrant", 6)
-    )
-    quadrant = (normalized_col - 1) // columns_per_quadrant + 1
+    quadrant, position = _locate_column(normalized_col, layout)
     row_info = layout["row_assignments"][normalized_row]
     content = row_info.get("content")
 
@@ -152,11 +169,11 @@ def get_well_annotation(
         return _empty_annotation(normalized_row, normalized_col, quadrant)
     if content == "drug":
         return _drug_annotation(
-            normalized_row, normalized_col, quadrant, row_info, layout
+            normalized_row, normalized_col, quadrant, position, row_info, layout
         )
     if content == "control":
         return _control_annotation(
-            normalized_row, normalized_col, quadrant, row_info, layout
+            normalized_row, normalized_col, quadrant, position, row_info, layout
         )
 
     annotation = _empty_annotation(normalized_row, normalized_col, quadrant)

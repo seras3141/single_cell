@@ -7,22 +7,21 @@
     "row_labels": ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"]
   },
   "quadrants": {
-    "description": "Plate is divided into 4 identical quadrants, each spanning 6 columns. The drug panel is replicated across all 4 quadrants.",
+    "description": "Four replicate blocks of 5 real data columns each. This is NOT a uniform period-6 grid, and column membership must never be derived from a modular offset formula (col-1) % N + 1 -- that formula was the source of a real bug (fixed 2026-08-18, see notes.correction_2026-08-18) that mislabelled column 7 as empty in every drug row. The real gap structure is irregular: 1-column edge gaps at the plate's outer columns (1, 24), and a 2-column gap at the plate midline (12, 13). There is NO gap between quadrants 1/2 (columns 6/7 are adjacent, both real data) or between quadrants 3/4 (columns 18/19 are adjacent, both real data). Use quadrants.empty_columns for spacer lookup and quadrants.Q1-Q4[*].columns for an explicit column list per quadrant -- both hardcoded, not formula-derived.",
     "count": 4,
-    "columns_per_quadrant": 6,
-    "Q1": {"columns": [1,2,3,4,5,6]},
-    "Q2": {"columns": [7,8,9,10,11,12]},
-    "Q3": {"columns": [13,14,15,16,17,18]},
-    "Q4": {"columns": [19,20,21,22,23,24]}
+    "empty_columns": [1, 12, 13, 24],
+    "Q1": {"columns": [2, 3, 4, 5, 6]},
+    "Q2": {"columns": [7, 8, 9, 10, 11]},
+    "Q3": {"columns": [14, 15, 16, 17, 18]},
+    "Q4": {"columns": [19, 20, 21, 22, 23]}
   },
   "column_pattern_within_quadrant": {
-    "description": "Within each 6-column quadrant, column offset 1 is empty; offsets 2-6 carry concentrations 1-5 (high to low).",
-    "offset_1": "empty",
-    "offset_2": "conc_1",
-    "offset_3": "conc_2",
-    "offset_4": "conc_3",
-    "offset_5": "conc_4",
-    "offset_6": "conc_5"
+    "description": "Position (1-5, in left-to-right column order) within a quadrant's 5 real data columns -> concentration tier, high to low. There is no 'position 1 is empty' entry any more -- empty/spacer columns are listed explicitly in quadrants.empty_columns instead of being encoded as the first position of every quadrant.",
+    "position_1": "conc_1",
+    "position_2": "conc_2",
+    "position_3": "conc_3",
+    "position_4": "conc_4",
+    "position_5": "conc_5"
   },
   "row_assignments": {
     "A":  {"content": "empty"},
@@ -37,19 +36,18 @@
     "J":  {"content": "drug",    "drug": "Venetoclax",   "replicate": 2},
     "K":  {"content": "control", "drug": "Staurosporine","control_type": "positive", "replicate": 1},
     "L":  {"content": "control", "drug": "Staurosporine","control_type": "positive", "replicate": 2},
-    "M":  {"content": "control", "control_layout": "BenzethoniumChloride_cols2-3__DMSO_cols4-6", "replicate": 1},
-    "N":  {"content": "control", "control_layout": "BenzethoniumChloride_cols2-3__DMSO_cols4-6", "replicate": 2},
+    "M":  {"content": "control", "control_layout": "BenzethoniumChloride_pos1-2__DMSO_pos3-5", "replicate": 1},
+    "N":  {"content": "control", "control_layout": "BenzethoniumChloride_pos1-2__DMSO_pos3-5", "replicate": 2},
     "O":  {"content": "drug",    "drug": "Eprenetapopt", "replicate": 2},
     "P":  {"content": "empty"}
   },
   "control_column_pattern_within_quadrant": {
-    "description": "In control rows M and N, column offsets 1 is empty, offsets 2-3 are Benzethonium Chloride (positive control), offsets 4-6 are DMSO (vehicle/negative control).",
-    "offset_1": "empty",
-    "offset_2": "Benzethonium Chloride",
-    "offset_3": "Benzethonium Chloride",
-    "offset_4": "DMSO",
-    "offset_5": "DMSO",
-    "offset_6": "DMSO"
+    "description": "In control rows M and N, positions 1-2 (of a quadrant's 5 real data columns) are Benzethonium Chloride (positive control), positions 3-5 are DMSO (vehicle/negative control). Empty/spacer columns are handled via quadrants.empty_columns, same as drug rows.",
+    "position_1": "Benzethonium Chloride",
+    "position_2": "Benzethonium Chloride",
+    "position_3": "DMSO",
+    "position_4": "DMSO",
+    "position_5": "DMSO"
   },
   "drugs": {
     "Doxorubicin": {
@@ -139,13 +137,13 @@
       "type": "positive_control",
       "description": "Cytotoxic detergent. Used as positive control for cell death.",
       "rows": ["M", "N"],
-      "column_offsets_within_quadrant": [2, 3]
+      "column_positions_within_quadrant": [1, 2]
     },
     "DMSO": {
       "type": "negative_control",
       "description": "Vehicle control (solvent used to dissolve drugs). Used as negative/baseline control.",
       "rows": ["M", "N"],
-      "column_offsets_within_quadrant": [4, 5, 6]
+      "column_positions_within_quadrant": [3, 4, 5]
     }
   },
   "notes": {
@@ -153,6 +151,7 @@
     "dmso_concentration": "100%",
     "source": "MF Plate Layouts_MF5v1.pdf",
     "concentration_unit": "µM",
-    "replicates_per_drug": "2 rows per drug × 4 quadrants = 8 wells per concentration per plate"
+    "replicates_per_drug": "2 rows per drug × 4 quadrants = 8 wells per concentration per plate",
+    "correction_2026-08-18": "Prior versions of this file modelled the plate as 4 identical, contiguous 6-column quadrants (Q1=1-6, Q2=7-12, Q3=13-18, Q4=19-24) with column offset 1 always empty within each quadrant, derived via col_offset=(col-1)%6+1. Re-checked directly against the source PDF (docs/layout/MF Plate Layouts_MF5v1.pdf): the real layout has edge gaps at columns 1 and 24 only, plus a 2-column gap at the midline (12-13) -- NOT a repeating empty-then-5 pattern every 6 columns. Column 7 (previously mislabelled 'empty' for every drug row) is actually quadrant 2's first real data column (the highest concentration tier), matching e.g. E07 = Navitoclax 75µM used throughout prior analysis. See docs_local/feature_to_mcherry/note_plate_layout_column_bug.md for the full writeup. docs/layout/MF5v1_plate_layout.json (HPC-mirrored, read-only locally) still has the old, incorrect schema and needs the identical fix upstream."
   }
 }

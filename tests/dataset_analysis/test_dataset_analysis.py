@@ -20,7 +20,12 @@ from src.dataset_analysis import (  # noqa: E402
     plot_z_completeness,
 )
 
-LAYOUT_PATH = Path("docs/layout/MF5v1_plate_layout.json")
+#: Canonical, actively-maintained layout file. NOTE: this used to point at
+#: docs/layout/MF5v1_plate_layout.json (an HPC-mirrored, read-only-locally copy)
+#: which still has the pre-2026-08-18 buggy quadrant schema and would break once
+#: src/dataset_analysis/layout.py was fixed to require the new schema -- see
+#: docs_local/feature_to_mcherry/note_plate_layout_column_bug.md.
+LAYOUT_PATH = Path("config/MF5v1_plate_layout.json")
 
 
 def _touch_image(
@@ -69,6 +74,13 @@ def test_layout_annotation_handles_drugs_and_controls() -> None:
 
     m04 = annotations.loc[annotations["well_id"] == "M04"].iloc[0]
     assert m04["control"] == "DMSO"
+
+    # Regression: column 7 is quadrant 2's first real data column (highest dose),
+    # not an empty spacer -- a prior layout schema mislabelled it as empty.
+    e07 = annotations.loc[annotations["well_id"] == "E07"].iloc[0]
+    assert e07["content"] == "drug"
+    assert e07["drug"] == "Navitoclax"
+    assert e07["concentration_uM"] == 75.0
 
 
 def test_inventory_parses_raw_filenames_and_joins_layout(tmp_path: Path) -> None:
