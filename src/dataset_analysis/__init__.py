@@ -37,6 +37,15 @@ from .collapse_summary import (
     summarize_all_experiments,
     summarize_experiment,
 )
+from .gate_survival import (
+    DEFAULT_ABSOLUTE_FLOOR,
+    DEFAULT_FRACTIONS,
+    aggregate_by_threshold,
+    build_flag_frame,
+    crosscheck_against_t_cross,
+    ratcheted_flags,
+    summarise_survival,
+)
 from .plotting import (
     plot_channel_completeness,
     plot_control_distribution,
@@ -91,6 +100,14 @@ __all__ = [
     "dmso_reference_table",
     "summarize_all_experiments",
     "summarize_experiment",
+    # Gate-threshold survival (how much data each candidate threshold discards)
+    "DEFAULT_ABSOLUTE_FLOOR",
+    "DEFAULT_FRACTIONS",
+    "aggregate_by_threshold",
+    "build_flag_frame",
+    "crosscheck_against_t_cross",
+    "ratcheted_flags",
+    "summarise_survival",
     "load_expected_channels",
     "load_plate_layout",
     "parse_image_metadata",
