@@ -6,7 +6,7 @@ from .contract import (
     normalize_cell_key,
     taus_from_target_columns,
 )
-from .join import build_matrix
+from .join import build_matrix, build_matrix_with_metadata
 from .loaders import load_features, load_targets
 
 __all__ = [
@@ -15,6 +15,7 @@ __all__ = [
     "normalize_cell_key",
     "taus_from_target_columns",
     "build_matrix",
+    "build_matrix_with_metadata",
     "load_features",
     "load_targets",
 ]

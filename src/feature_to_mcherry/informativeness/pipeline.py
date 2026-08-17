@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from ..data.contract import CELL_KEY, taus_from_target_columns
-from ..data.join import build_matrix
+from ..data.join import build_matrix_with_metadata
 from ..data.loaders import (
     load_features,
     load_features_from_directory,
@@ -135,13 +135,28 @@ def run(config: InformativenessConfig) -> ResultsBundle:
     )
     features_df_selected = features_df_full[CELL_KEY + selection.all_columns]
 
-    X, y, groups, feature_names = build_matrix(
+    X, y, groups, feature_names, metadata_df = build_matrix_with_metadata(
         features_df_selected,
         targets_df,
         target_columns=config.target_columns,
         group_by=config.group_by,
     )
     taus = taus_from_target_columns(config.target_columns)
+
+    # Per-well timepoint scatter faceting: use the well (sample_id) and timepoint
+    # metadata directly (independent of the CV group_by, which need not be sample_id).
+    # timepoint is str-normalized by the join contract, so coerce numerically and skip
+    # the figure (timepoints=None) rather than crash the gate on bad values.
+    well_labels = metadata_df["sample_id"].to_numpy()
+    timepoint_numeric = pd.to_numeric(metadata_df["timepoint"], errors="coerce")
+    if timepoint_numeric.isna().any():
+        logger.warning(
+            "Some timepoint values are non-numeric after coercion; skipping the "
+            "well-timepoint scatter figure."
+        )
+        well_timepoints = None
+    else:
+        well_timepoints = timepoint_numeric.astype(int).to_numpy()
 
     univariate_df = compute_univariate_associations(
         X, y, groups, feature_names, config.target_columns
@@ -204,6 +219,15 @@ def run(config: InformativenessConfig) -> ResultsBundle:
         floor_metrics_df,
         noise_ceiling_df,
         config.top_k_features,
+        groups=well_labels,
+        timepoints=well_timepoints,
+        well_timepoint_top_k=config.well_timepoint_scatter_top_k,
+        well_timepoint_max_wells=config.well_timepoint_scatter_max_wells,
+        well_timepoint_max_points_per_well=(
+            config.well_timepoint_scatter_max_points_per_well
+        ),
+        well_timepoint_colormap=config.well_timepoint_colormap,
+        well_timepoint_seed=config.well_timepoint_scatter_seed,
     )
 
     bundle = ResultsBundle(

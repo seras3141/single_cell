@@ -38,5 +38,14 @@ morphology_informativeness:
   ridge_alpha: 1.0
   nonlinear_backend: auto  # auto | lightgbm | sklearn
   top_k_features: 5
+  # Per-well, timepoint-colored per-cell scatter (feature vs mCherry target). One
+  # figure per (target, top-feature) pair: one subplot per well, points colored by
+  # timepoint on a shared continuous colorbar. Diagnostic only (raw percentiles are
+  # drift-confounded — see docs/feature_to_mcherry/plan_well_timepoint_scatter.md).
+  well_timepoint_scatter_top_k: 3              # top-|rho| features per target (denser than top_k_features: one subplot/well)
+  well_timepoint_scatter_max_wells: null       # null = all wells; else keep the N with the most cells
+  well_timepoint_scatter_max_points_per_well: 2000   # per-well subsampling cap for render time/readability
+  well_timepoint_scatter_seed: 0               # reproducible subsampling
+  well_timepoint_colormap: viridis             # continuous colormap for timepoint
   plate_layout_json: config/MF5v1_plate_layout.json
   output_dir: results/morphology_informativeness

@@ -6,7 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.feature_to_mcherry.data.join import build_matrix
+from src.feature_to_mcherry.data.join import (
+    build_matrix,
+    build_matrix_with_metadata,
+)
 
 
 def _features_df() -> pd.DataFrame:
@@ -122,3 +125,36 @@ def test_build_matrix_raises_on_missing_group_by_column() -> None:
             target_columns=["percentile_75", "percentile_90", "percentile_95"],
             group_by="plate",
         )
+
+
+def test_build_matrix_with_metadata_matches_build_matrix_and_aligns_metadata() -> None:
+    target_columns = ["percentile_75", "percentile_90", "percentile_95"]
+
+    X, y, groups, feature_names = build_matrix(
+        _features_df(),
+        _targets_df(),
+        target_columns=target_columns,
+        group_by="sample_id",
+    )
+    X_m, y_m, groups_m, feature_names_m, metadata = build_matrix_with_metadata(
+        _features_df(),
+        _targets_df(),
+        target_columns=target_columns,
+        group_by="sample_id",
+    )
+
+    # X/y/groups/feature_names identical to build_matrix.
+    np.testing.assert_array_equal(X_m, X)
+    np.testing.assert_array_equal(y_m, y)
+    np.testing.assert_array_equal(groups_m, groups)
+    assert feature_names_m == feature_names
+
+    # metadata: right shape/columns, row-aligned with X/y (cells 1 and 2 matched).
+    from src.feature_to_mcherry.data.contract import CELL_KEY
+
+    assert list(metadata.columns) == CELL_KEY
+    assert len(metadata) == X.shape[0]
+    # CELL_KEY columns are str-normalized; spot-check the row alignment.
+    assert list(metadata["cell_id"]) == ["1", "2"]
+    assert list(metadata["timepoint"]) == ["11", "11"]
+    assert list(metadata["sample_id"]) == list(groups)

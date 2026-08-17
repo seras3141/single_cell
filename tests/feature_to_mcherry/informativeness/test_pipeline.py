@@ -36,11 +36,14 @@ def _write_synthetic_csvs(
 
         for i in range(n_per_well):
             cell_id = i + 1
+            # Span 3 distinct timepoints per well (keys stay unique: cell_id is unique
+            # within a well) so the well-timepoint scatter has multi-timepoint colour.
+            timepoint = (i % 3) + 1
             rows_features.append(
                 {
                     "instance_id": cell_id,
                     "well": well,
-                    "frame": 1,
+                    "frame": timepoint,
                     "z": 1,
                     "area": area[i],
                     "perimeter": perimeter[i],
@@ -50,7 +53,7 @@ def _write_synthetic_csvs(
             rows_targets.append(
                 {
                     "sample_id": well,
-                    "timepoint": 1,
+                    "timepoint": timepoint,
                     "z_index": 1,
                     "cell_id": cell_id,
                     "percentile_75": base[i],
@@ -206,6 +209,11 @@ def test_pipeline_end_to_end_writes_all_outputs(tmp_path: Path) -> None:
     assert (output_dir / "figures").is_dir()
     assert any((output_dir / "figures").glob("*.png"))
 
+    # The well-timepoint scatter is produced (varied timepoints across ≥2 wells).
+    assert "well_timepoint_scatter" in bundle.figures
+    assert bundle.figures["well_timepoint_scatter"]
+    assert any((output_dir / "figures").glob("well_timepoint_*.png"))
+
     floor_metrics = pd.read_csv(output_dir / "floor_metrics.csv")
     assert set(floor_metrics["variant"]) == {"with_suspect", "without_suspect"}
     assert set(floor_metrics["model"]) == {"ridge", "gradient_boosting"}
@@ -252,6 +260,72 @@ def test_pipeline_skips_without_suspect_variant_when_no_clean_features_remain(
 
     noise_ceiling = pd.read_csv(output_dir / "noise_ceiling.csv")
     assert noise_ceiling["ceiling"].isna().all()
+
+
+def test_pipeline_skips_well_timepoint_scatter_on_non_numeric_timepoint(
+    tmp_path: Path,
+) -> None:
+    # Non-numeric timepoint values coerce to NaN => the pipeline passes
+    # timepoints=None and the well-timepoint scatter is skipped, but the gate still
+    # completes and produces the other figures.
+    rng = np.random.default_rng(0)
+    rows_features = []
+    rows_targets = []
+    for well in ["C02", "D02"]:
+        for i in range(8):
+            cell_id = i + 1
+            area = rng.uniform(0, 10)
+            perimeter = rng.uniform(0, 10)
+            rows_features.append(
+                {
+                    "instance_id": cell_id,
+                    "well": well,
+                    "frame": "not_a_number",
+                    "z": 1,
+                    "area": area,
+                    "perimeter": perimeter,
+                }
+            )
+            rows_targets.append(
+                {
+                    "sample_id": well,
+                    "timepoint": "not_a_number",
+                    "z_index": 1,
+                    "cell_id": cell_id,
+                    "percentile_75": 2 * area + perimeter,
+                    "percentile_90": 2 * area + perimeter + 5.0,
+                    "percentile_95": 2 * area + perimeter + 10.0,
+                }
+            )
+
+    feature_csv = tmp_path / "features.csv"
+    target_csv = tmp_path / "instance_metrics.csv"
+    pd.DataFrame(rows_features).to_csv(feature_csv, index=False)
+    pd.DataFrame(rows_targets).to_csv(target_csv, index=False)
+    output_dir = tmp_path / "results"
+
+    config = InformativenessConfig(
+        feature_csv=str(feature_csv),
+        target_csv=str(target_csv),
+        id_column="instance_id",
+        sample_id_column="well",
+        timepoint_column="frame",
+        z_index_column="z",
+        group_by="sample_id",
+        n_splits=2,
+        morphology_feature_patterns=["area", "perimeter"],
+        suspect_feature_patterns=[],
+        plate_layout_json=None,
+        output_dir=str(output_dir),
+    )
+
+    bundle = run(config)
+
+    # Skipped, but present and empty; other figures still produced; gate completed.
+    assert bundle.figures["well_timepoint_scatter"] == []
+    assert list((output_dir / "figures").glob("well_timepoint_*.png")) == []
+    assert any((output_dir / "figures").glob("*.png"))
+    assert (output_dir / "summary.json").exists()
 
 
 def test_pipeline_end_to_end_with_directory_feature_csv(tmp_path: Path) -> None:

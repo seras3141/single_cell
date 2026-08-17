@@ -98,6 +98,11 @@ class InformativenessConfig:
     ridge_alpha: float = 1.0
     nonlinear_backend: str = "auto"
     top_k_features: int = 5
+    well_timepoint_scatter_top_k: int = 3
+    well_timepoint_scatter_max_wells: Optional[int] = None
+    well_timepoint_scatter_max_points_per_well: int = 2000
+    well_timepoint_scatter_seed: int = 0
+    well_timepoint_colormap: str = "viridis"
     plate_layout_json: Optional[str] = None
     output_dir: str = "results/morphology_informativeness"
 
@@ -125,6 +130,19 @@ class InformativenessConfig:
             )
         if self.top_k_features < 1:
             raise ValueError("top_k_features must be at least 1")
+        if self.well_timepoint_scatter_top_k < 1:
+            raise ValueError("well_timepoint_scatter_top_k must be at least 1")
+        if (
+            self.well_timepoint_scatter_max_wells is not None
+            and self.well_timepoint_scatter_max_wells < 1
+        ):
+            raise ValueError(
+                "well_timepoint_scatter_max_wells must be None or at least 1"
+            )
+        if self.well_timepoint_scatter_max_points_per_well < 1:
+            raise ValueError(
+                "well_timepoint_scatter_max_points_per_well must be at least 1"
+            )
 
 
 def load_config(

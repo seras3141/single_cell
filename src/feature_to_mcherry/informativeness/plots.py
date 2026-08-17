@@ -10,8 +10,9 @@ skipped with a logged note if plotly is unavailable.
 from __future__ import annotations
 
 import logging
+import math
 from pathlib import Path
-from typing import Dict, List, Sequence
+from typing import Dict, List, Optional, Sequence
 
 import matplotlib
 
@@ -21,6 +22,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import seaborn as sns  # noqa: E402
+
+from .univariate import top_associations  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -303,6 +306,215 @@ def plot_pooled_vs_group_rho(
     return written
 
 
+def _select_wells(groups: np.ndarray, max_wells: Optional[int]) -> np.ndarray:
+    """Unique wells (sorted by name); if ``max_wells`` is set, keep the ``max_wells``
+    with the most cells (logging which were dropped)."""
+    wells, counts = np.unique(np.asarray(groups), return_counts=True)
+    if max_wells is None or len(wells) <= max_wells:
+        return np.asarray(wells)
+
+    keep_idx = np.argsort(counts, kind="stable")[::-1][:max_wells]
+    kept = set(wells[keep_idx].tolist())
+    dropped = [w for w in wells.tolist() if w not in kept]
+    logger.info(
+        "well-timepoint scatter: keeping %d of %d wells by cell count; dropped %s",
+        max_wells,
+        len(wells),
+        dropped,
+    )
+    return np.array(sorted(kept))
+
+
+def _subsample_indices(
+    indices: np.ndarray, cap: int, rng: np.random.Generator
+) -> np.ndarray:
+    """Return ``indices`` unchanged if ``len(indices) <= cap``, else a random
+    ``cap``-sized subset (without replacement)."""
+    indices = np.asarray(indices)
+    if len(indices) <= cap:
+        return indices
+    return rng.choice(indices, size=cap, replace=False)
+
+
+def plot_feature_scatter_by_well_timepoint(
+    X: np.ndarray,
+    y: np.ndarray,
+    groups: np.ndarray,
+    timepoints: np.ndarray,
+    feature_names: Sequence[str],
+    target_names: Sequence[str],
+    univariate_df: pd.DataFrame,
+    output_dir: Path,
+    top_k: int,
+    max_wells: Optional[int] = None,
+    max_points_per_well: int = 2000,
+    colormap: str = "viridis",
+    seed: int = 0,
+) -> List[Path]:
+    """One figure per (target, top-feature) pair: a grid with one subplot per well,
+    points colored by timepoint on a single shared (global) colorbar.
+
+    Makes temporal drift, the ``timepoint=11`` artifact, and well-to-well shape
+    differences visible directly on the feature-vs-target relationship. ``groups`` is
+    the per-cell well/sample_id label; ``timepoints`` is the per-cell numeric
+    timepoint (both aligned with ``X``/``y``). Feature selection reuses
+    :func:`~feature_to_mcherry.informativeness.univariate.top_associations`.
+    """
+    written: List[Path] = []
+    feature_names = list(feature_names)
+    groups = np.asarray(groups)
+    timepoints = np.asarray(timepoints)
+
+    if timepoints.size == 0:
+        return written
+
+    # One global vmin/vmax over the whole run so colour is comparable across every
+    # subplot in every figure (not per-well, not per-figure).
+    global_min = int(np.min(timepoints))
+    global_max = int(np.max(timepoints))
+
+    wells = _select_wells(groups, max_wells)
+    n_wells = len(wells)
+    if n_wells == 0:
+        return written
+
+    n_rows = int(math.ceil(math.sqrt(n_wells)))
+    n_cols = int(math.ceil(n_wells / n_rows))
+
+    rng = np.random.default_rng(seed)
+
+    for j, target in enumerate(target_names):
+        top_features = top_associations(univariate_df, target, top_k, scope="pooled")[
+            "feature"
+        ].tolist()
+        # Be defensive: a stale/external univariate_df could name a feature absent
+        # from feature_names; skip those (with a warning) rather than aborting every
+        # remaining figure on a feature_names.index ValueError.
+        missing = [feature for feature in top_features if feature not in feature_names]
+        if missing:
+            logger.warning(
+                "well-timepoint scatter: %d top feature(s) for target %r not in "
+                "feature_names; skipping them: %s",
+                len(missing),
+                target,
+                missing,
+            )
+        top_features = [feature for feature in top_features if feature in feature_names]
+
+        for feature in top_features:
+            feature_idx = feature_names.index(feature)
+
+            # Subsample each renderable well ONCE per (target, feature) so the PNG and
+            # the HTML show identical points (a single RNG draw, not one per renderer).
+            well_to_idx: Dict[str, np.ndarray] = {}
+            for well in wells:
+                well_indices = np.where(groups == well)[0]
+                if len(well_indices) >= 3:
+                    well_to_idx[well] = _subsample_indices(
+                        well_indices, max_points_per_well, rng
+                    )
+
+            fig, axes = plt.subplots(
+                n_rows,
+                n_cols,
+                figsize=(4 * n_cols, 3.5 * n_rows),
+                squeeze=False,
+                constrained_layout=True,
+            )
+            try:
+                for position in range(n_rows * n_cols):
+                    row, col = divmod(position, n_cols)
+                    ax = axes[row][col]
+                    if position >= n_wells:
+                        ax.axis("off")
+                        continue
+
+                    well = wells[position]
+                    ax.set_title(str(well))
+                    if well not in well_to_idx:
+                        ax.text(
+                            0.5,
+                            0.5,
+                            "insufficient n",
+                            ha="center",
+                            va="center",
+                            transform=ax.transAxes,
+                        )
+                        ax.set_xticks([])
+                        ax.set_yticks([])
+                        continue
+
+                    idx = well_to_idx[well]
+                    ax.scatter(
+                        X[idx, feature_idx],
+                        y[idx, j],
+                        c=timepoints[idx],
+                        cmap=colormap,
+                        vmin=global_min,
+                        vmax=global_max,
+                        s=6,
+                        alpha=0.5,
+                    )
+                    ax.set_xlabel(feature)
+                    ax.set_ylabel(target)
+
+                mappable = plt.cm.ScalarMappable(
+                    norm=plt.Normalize(vmin=global_min, vmax=global_max), cmap=colormap
+                )
+                mappable.set_array([])
+                fig.colorbar(mappable, ax=axes, label="timepoint", fraction=0.046)
+                fig.suptitle(f"{feature} vs {target} by well (colored by timepoint)")
+
+                png_path = output_dir / f"well_timepoint_{target}_{feature}.png"
+                fig.savefig(png_path, dpi=150)
+            finally:
+                plt.close(fig)
+            written.append(png_path)
+
+            if HAVE_PLOTLY:
+                html_fig = make_subplots(
+                    rows=n_rows,
+                    cols=n_cols,
+                    subplot_titles=[str(w) for w in wells],
+                )
+                shown_scale = False
+                for position, well in enumerate(wells):
+                    row, col = divmod(position, n_cols)
+                    if well not in well_to_idx:
+                        continue
+                    idx = well_to_idx[well]
+                    html_fig.add_trace(
+                        go.Scatter(
+                            x=X[idx, feature_idx],
+                            y=y[idx, j],
+                            mode="markers",
+                            marker=dict(
+                                color=timepoints[idx],
+                                colorscale=colormap,
+                                cmin=global_min,
+                                cmax=global_max,
+                                showscale=not shown_scale,
+                                colorbar=dict(title="timepoint"),
+                            ),
+                            showlegend=False,
+                            hovertext=[
+                                f"well={well}, timepoint={t}" for t in timepoints[idx]
+                            ],
+                        ),
+                        row=row + 1,
+                        col=col + 1,
+                    )
+                    shown_scale = True
+                html_fig.update_layout(
+                    title=f"{feature} vs {target} by well (colored by timepoint)"
+                )
+                html_path = output_dir / f"well_timepoint_{target}_{feature}.html"
+                html_fig.write_html(str(html_path))
+                written.append(html_path)
+
+    return written
+
+
 def write_figures(
     output_dir: Path,
     univariate_df: pd.DataFrame,
@@ -313,8 +525,21 @@ def write_figures(
     floor_metrics_df: pd.DataFrame,
     noise_ceiling_df: pd.DataFrame,
     top_k: int,
+    groups: Optional[np.ndarray] = None,
+    timepoints: Optional[np.ndarray] = None,
+    well_timepoint_top_k: int = 3,
+    well_timepoint_max_wells: Optional[int] = None,
+    well_timepoint_max_points_per_well: int = 2000,
+    well_timepoint_colormap: str = "viridis",
+    well_timepoint_seed: int = 0,
 ) -> Dict[str, List[Path]]:
-    """Write all figures into ``output_dir/figures/`` and return the paths by kind."""
+    """Write all figures into ``output_dir/figures/`` and return the paths by kind.
+
+    The per-well timepoint scatter is produced only when both ``groups`` (per-cell
+    well/sample_id) and ``timepoints`` (per-cell numeric timepoint) are supplied;
+    otherwise its key is present but empty (the caller owns the decision to skip,
+    e.g. when timepoint coercion fails — see ``informativeness/pipeline.py``).
+    """
     figures_dir = output_dir / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
@@ -323,7 +548,7 @@ def write_figures(
             "plotly not installed; writing PNG figures only (no interactive HTML)"
         )
 
-    return {
+    figures: Dict[str, List[Path]] = {
         "correlation_heatmap": plot_correlation_heatmap(univariate_df, figures_dir),
         "top_feature_scatter": plot_top_feature_scatter(
             X, y, feature_names, target_names, univariate_df, figures_dir, top_k
@@ -334,3 +559,24 @@ def write_figures(
         "target_distributions": plot_target_distributions(y, target_names, figures_dir),
         "pooled_vs_group_rho": plot_pooled_vs_group_rho(univariate_df, figures_dir),
     }
+
+    if groups is not None and timepoints is not None:
+        figures["well_timepoint_scatter"] = plot_feature_scatter_by_well_timepoint(
+            X,
+            y,
+            np.asarray(groups),
+            np.asarray(timepoints),
+            feature_names,
+            target_names,
+            univariate_df,
+            figures_dir,
+            top_k=well_timepoint_top_k,
+            max_wells=well_timepoint_max_wells,
+            max_points_per_well=well_timepoint_max_points_per_well,
+            colormap=well_timepoint_colormap,
+            seed=well_timepoint_seed,
+        )
+    else:
+        figures["well_timepoint_scatter"] = []
+
+    return figures

@@ -24,31 +24,14 @@ def _assert_unique_keys(df: pd.DataFrame, name: str) -> None:
         )
 
 
-def build_matrix(
-    features_df: pd.DataFrame,
-    targets_df: pd.DataFrame,
-    target_columns: Sequence[str],
-    group_by: str,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[str]]:
-    """Inner-join features and targets on ``CELL_KEY``.
+def _merge_and_validate(
+    features_df: pd.DataFrame, targets_df: pd.DataFrame
+) -> pd.DataFrame:
+    """Normalize keys, assert uniqueness, inner-join on ``CELL_KEY``, assert non-empty.
 
-    Parameters
-    ----------
-    features_df : pd.DataFrame
-        Output of :func:`load_features` (``CELL_KEY + feature columns``).
-    targets_df : pd.DataFrame
-        Output of :func:`load_targets` (``CELL_KEY + target_columns``).
-    target_columns : Sequence[str]
-        Target column names to extract into ``y``, in order.
-    group_by : str
-        Column (present after the join) used for grouped cross-validation.
-
-    Returns
-    -------
-    X : np.ndarray, shape (n_cells, n_features)
-    y : np.ndarray, shape (n_cells, n_targets)
-    groups : np.ndarray, shape (n_cells,)
-    feature_names : list[str]
+    Shared by :func:`build_matrix` and :func:`build_matrix_with_metadata` so both use
+    identical merge/validation semantics (extracted verbatim from the original
+    ``build_matrix`` body).
     """
     features_df = normalize_cell_key(features_df)
     targets_df = normalize_cell_key(targets_df)
@@ -90,6 +73,16 @@ def build_matrix(
             "same sample_id/timepoint/z_index/cell_id numbering)."
         )
 
+    return merged
+
+
+def _matrix_from_merged(
+    merged: pd.DataFrame,
+    features_df: pd.DataFrame,
+    target_columns: Sequence[str],
+    group_by: str,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[str]]:
+    """Extract ``X``/``y``/``groups``/``feature_names`` from a validated merge."""
     if group_by not in merged.columns:
         raise ValueError(
             f"group_by column {group_by!r} not present after join; "
@@ -113,3 +106,60 @@ def build_matrix(
     )
 
     return X, y, groups, feature_names
+
+
+def build_matrix(
+    features_df: pd.DataFrame,
+    targets_df: pd.DataFrame,
+    target_columns: Sequence[str],
+    group_by: str,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[str]]:
+    """Inner-join features and targets on ``CELL_KEY``.
+
+    Parameters
+    ----------
+    features_df : pd.DataFrame
+        Output of :func:`load_features` (``CELL_KEY + feature columns``).
+    targets_df : pd.DataFrame
+        Output of :func:`load_targets` (``CELL_KEY + target_columns``).
+    target_columns : Sequence[str]
+        Target column names to extract into ``y``, in order.
+    group_by : str
+        Column (present after the join) used for grouped cross-validation.
+
+    Returns
+    -------
+    X : np.ndarray, shape (n_cells, n_features)
+    y : np.ndarray, shape (n_cells, n_targets)
+    groups : np.ndarray, shape (n_cells,)
+    feature_names : list[str]
+    """
+    merged = _merge_and_validate(features_df, targets_df)
+    return _matrix_from_merged(merged, features_df, target_columns, group_by)
+
+
+def build_matrix_with_metadata(
+    features_df: pd.DataFrame,
+    targets_df: pd.DataFrame,
+    target_columns: Sequence[str],
+    group_by: str,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[str], pd.DataFrame]:
+    """Identical to :func:`build_matrix`, plus a 5th return: per-cell ``CELL_KEY``
+    metadata.
+
+    Returns
+    -------
+    X, y, groups, feature_names
+        Exactly as :func:`build_matrix` (same join, same values).
+    metadata : pd.DataFrame
+        The merged ``CELL_KEY`` columns (``sample_id``, ``timepoint``, ``z_index``,
+        ``cell_id``; all str, per :func:`normalize_cell_key`), row-aligned with
+        ``X``/``y``/``groups``. Lets callers recover ``timepoint``/``sample_id`` for
+        the same cells without re-deriving the join.
+    """
+    merged = _merge_and_validate(features_df, targets_df)
+    X, y, groups, feature_names = _matrix_from_merged(
+        merged, features_df, target_columns, group_by
+    )
+    metadata = merged[CELL_KEY].reset_index(drop=True)
+    return X, y, groups, feature_names, metadata
