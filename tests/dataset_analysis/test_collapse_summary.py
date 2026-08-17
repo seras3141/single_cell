@@ -2,6 +2,7 @@
 
 Synthetic trajectories only -- no real data files, per the repo's testing convention.
 """
+
 from __future__ import annotations
 
 import json
@@ -108,9 +109,7 @@ def test_unsorted_input_is_ordered_by_frame_index() -> None:
 
 
 def test_edge_n_is_configurable() -> None:
-    metrics = compute_collapse_metrics(
-        _trajectory([100, 80, 60, 40, 20]), edge_n=1
-    )
+    metrics = compute_collapse_metrics(_trajectory([100, 80, 60, 40, 20]), edge_n=1)
     assert metrics["base_first3_n_cells"] == 100.0
     assert metrics["end_n_cells"] == 20.0
 
@@ -182,6 +181,35 @@ def test_summarize_experiment_marks_the_dmso_well() -> None:
     assert bool(dmso["E07"]) is False
 
 
+def test_control_well_is_labelled_from_the_layouts_control_field(
+    layout: Dict[str, Any],
+) -> None:
+    """M11 must come out as DMSO, not as an unannotated well.
+
+    Control rows carry ``drug=None`` and put their identity in ``control``. Reading only
+    ``drug`` would leave M11 null and trip the composition guard as a false positive.
+    """
+    summary = summarize_experiment(
+        _cell_population({"M11": [100, 50, 10]}), "TestExp", layout=layout
+    )
+    row = summary.iloc[0]
+    assert row["drug"] == "DMSO"
+    assert row["dose_rank"] is None or pd.isna(row["dose_rank"])
+
+
+def test_composition_guard_accepts_a_real_shaped_experiment(
+    layout: Dict[str, Any],
+) -> None:
+    """End-to-end: 8 drug wells + M11 must pass the guard with a real layout."""
+    wells = {w: [100, 90, 20] for w in ("C09", "D07", "D08", "D10")}
+    wells.update({w: [100, 90, 20] for w in ("E07", "E08", "E09", "E10")})
+    wells["M11"] = [100, 50, 10]
+    summary = summarize_experiment(
+        _cell_population(wells), "Ew2-1", layout=layout, dmso_well="M11"
+    )
+    assert_well_composition(summary)  # must not raise
+
+
 def test_column_7_resolves_to_top_dose_not_empty(layout: Dict[str, Any]) -> None:
     """Plate-layout regression guard: E07 is Navitoclax 75 uM, dose_rank 1.
 
@@ -224,6 +252,25 @@ def test_drug_falls_back_to_the_tables_own_column_without_a_layout() -> None:
     assert summary.iloc[0]["dose_rank"] is None
 
 
+def test_csv_drug_column_does_not_mask_a_failed_layout_lookup(
+    layout: Dict[str, Any],
+) -> None:
+    """With a layout supplied, a spacer well must NOT borrow the CSV's ``drug`` value.
+
+    ``cell_population.csv``'s own ``drug`` column is produced by the same
+    ``get_well_annotation``, so borrowing it would hide a layout regression: ``drug``
+    would still read "Navitoclax" while ``dose_rank``/``concentration_uM`` were empty,
+    and :func:`assert_well_composition` would pass. Column 12 is a real spacer, so it
+    stands in for any well the layout declines to annotate.
+    """
+    table = _cell_population({"E12": [100, 50, 10]})
+    table["drug"] = "Navitoclax"  # as a post-fix CSV would have for a data column
+    summary = summarize_experiment(table, "TestExp", layout=layout)
+    row = summary.iloc[0]
+    assert row["drug"] is None or pd.isna(row["drug"])
+    assert row["dose_rank"] is None or pd.isna(row["dose_rank"])
+
+
 # --------------------------------------------------------------------------------------
 # assert_well_composition
 # --------------------------------------------------------------------------------------
@@ -231,11 +278,25 @@ def test_drug_falls_back_to_the_tables_own_column_without_a_layout() -> None:
 
 def _summary_rows(n_drug: int, n_dmso: int, drug: Any = "Navitoclax") -> pd.DataFrame:
     rows = [
-        {"experiment": "E", "well": f"D{i:02d}", "drug": drug, "is_dmso": False}
+        {
+            "experiment": "E",
+            "well": f"D{i:02d}",
+            "drug": drug,
+            "is_dmso": False,
+            "dose_rank": 1,
+            "concentration_uM": 75.0,
+        }
         for i in range(n_drug)
     ]
     rows += [
-        {"experiment": "E", "well": f"M{i:02d}", "drug": "DMSO", "is_dmso": True}
+        {
+            "experiment": "E",
+            "well": f"M{i:02d}",
+            "drug": "DMSO",
+            "is_dmso": True,
+            "dose_rank": None,
+            "concentration_uM": None,
+        }
         for i in range(n_dmso)
     ]
     return pd.DataFrame(rows)
@@ -262,6 +323,23 @@ def test_composition_check_rejects_an_unannotated_well() -> None:
 def test_composition_check_rejects_a_wrong_well_count() -> None:
     with pytest.raises(AssertionError, match="expected 8 drug"):
         assert_well_composition(_summary_rows(7, 1))
+
+
+def test_composition_check_rejects_a_drug_well_missing_its_dose_fields() -> None:
+    """`drug` alone is not enough -- the layout-derived dose fields must be present too.
+
+    Guards the failure mode where `drug` is populated from some non-layout source while
+    the layout lookup silently returned nothing, leaving the dose fields null.
+    """
+    bad = _summary_rows(8, 1)
+    bad.loc[0, "dose_rank"] = None
+    with pytest.raises(AssertionError, match="no layout-derived"):
+        assert_well_composition(bad)
+
+
+def test_composition_check_ignores_missing_dose_on_the_dmso_well() -> None:
+    """The DMSO well legitimately has no dose, so it must not trip the dose check."""
+    assert_well_composition(_summary_rows(8, 1))  # DMSO rows already carry None
 
 
 # --------------------------------------------------------------------------------------

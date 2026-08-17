@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""CLI: reduce per-experiment cell-population trajectories to one collapse-metrics table.
+"""CLI: reduce per-experiment cell-population trajectories to a collapse-metrics table.
 
 Reads each experiment's ``cell_population.csv`` (produced by
 ``scripts/run_cell_population.py``) and writes a single table with one row per well:

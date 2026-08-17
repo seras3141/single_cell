@@ -1,8 +1,9 @@
 """Per-well collapse metrics derived from a cell-population trajectory table.
 
-Consumes the output of :func:`src.dataset_analysis.cell_population.compute_cell_population`
-(one row per ``(sample_id, timepoint)``) and reduces each well's trajectory to a single
-row of collapse metrics: peak/edge counts, both end-percentage denominators, both
+Consumes the output of
+:func:`src.dataset_analysis.cell_population.compute_cell_population` (one row per
+``(sample_id, timepoint)``) and reduces each well's trajectory to a single row of
+collapse metrics: peak/edge counts, both end-percentage denominators, both
 ``t_cross`` variants, the width of the usable pre-collapse window, and a shape label.
 
 **Two references, deliberately.** ``peak`` (the trajectory maximum) is the primary
@@ -20,6 +21,7 @@ evaluated is ``peak`` here rather than that script's first-3 mean.
 
 See ``docs/feature_to_mcherry/plan_fatima_deliverable_pipeline.md`` §Step 1.
 """
+
 from __future__ import annotations
 
 import logging
@@ -89,9 +91,9 @@ def _classify_shape(
     """Shape label, following ``analyze_dmso_vs_drug.py``'s ``characterize()``.
 
     The peak is located within the *first half* of the series (so a late rebound cannot
-    masquerade as the peak), and the crossing is called a sharp step when it follows that
-    peak within ``sharp_step_gap`` samples. Positional indices are used throughout — the
-    original relied on a fresh ``RangeIndex`` making labels and positions coincide.
+    masquerade as the peak), and the crossing is called a sharp step when it follows
+    that peak within ``sharp_step_gap`` samples. Positional indices are used throughout;
+    the original relied on a fresh ``RangeIndex`` making labels and positions coincide.
     """
     if not collapsed or t_cross is None:
         return _SHAPE_NO_COLLAPSE
@@ -130,10 +132,10 @@ def compute_collapse_metrics(
 
     Returns:
         A dict with the metric subset of :data:`SUMMARY_COLUMNS`. ``t_cross_*`` are
-        ``None`` when the well never crosses. ``n_timepoints_pre_cross`` is the number of
-        samples at or before ``t_cross_peak`` — and the **full** sample count when there
-        is no crossing, since in that case every timepoint is usable. Distinguish the two
-        cases via ``t_cross_peak`` rather than by testing this count against zero.
+        ``None`` when the well never crosses. ``n_timepoints_pre_cross`` is the number
+        of samples at or before ``t_cross_peak`` — and the **full** sample count when
+        there is no crossing, since every timepoint is usable in that case. Distinguish
+        the two cases via ``t_cross_peak``, not by testing this count against zero.
 
     Raises:
         ValueError: If ``trajectory`` is empty or a required column is missing.
@@ -204,9 +206,7 @@ def _dose_rank(
     return None
 
 
-def _well_annotation(
-    well: str, layout: Optional[Mapping[str, Any]]
-) -> Dict[str, Any]:
+def _well_annotation(well: str, layout: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     """Public-API annotation for one well id, tolerant of unparseable ids."""
     if layout is None:
         return {"content": None, "drug": None, "concentration_uM": None}
@@ -255,8 +255,21 @@ def summarize_experiment(
         drug = annotation.get("drug")
         concentration = annotation.get("concentration_uM")
 
-        if drug is None and "drug" in group.columns:
-            # Fall back to the value cell_population already resolved.
+        if drug is None and annotation.get("content") == "control":
+            # Control wells carry no `drug`; their identity is in `control`
+            # ("DMSO", "Benzethonium Chloride"). Label them with that rather than
+            # leaving `drug` null, which the composition guard would read as an
+            # unannotated well.
+            drug = annotation.get("control")
+
+        if layout is None and drug is None and "drug" in group.columns:
+            # Only when there is no layout to consult: the table's own resolved value is
+            # then the sole source. Deliberately NOT a fallback when a layout *is*
+            # supplied -- cell_population.csv's own `drug` column is itself produced by
+            # get_well_annotation, so borrowing it would paper over a failed layout
+            # lookup and leave `dose_rank`/`concentration_uM` silently empty while
+            # `drug` still looked right. That would defeat assert_well_composition,
+            # which exists to catch exactly the column-7 regression fixed in b35396f.
             fallback = group["drug"].dropna()
             drug = str(fallback.iloc[0]) if not fallback.empty else None
 
@@ -295,12 +308,22 @@ def assert_well_composition(
     — two of each experiment's nine imaged wells, and precisely the top-dose ones. This
     check is cheap and is what would have caught it, so it runs on every summary.
 
+    The check covers the **layout-derived dose fields**, not just ``drug``. Checking
+    ``drug`` alone is insufficient: it can be populated from a source other than the
+    layout, in which case a failed layout lookup would leave ``dose_rank`` and
+    ``concentration_uM`` empty while ``drug`` still looked correct.
+
     Raises:
-        AssertionError: If any experiment has a well annotated ``empty``/unannotated, or
-            a drug/DMSO well count other than the expected one.
+        AssertionError: If any experiment has a well annotated ``empty``/unannotated, a
+            drug/DMSO well count other than the expected one, or a drug well missing its
+            layout-derived ``dose_rank``/``concentration_uM``.
     """
     for experiment, group in summary.groupby("experiment", sort=True):
-        empty = group[group["drug"].isin([None, "empty"]) | group["drug"].isna()]
+        # Control wells are exempt from the drug check: they have no drug by design.
+        drug_rows = group[~group["is_dmso"].astype(bool)]
+        empty = drug_rows[
+            drug_rows["drug"].isin([None, "empty"]) | drug_rows["drug"].isna()
+        ]
         if not empty.empty:
             raise AssertionError(
                 f"{experiment}: {len(empty)} well(s) unannotated or 'empty' "
@@ -313,8 +336,26 @@ def assert_well_composition(
                 f"{experiment}: expected {expected_drug_wells} drug + "
                 f"{expected_dmso_wells} DMSO wells, got {n_drug} + {n_dmso}"
             )
+
+        dose_columns = [
+            c for c in ("dose_rank", "concentration_uM") if c in group.columns
+        ]
+        if dose_columns:
+            drug_wells = group[~group["is_dmso"].astype(bool)]
+            incomplete = drug_wells[drug_wells[dose_columns].isna().any(axis=1)]
+            if not incomplete.empty:
+                raise AssertionError(
+                    f"{experiment}: {len(incomplete)} drug well(s) "
+                    f"({sorted(incomplete['well'])}) have a drug but no layout-derived "
+                    f"{'/'.join(dose_columns)} — the layout lookup failed even though "
+                    f"'drug' is set; plate-layout regression, see plan §B1"
+                )
+
         logger.info(
-            "%s: well composition OK (%d drug + %d DMSO)", experiment, n_drug, n_dmso
+            "%s: well composition OK (%d drug + %d DMSO, dose fields complete)",
+            experiment,
+            n_drug,
+            n_dmso,
         )
 
 
