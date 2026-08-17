@@ -29,6 +29,14 @@ from .cell_population import (
     compute_cell_population,
     plot_population,
 )
+from .collapse_summary import (
+    SUMMARY_COLUMNS,
+    assert_well_composition,
+    compute_collapse_metrics,
+    dmso_reference_table,
+    summarize_all_experiments,
+    summarize_experiment,
+)
 from .plotting import (
     plot_channel_completeness,
     plot_control_distribution,
@@ -76,6 +84,13 @@ __all__ = [
     "discover_image_files",
     "find_dataset_issues",
     "get_well_annotation",
+    # Collapse summary (per-well reduction of a cell-population trajectory)
+    "SUMMARY_COLUMNS",
+    "assert_well_composition",
+    "compute_collapse_metrics",
+    "dmso_reference_table",
+    "summarize_all_experiments",
+    "summarize_experiment",
     "load_expected_channels",
     "load_plate_layout",
     "parse_image_metadata",
