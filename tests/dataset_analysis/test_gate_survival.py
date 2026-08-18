@@ -111,6 +111,35 @@ def test_missing_dmso_well_raises_rather_than_silently_zeroing() -> None:
         build_flag_frame(table, {"E07": 100.0}, dmso_well="M11")
 
 
+def test_missing_peak_raises_rather_than_reading_as_never_flagged() -> None:
+    """A well absent from the summary is "unknown", not "healthy".
+
+    Defaulting it to unflagged would silently inflate every survival figure, and the
+    t_cross crosscheck cannot catch it because it joins against the same summary.
+    """
+    table = _cell_population({"E07": [100, 50, 10], "M11": [100, 90, 80]})
+    with pytest.raises(KeyError, match="no usable peak_n_cells"):
+        build_flag_frame(table, {"M11": 100.0}, dmso_well="M11")
+
+
+@pytest.mark.parametrize("bad_peak", [float("nan"), 0.0, -5.0, None])
+def test_unusable_peak_values_are_rejected(bad_peak: object) -> None:
+    """NaN, zero and negative peaks cannot anchor a relative threshold."""
+    table = _cell_population({"E07": [100, 50, 10], "M11": [100, 90, 80]})
+    with pytest.raises(KeyError, match="no usable peak_n_cells"):
+        build_flag_frame(table, {"E07": bad_peak, "M11": 100.0}, dmso_well="M11")
+
+
+def test_the_error_names_the_offending_wells() -> None:
+    table = _cell_population(
+        {"E07": [100, 50, 10], "E08": [100, 50, 10], "M11": [100, 90, 80]}
+    )
+    with pytest.raises(KeyError) as excinfo:
+        build_flag_frame(table, {"M11": 100.0}, dmso_well="M11")
+    assert "E07" in str(excinfo.value)
+    assert "E08" in str(excinfo.value)
+
+
 def test_absolute_floor_is_independent_of_the_peak() -> None:
     """A well that never collapses relatively can still trip the floor, and vice
     versa."""

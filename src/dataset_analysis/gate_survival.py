@@ -76,6 +76,22 @@ def _threshold_label(fraction: float) -> str:
     return f"rel_{fraction:g}"
 
 
+def _usable_peak(peaks: Mapping[str, float], well: str) -> Optional[float]:
+    """The well's peak if it is a finite positive number, else ``None``.
+
+    A peak of zero or NaN cannot anchor a relative threshold: ``fraction x 0`` is never
+    exceeded, so the well would read as "never flagged" rather than "unknown".
+    """
+    value = peaks.get(well)
+    try:
+        numeric = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(numeric) or numeric <= 0:
+        return None
+    return numeric
+
+
 def build_flag_frame(
     cell_population: pd.DataFrame,
     peaks: Mapping[str, float],
@@ -103,8 +119,10 @@ def build_flag_frame(
         under the same threshold). ``any_flagged`` is the OR of the two.
 
     Raises:
-        KeyError: If ``dmso_well`` is absent from the table — a silent all-False DMSO
-            column would understate the gate's cost.
+        KeyError: If ``dmso_well`` is absent from the table (a silent all-False DMSO
+            column would understate the gate's cost), or if any well lacks a usable
+            ``peak_n_cells`` in ``peaks`` (treating a missing peak as "never flagged"
+            would silently inflate every survival figure).
     """
     wells = list(cell_population[well_column].unique())
     if dmso_well not in wells:
@@ -116,18 +134,28 @@ def build_flag_frame(
     labels: Dict[str, Any] = {_threshold_label(f): f for f in fractions}
     per_well: Dict[str, pd.DataFrame] = {}
 
+    missing_peaks = [str(w) for w in wells if _usable_peak(peaks, str(w)) is None]
+    if missing_peaks:
+        raise KeyError(
+            f"no usable peak_n_cells for {len(missing_peaks)} well(s): "
+            f"{sorted(missing_peaks)}. Every relative threshold is a fraction of the "
+            f"well's peak, so a missing peak cannot be treated as 'never flagged' — "
+            f"that would silently inflate the survival figures, and the t_cross "
+            f"crosscheck cannot catch it because it joins against the same summary. "
+            f"Check that the summary covers this experiment and that its well ids "
+            f"match cell_population.csv."
+        )
+
     for well, group in cell_population.groupby(well_column, sort=True):
         ordered = group.sort_values(time_column)
         counts = ordered[count_column].to_numpy(dtype=float)
         times = ordered[time_column].to_numpy(dtype=int)
-        peak = float(peaks.get(str(well), np.nan))
+        peak = _usable_peak(peaks, str(well))
+        assert peak is not None  # guaranteed by the missing_peaks check above
 
         frame = pd.DataFrame({"ti": times})
         for label, fraction in labels.items():
-            if np.isnan(peak):
-                frame[label] = False
-            else:
-                frame[label] = ratcheted_flags(counts, fraction * peak)
+            frame[label] = ratcheted_flags(counts, fraction * peak)
         frame[ABSOLUTE_FLOOR_LABEL] = per_timepoint_flags(counts, absolute_floor)
         per_well[str(well)] = frame
 
