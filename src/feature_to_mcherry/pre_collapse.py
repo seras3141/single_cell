@@ -240,7 +240,12 @@ def within_window_trend(
         One row per feature: ``n_within``, ``n_post``, ``rho_within``, ``p_within``,
         ``median_within``, ``median_post``, ``pct_change_post_vs_within``.
     """
-    from scipy.stats import spearmanr
+    # Reuse the informativeness module's own guarded wrapper rather than calling
+    # scipy directly: it tuple-unpacks (``result.statistic`` only exists from scipy
+    # 1.9, but pyproject allows >=1.7.0) and returns (nan, nan) for a constant or
+    # too-small input instead of warning. Every other spearmanr call site in this
+    # package unpacks the same way.
+    from src.feature_to_mcherry.informativeness.univariate import _safe_spearmanr
 
     times = pd.to_numeric(metadata[timepoint_column], errors="coerce").to_numpy(
         dtype=float
@@ -260,9 +265,9 @@ def within_window_trend(
         p = post & finite
         rho: Optional[float] = None
         pval: Optional[float] = None
-        if w.sum() >= 3 and len(np.unique(times[w])) >= 2:
-            result = spearmanr(times[w], values[w])
-            rho, pval = float(result.statistic), float(result.pvalue)
+        if w.any():
+            # _safe_spearmanr itself guards n < 3 and constant input, returning nan.
+            rho, pval = _safe_spearmanr(times[w], values[w])
         median_within = float(np.median(values[w])) if w.any() else None
         median_post = float(np.median(values[p])) if p.any() else None
         rows.append(

@@ -318,7 +318,11 @@ def test_within_window_trend_detects_a_real_trend() -> None:
 
 
 def test_within_window_trend_reports_a_flat_feature_as_near_zero() -> None:
-    """The load-bearing case: a feature that does not move before collapse."""
+    """The load-bearing case: a feature that does not move before collapse.
+
+    A constant feature has no defined rank correlation, so this must come back NaN
+    rather than a spurious value or a RuntimeWarning.
+    """
     from src.feature_to_mcherry.pre_collapse import within_window_trend
 
     metadata = pd.DataFrame(
@@ -326,7 +330,35 @@ def test_within_window_trend_reports_a_flat_feature_as_near_zero() -> None:
     )
     features = pd.DataFrame({"flat": [5.0, 5.0, 5.0, 5.0, 5.0, 5.0]})
     out = within_window_trend(metadata, features, ["flat"], dmso_t_cross=51)
-    assert pd.isna(out.iloc[0]["rho_within"]) or out.iloc[0]["rho_within"] == 0
+    assert pd.isna(out.iloc[0]["rho_within"])
+    # Still reports the data it did see, so a flat feature is not mistaken for absent.
+    assert out.iloc[0]["n_within"] == 6
+    assert out.iloc[0]["median_within"] == pytest.approx(5.0)
+
+
+def test_within_window_trend_returns_plain_floats_not_a_scipy_result() -> None:
+    """Guards the scipy-version trap: ``result.statistic`` only exists from scipy 1.9,
+    but pyproject allows ``scipy>=1.7.0``. Tuple-unpacking works across all of them."""
+    from src.feature_to_mcherry.pre_collapse import within_window_trend
+
+    metadata = pd.DataFrame(
+        {"sample_id": ["A"] * 4, "timepoint": ["1", "11", "21", "31"]}
+    )
+    features = pd.DataFrame({"f": [1.0, 2.0, 3.0, 4.0]})
+    row = within_window_trend(metadata, features, ["f"], dmso_t_cross=31).iloc[0]
+    assert isinstance(row["rho_within"], float)
+    assert isinstance(row["p_within"], float)
+
+
+def test_within_window_trend_handles_too_few_points_without_raising() -> None:
+    """Two in-window points cannot support a rank correlation."""
+    from src.feature_to_mcherry.pre_collapse import within_window_trend
+
+    metadata = pd.DataFrame({"sample_id": ["A", "A"], "timepoint": ["1", "11"]})
+    features = pd.DataFrame({"f": [1.0, 2.0]})
+    row = within_window_trend(metadata, features, ["f"], dmso_t_cross=11).iloc[0]
+    assert row["n_within"] == 2
+    assert pd.isna(row["rho_within"])
 
 
 def test_within_window_trend_splits_at_the_dmso_crossing() -> None:
