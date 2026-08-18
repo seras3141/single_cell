@@ -20,6 +20,7 @@ from ..data.loaders import (
     load_targets,
     load_targets_from_directory,
 )
+from ..data.normalize import apply_dmso_normalization
 from .config import InformativenessConfig
 from .features import select_morphology_features
 from .floor import FloorResult, compute_floor
@@ -107,6 +108,16 @@ def run(config: InformativenessConfig) -> ResultsBundle:
     else:
         targets_df = load_targets(target_path, target_columns=config.target_columns)
 
+    # Optional DMSO normalization: swaps in z_-prefixed targets (see data.normalize).
+    # Single-experiment input only (loaders drop non-target columns). Everything below
+    # uses `target_columns` (effective names); taus stay from the original names.
+    targets_df, target_columns = apply_dmso_normalization(
+        targets_df,
+        enabled=config.normalize_to_dmso,
+        dmso_well=config.dmso_well,
+        target_columns=config.target_columns,
+    )
+
     feature_path = Path(config.feature_csv)
     if feature_path.is_dir():
         features_df_full = load_features_from_directory(
@@ -138,7 +149,7 @@ def run(config: InformativenessConfig) -> ResultsBundle:
     X, y, groups, feature_names, metadata_df = build_matrix_with_metadata(
         features_df_selected,
         targets_df,
-        target_columns=config.target_columns,
+        target_columns=target_columns,
         group_by=config.group_by,
     )
     taus = taus_from_target_columns(config.target_columns)
@@ -159,7 +170,7 @@ def run(config: InformativenessConfig) -> ResultsBundle:
         well_timepoints = timepoint_numeric.astype(int).to_numpy()
 
     univariate_df = compute_univariate_associations(
-        X, y, groups, feature_names, config.target_columns
+        X, y, groups, feature_names, target_columns
     )
 
     floor_results: Dict[str, Dict[str, FloorResult]] = {
@@ -167,7 +178,7 @@ def run(config: InformativenessConfig) -> ResultsBundle:
             X,
             y,
             groups,
-            config.target_columns,
+            target_columns,
             taus,
             config.group_by,
             config.n_splits,
@@ -187,7 +198,7 @@ def run(config: InformativenessConfig) -> ResultsBundle:
             X_clean,
             y,
             groups,
-            config.target_columns,
+            target_columns,
             taus,
             config.group_by,
             config.n_splits,
@@ -204,7 +215,7 @@ def run(config: InformativenessConfig) -> ResultsBundle:
 
     noise_ceiling_df = compute_noise_ceiling(
         targets_df,
-        config.target_columns,
+        target_columns,
         config.plate_layout_json,
         sample_id_column="sample_id",
     )
@@ -215,7 +226,7 @@ def run(config: InformativenessConfig) -> ResultsBundle:
         X,
         y,
         feature_names,
-        config.target_columns,
+        target_columns,
         floor_metrics_df,
         noise_ceiling_df,
         config.top_k_features,
@@ -237,7 +248,7 @@ def run(config: InformativenessConfig) -> ResultsBundle:
         feature_names_all=feature_names,
         feature_names_clean=feature_names_clean,
         suspect_feature_names=selection.suspect_columns,
-        target_columns=config.target_columns,
+        target_columns=target_columns,
         univariate=univariate_df,
         floor_metrics=floor_metrics_df,
         noise_ceiling=noise_ceiling_df,

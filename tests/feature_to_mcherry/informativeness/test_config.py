@@ -61,3 +61,16 @@ def test_well_timepoint_max_points_per_well_accepts_one() -> None:
         **_valid_kwargs(well_timepoint_scatter_max_points_per_well=1)
     )
     assert config.well_timepoint_scatter_max_points_per_well == 1
+
+
+def test_normalize_to_dmso_requires_dmso_well() -> None:
+    with pytest.raises(ValueError, match="dmso_well"):
+        InformativenessConfig(**_valid_kwargs(normalize_to_dmso=True))
+
+
+def test_normalize_to_dmso_with_well_is_valid() -> None:
+    config = InformativenessConfig(
+        **_valid_kwargs(normalize_to_dmso=True, dmso_well="M11")
+    )
+    assert config.normalize_to_dmso is True
+    assert config.dmso_well == "M11"

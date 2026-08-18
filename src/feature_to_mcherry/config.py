@@ -80,6 +80,18 @@ class FeatureToMcherryConfig:
     sort_quantiles : bool
         If True, sort predicted quantiles ascending per cell as a post-hoc fix for
         quantile crossing.
+    normalize_to_dmso : bool
+        If True, DMSO-normalize the targets before modeling: replace the percentile
+        targets with per-timepoint robust z-scores against the ``dmso_well`` control
+        (``z_``-prefixed columns), dropping cells whose reference is undefined. Requires
+        ``dmso_well``. **The target input must cover a single experiment** — the loaders
+        keep only ``CELL_KEY + target_columns``, so there is no experiment column to
+        scope by; a target directory spanning several experiments (reusing DMSO well
+        labels) would pool their baselines. For multi-experiment normalization call
+        ``data.normalize.normalize_targets_to_dmso`` directly with an experiment column.
+    dmso_well : str, optional
+        DMSO (vehicle) control well label (e.g. ``"M11"`` / ``"N11"``). Required when
+        ``normalize_to_dmso`` is True.
     output_dir : str
         Directory to write the results CSV and summary report to.
     """
@@ -100,6 +112,8 @@ class FeatureToMcherryConfig:
     quantile_train_subsample_size: Optional[int] = None
     quantile_train_subsample_seed: int = 0
     sort_quantiles: bool = True
+    normalize_to_dmso: bool = False
+    dmso_well: Optional[str] = None
     output_dir: str = "results/feature_to_mcherry"
 
     def __post_init__(self) -> None:
@@ -120,6 +134,8 @@ class FeatureToMcherryConfig:
             and self.quantile_train_subsample_size < 1
         ):
             raise ValueError("quantile_train_subsample_size must be at least 1")
+        if self.normalize_to_dmso and not self.dmso_well:
+            raise ValueError("dmso_well must be set when normalize_to_dmso is True")
 
 
 def load_config(

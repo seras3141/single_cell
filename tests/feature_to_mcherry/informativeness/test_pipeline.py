@@ -394,3 +394,97 @@ def test_pipeline_end_to_end_with_directory_feature_and_target_csv(
 
     floor_metrics = pd.read_csv(output_dir / "floor_metrics.csv")
     assert floor_metrics["r2"].apply(np.isfinite).all()
+
+
+_DMSO_VALID_PER_WELL_T = 6  # cells per (well, valid timepoint)
+_DMSO_RETAINED = 4 * _DMSO_VALID_PER_WELL_T * 2  # 4 wells x 6 cells x timepoints {1,2}
+_Z_TARGETS = ["z_percentile_75", "z_percentile_90", "z_percentile_95"]
+
+
+def _write_synthetic_dmso_csvs(tmp_path: Path, seed: int = 0) -> Tuple[Path, Path]:
+    """DMSO well (M11) + drug wells. Timepoints 1-2 valid; timepoint 3 has an INVALID
+    DMSO reference (1 DMSO cell < min_cells) so every t3 row is dropped by the normalize
+    path — exercising NaN-z dropping with an exactly known retained count."""
+    rng = np.random.default_rng(seed)
+    rows_features = []
+    rows_targets = []
+
+    def _add(well: str, timepoint: int, n: int, offset: float) -> None:
+        for j in range(n):
+            cell_id = timepoint * 100 + j  # unique within (well, timepoint)
+            area = float(rng.uniform(0, 10))
+            perimeter = float(rng.uniform(0, 10))
+            mean_intensity = float(rng.uniform(0, 10))
+            base = 2 * area + perimeter + float(rng.normal(0, 0.3)) + 5.0 * offset
+            rows_features.append(
+                {
+                    "instance_id": cell_id,
+                    "well": well,
+                    "frame": timepoint,
+                    "z": 1,
+                    "area": area,
+                    "perimeter": perimeter,
+                    "mean_intensity": mean_intensity,
+                }
+            )
+            rows_targets.append(
+                {
+                    "sample_id": well,
+                    "timepoint": timepoint,
+                    "z_index": 1,
+                    "cell_id": cell_id,
+                    "percentile_75": base,
+                    "percentile_90": base + 5.0,
+                    "percentile_95": base + 10.0,
+                }
+            )
+
+    wells = ["M11", "C02", "D02", "C03"]  # M11 = DMSO reference
+    for offset, well in enumerate(wells):
+        _add(well, 1, _DMSO_VALID_PER_WELL_T, offset)
+        _add(well, 2, _DMSO_VALID_PER_WELL_T, offset)
+    # timepoint 3: DMSO reference invalid (1 cell) -> all t3 rows dropped by normalize.
+    _add("M11", 3, 1, 0)
+    for offset, well in enumerate(["C02", "D02", "C03"], start=1):
+        _add(well, 3, 2, offset)
+
+    feature_csv = tmp_path / "features.csv"
+    target_csv = tmp_path / "instance_metrics.csv"
+    pd.DataFrame(rows_features).to_csv(feature_csv, index=False)
+    pd.DataFrame(rows_targets).to_csv(target_csv, index=False)
+    return feature_csv, target_csv
+
+
+def test_pipeline_with_dmso_normalization(tmp_path: Path) -> None:
+    """The gate runs on z_-normalized targets: z-column noise ceiling + NaN-z drop."""
+    feature_csv, target_csv = _write_synthetic_dmso_csvs(tmp_path)
+    output_dir = tmp_path / "results"
+    config = InformativenessConfig(
+        feature_csv=str(feature_csv),
+        target_csv=str(target_csv),
+        id_column="instance_id",
+        sample_id_column="well",
+        timepoint_column="frame",
+        z_index_column="z",
+        group_by="sample_id",
+        n_splits=2,
+        morphology_feature_patterns=["area", "perimeter"],
+        suspect_feature_patterns=["mean_intensity"],
+        plate_layout_json=str(REAL_LAYOUT_PATH),
+        normalize_to_dmso=True,
+        dmso_well="M11",
+        output_dir=str(output_dir),
+    )
+
+    bundle = run(config)
+
+    # Everything downstream keys off the z_ target names, incl. the noise ceiling.
+    assert bundle.target_columns == _Z_TARGETS
+    assert list(bundle.noise_ceiling["target"]) == _Z_TARGETS
+    # invalid-reference timepoint 3 dropped; only t1/t2 retained.
+    assert bundle.n_cells == _DMSO_RETAINED
+    assert (output_dir / "summary.json").exists()
+    floor_metrics = pd.read_csv(output_dir / "floor_metrics.csv")
+    assert floor_metrics["r2"].apply(np.isfinite).all()
+    # floor is computed/reported against the z_ targets, not raw percentiles.
+    assert set(floor_metrics["target"].unique()) == set(_Z_TARGETS)

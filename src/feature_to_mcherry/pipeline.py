@@ -19,6 +19,7 @@ from .data.loaders import (
     load_targets,
     load_targets_from_directory,
 )
+from .data.normalize import apply_dmso_normalization
 from .evaluation.cv import grouped_kfold_indices
 from .evaluation.metrics import per_target_regression_metrics, quantile_crossing_rate
 from .models.linear_quantile import LinearQuantileRegressor
@@ -73,6 +74,7 @@ def _run_model(
     model_name: str,
     train_subsample_size: Optional[int] = None,
     train_subsample_seed: int = 0,
+    report_crossing: bool = True,
 ) -> ModelResult:
     """Run one model through grouped CV, collecting out-of-fold predictions/metrics.
 
@@ -118,7 +120,11 @@ def _run_model(
     pooled_metrics = per_target_regression_metrics(
         y, oof_predictions, taus, target_names
     )
-    pooled_crossing_rate = quantile_crossing_rate(oof_predictions)
+    # Quantile crossing assumes monotonically ordered targets; not meaningful for
+    # DMSO z-normalized targets (each percentile is independently centered/scaled).
+    pooled_crossing_rate = (
+        quantile_crossing_rate(oof_predictions) if report_crossing else float("nan")
+    )
 
     logger.info("%s pooled out-of-fold metrics: %s", model_name, pooled_metrics)
 
@@ -212,6 +218,16 @@ def run(config: FeatureToMcherryConfig) -> ResultsBundle:
     else:
         targets_df = load_targets(target_path, target_columns=config.target_columns)
 
+    # Optional DMSO normalization: swaps in z_-prefixed targets (see data.normalize).
+    # Single-experiment input only (loaders drop non-target columns, so there is no
+    # experiment column to scope by). taus stay derived from the original names below.
+    targets_df, target_columns = apply_dmso_normalization(
+        targets_df,
+        enabled=config.normalize_to_dmso,
+        dmso_well=config.dmso_well,
+        target_columns=config.target_columns,
+    )
+
     feature_path = Path(config.feature_csv)
     if feature_path.is_dir():
         features_df = load_features_from_directory(
@@ -243,10 +259,12 @@ def run(config: FeatureToMcherryConfig) -> ResultsBundle:
     X, y, groups, feature_names = build_matrix(
         features_df,
         targets_df,
-        target_columns=config.target_columns,
+        target_columns=target_columns,
         group_by=config.group_by,
     )
 
+    # taus are quantile levels of the ORIGINAL percentiles (unchanged by normalization),
+    # and taus_from_target_columns only matches the percentile_<N> pattern.
     taus = taus_from_target_columns(config.target_columns)
 
     ridge_result = _run_model(
@@ -257,9 +275,10 @@ def run(config: FeatureToMcherryConfig) -> ResultsBundle:
         n_splits=config.n_splits,
         group_by=config.group_by,
         taus=taus,
-        target_names=config.target_columns,
+        target_names=target_columns,
         apply_sort=False,
         model_name="ridge",
+        report_crossing=not config.normalize_to_dmso,
     )
 
     linear_quantile_result = _run_model(
@@ -272,11 +291,16 @@ def run(config: FeatureToMcherryConfig) -> ResultsBundle:
         n_splits=config.n_splits,
         group_by=config.group_by,
         taus=taus,
-        target_names=config.target_columns,
-        apply_sort=config.sort_quantiles,
+        target_names=target_columns,
+        # Post-hoc quantile sorting assumes monotonic raw percentiles
+        # (p75 <= p90 <= p95). DMSO z-normalization centers/scales each percentile
+        # independently, so that ordering no longer holds — sorting would swap
+        # predictions across targets. Disable it (and the crossing rate is then n/a).
+        apply_sort=config.sort_quantiles and not config.normalize_to_dmso,
         model_name="linear_quantile",
         train_subsample_size=config.quantile_train_subsample_size,
         train_subsample_seed=config.quantile_train_subsample_seed,
+        report_crossing=not config.normalize_to_dmso,
     )
 
     results = ResultsBundle(
@@ -285,7 +309,7 @@ def run(config: FeatureToMcherryConfig) -> ResultsBundle:
         n_cells=len(y),
         n_features=len(feature_names),
         feature_names=feature_names,
-        target_names=list(config.target_columns),
+        target_names=list(target_columns),
         groups=groups,
         y=y,
     )

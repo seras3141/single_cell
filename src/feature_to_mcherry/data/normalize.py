@@ -231,3 +231,87 @@ def normalize_targets_to_dmso(
             len(result),
         )
     return result
+
+
+def apply_dmso_normalization(
+    targets_df: pd.DataFrame,
+    *,
+    enabled: bool,
+    dmso_well: Optional[str],
+    target_columns: List[str],
+    experiment_column: Optional[str] = None,
+    sample_id_column: str = "sample_id",
+    timepoint_column: str = "timepoint",
+    min_cells: int = 2,
+    prefix: str = "z_",
+) -> "tuple[pd.DataFrame, List[str]]":
+    """Pipeline hook: optionally DMSO-normalize the targets, returning target columns.
+
+    A thin wrapper for use between ``load_targets`` and ``build_matrix``. When
+    ``enabled`` is False this is a no-op returning ``(targets_df, target_columns)``.
+    When True it adds ``<prefix><col>`` columns, **drops cells whose z is undefined**
+    (invalid-reference timepoints -- so downstream models never see NaN targets), and
+    returns the ``<prefix>`` names as the effective target columns to model.
+
+    Parameters
+    ----------
+    targets_df : pd.DataFrame
+        Loaded target table (see :func:`normalize_targets_to_dmso`).
+    enabled : bool
+        Whether to normalize. If False, returns the inputs unchanged.
+    dmso_well : str, optional
+        DMSO control well label. Required when ``enabled`` is True.
+    target_columns : list[str]
+        Original target columns to normalize.
+    experiment_column, sample_id_column, timepoint_column, min_cells, prefix
+        Forwarded to :func:`normalize_targets_to_dmso`.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, list[str]]
+        ``(targets_df, effective_target_columns)``. When enabled, the columns are the
+        ``<prefix><col>`` names and the frame has undefined-z rows dropped.
+
+    Raises
+    ------
+    ValueError
+        If ``enabled`` is True but ``dmso_well`` is not set.
+    """
+    if not enabled:
+        return targets_df, list(target_columns)
+    if not dmso_well:
+        raise ValueError("normalize_to_dmso is enabled but dmso_well is not set")
+    if experiment_column is None:
+        # No experiment column to scope by: the reference is pooled per timepoint over
+        # every row with sample_id == dmso_well. Correct only for a single-experiment
+        # table; a table concatenating cultures (which reuse DMSO well labels) would
+        # pool their baselines. See TODO in plan_dmso_normalization_implementation.md.
+        logger.warning(
+            "DMSO normalization (well %s) assumes a SINGLE-experiment target table; "
+            "pass experiment_column to scope per (experiment, timepoint) if the input "
+            "concatenates cultures.",
+            dmso_well,
+        )
+
+    normalized = normalize_targets_to_dmso(
+        targets_df,
+        dmso_well,
+        target_columns=target_columns,
+        sample_id_column=sample_id_column,
+        timepoint_column=timepoint_column,
+        experiment_column=experiment_column,
+        min_cells=min_cells,
+        prefix=prefix,
+    )
+    z_columns = [f"{prefix}{column}" for column in target_columns]
+    before = len(normalized)
+    normalized = normalized.dropna(subset=z_columns).reset_index(drop=True)
+    dropped = before - len(normalized)
+    if dropped:
+        logger.info(
+            "DMSO normalization: dropped %d/%d cells with undefined z "
+            "(invalid-reference timepoints) before modeling.",
+            dropped,
+            before,
+        )
+    return normalized, z_columns

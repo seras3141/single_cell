@@ -8,6 +8,7 @@ import pytest
 
 from src.feature_to_mcherry.data.normalize import (
     MAD_SCALE,
+    apply_dmso_normalization,
     compute_dmso_reference,
     normalize_targets_to_dmso,
 )
@@ -214,3 +215,41 @@ def test_partial_nan_below_min_cells_invalid() -> None:
     assert bool(ref.set_index("timepoint").loc["1", "valid"]) is False
     out = normalize_targets_to_dmso(df, "M11", target_columns=["percentile_90"])
     assert out[out["timepoint"] == "1"]["z_percentile_90"].isna().all()
+
+
+def test_apply_disabled_is_passthrough() -> None:
+    src = _make_targets()
+    out, cols = apply_dmso_normalization(
+        src, enabled=False, dmso_well=None, target_columns=["percentile_90"]
+    )
+    assert cols == ["percentile_90"]
+    assert out is src  # unchanged object, no z_ columns added
+    assert "z_percentile_90" not in out.columns
+
+
+def test_apply_enabled_swaps_columns_and_drops_undefined() -> None:
+    df = _make_targets()
+    # make timepoint 1's DMSO degenerate (MAD=0) -> invalid ref -> those rows dropped
+    df.loc[df["sample_id"] == "M11", "percentile_90"] = np.where(
+        df.loc[df["sample_id"] == "M11", "timepoint"] == "1",
+        50.0,
+        df.loc[df["sample_id"] == "M11", "percentile_90"],
+    )
+    out, cols = apply_dmso_normalization(
+        df, enabled=True, dmso_well="M11", target_columns=["percentile_90"]
+    )
+    assert cols == ["z_percentile_90"]
+    assert "z_percentile_90" in out.columns
+    assert out["z_percentile_90"].notna().all()  # undefined-z rows dropped
+    assert (out["timepoint"] == "1").sum() == 0  # the invalid-ref timepoint is gone
+    assert (out["timepoint"] == "2").sum() > 0
+
+
+def test_apply_enabled_without_dmso_well_raises() -> None:
+    with pytest.raises(ValueError, match="dmso_well"):
+        apply_dmso_normalization(
+            _make_targets(),
+            enabled=True,
+            dmso_well=None,
+            target_columns=["percentile_90"],
+        )
