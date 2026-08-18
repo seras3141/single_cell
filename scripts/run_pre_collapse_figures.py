@@ -11,8 +11,8 @@ See docs/feature_to_mcherry/plan_fatima_deliverable_pipeline.md, Step 5'.
 
 Example::
 
-    python scripts/run_pre_collapse_figures.py \\
-        --summary results/dataset_analysis/all_experiments_summary.csv \\
+    SUMMARY=results/dataset_analysis/all_experiments_cell_population_summary.csv
+    python scripts/run_pre_collapse_figures.py --summary "$SUMMARY" \\
         --output-dir docs/feature_to_mcherry/figures/feature_vs_time_for_fatima
 """
 

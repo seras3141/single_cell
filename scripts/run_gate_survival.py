@@ -13,9 +13,10 @@ See docs/feature_to_mcherry/plan_fatima_deliverable_pipeline.md, Step 2.
 
 Example::
 
+    SUMMARY=results/dataset_analysis/all_experiments_cell_population_summary.csv
     python scripts/run_gate_survival.py \\
         --results-root results/dataset_analysis \\
-        --summary results/dataset_analysis/all_experiments_summary.csv \\
+        --summary "$SUMMARY" \\
         --output-dir docs/_phase6_scratch/dmso_gate_threshold_survival_table
 """
 
