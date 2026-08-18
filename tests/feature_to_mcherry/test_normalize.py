@@ -124,3 +124,93 @@ def test_missing_column_raises() -> None:
     df = _make_targets().drop(columns=["percentile_90"])
     with pytest.raises(ValueError, match="missing required columns"):
         compute_dmso_reference(df, "M11", target_columns=["percentile_90"])
+
+
+def _make_two_experiment_targets() -> pd.DataFrame:
+    """Two experiments sharing DMSO well M11 but with DIFFERENT DMSO levels."""
+    rows = []
+    for exp, dmso_vals, drug in [
+        ("A", [10.0, 12.0, 14.0], 16.0),
+        ("B", [20.0, 22.0, 24.0], 26.0),
+    ]:
+        for i, v in enumerate(dmso_vals):
+            rows.append(
+                dict(
+                    experiment=exp,
+                    sample_id="M11",
+                    timepoint="1",
+                    z_index="1",
+                    cell_id=str(i),
+                    percentile_90=v,
+                )
+            )
+        rows.append(
+            dict(
+                experiment=exp,
+                sample_id="E07",
+                timepoint="1",
+                z_index="1",
+                cell_id="0",
+                percentile_90=drug,
+            )
+        )
+    return pd.DataFrame(rows)
+
+
+def test_experiment_column_scopes_reference() -> None:
+    """With experiment_column, each experiment uses its OWN M11 (not pooled)."""
+    df = _make_two_experiment_targets()
+    out = normalize_targets_to_dmso(
+        df, "M11", target_columns=["percentile_90"], experiment_column="experiment"
+    )
+    scale = 2.0 * MAD_SCALE  # both experiments' DMSO MAD = 2*scale
+    za = out[(out["experiment"] == "A") & (out["sample_id"] == "E07")][
+        "z_percentile_90"
+    ].iloc[0]
+    zb = out[(out["experiment"] == "B") & (out["sample_id"] == "E07")][
+        "z_percentile_90"
+    ].iloc[0]
+    # A: (16-12)/scale ; B: (26-22)/scale -> both +4/scale (own-experiment baseline)
+    assert za == pytest.approx(4.0 / scale)
+    assert zb == pytest.approx(4.0 / scale)
+
+
+def test_without_experiment_column_pools_shared_well() -> None:
+    """Single-experiment contract: omitting experiment_column pools shared M11 wells."""
+    df = _make_two_experiment_targets()
+    ref = compute_dmso_reference(df, "M11", target_columns=["percentile_90"])
+    # one row (grouped by timepoint only); median of pooled {10,12,14,20,22,24} = 17
+    assert len(ref) == 1
+    assert ref.iloc[0]["median_percentile_90"] == pytest.approx(17.0)
+
+
+def test_partial_nan_dmso_uses_finite_mask() -> None:
+    """A NaN among DMSO values must not NaN-poison the median (finite-mask)."""
+    df = _make_targets()
+    mask = (df["sample_id"] == "M11") & (df["timepoint"] == "1")
+    df.loc[df[mask].index[1], "percentile_90"] = np.nan  # {10, NaN, 14}
+    r1 = (
+        compute_dmso_reference(df, "M11", target_columns=["percentile_90"])
+        .set_index("timepoint")
+        .loc["1"]
+    )
+    assert np.isfinite(r1["median_percentile_90"])
+    assert r1["median_percentile_90"] == pytest.approx(12.0)  # median of {10, 14}
+    assert bool(r1["valid"]) is True  # 2 finite values >= min_cells 2
+    out = normalize_targets_to_dmso(df, "M11", target_columns=["percentile_90"])
+    # every cell with a FINITE input gets a finite z (only the NaN-input cell stays NaN)
+    t1 = out[out["timepoint"] == "1"]
+    finite_input = t1[t1["percentile_90"].notna()]
+    assert finite_input["z_percentile_90"].notna().all()
+    assert int(t1["z_percentile_90"].isna().sum()) == 1  # just the NaN-input DMSO cell
+
+
+def test_partial_nan_below_min_cells_invalid() -> None:
+    """NaNs dropping finite count below min_cells -> invalid reference -> NaN z."""
+    df = _make_targets()
+    mask = (df["sample_id"] == "M11") & (df["timepoint"] == "1")
+    df.loc[df[mask].index[:2], "percentile_90"] = np.nan  # only 1 finite left
+    ref = compute_dmso_reference(df, "M11", target_columns=["percentile_90"])
+    assert bool(ref.set_index("timepoint").loc["1", "valid"]) is False
+    out = normalize_targets_to_dmso(df, "M11", target_columns=["percentile_90"])
+    assert out[out["timepoint"] == "1"]["z_percentile_90"].isna().all()
