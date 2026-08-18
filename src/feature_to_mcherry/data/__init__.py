@@ -8,6 +8,7 @@ from .contract import (
 )
 from .join import build_matrix, build_matrix_with_metadata
 from .loaders import load_features, load_targets
+from .normalize import compute_dmso_reference, normalize_targets_to_dmso
 
 __all__ = [
     "CELL_KEY",
@@ -18,4 +19,6 @@ __all__ = [
     "build_matrix_with_metadata",
     "load_features",
     "load_targets",
+    "compute_dmso_reference",
+    "normalize_targets_to_dmso",
 ]
