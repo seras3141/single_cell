@@ -7,13 +7,13 @@ inside that culture's pre-collapse window. Where it is not, plots the DMSO popul
 collapse with ``t_cross`` marked -- showing *why* no trend figure is offered, the
 honest figure rather than a trend fitted to three points.
 
-See docs/feature_to_mcherry/plan_fatima_deliverable_pipeline.md, Step 5'.
+See docs/feature_to_mcherry/plan_dataset_design_assessment.md, Step 5'.
 
 Example::
 
     SUMMARY=results/dataset_analysis/all_experiments_cell_population_summary.csv
     python scripts/run_pre_collapse_figures.py --summary "$SUMMARY" \\
-        --output-dir docs/feature_to_mcherry/figures/feature_vs_time_for_fatima
+        --output-dir docs/feature_to_mcherry/figures/feature_vs_time_pre_collapse
 """
 
 import argparse
@@ -24,6 +24,10 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from src.feature_to_mcherry.data.collapse import (
+    CELL_OBSERVATION_KEY,
+    collapse_slices_to_cells,
+)
 from src.feature_to_mcherry.data.join import build_matrix_with_metadata
 from src.feature_to_mcherry.data.loaders import (
     load_features_from_directory,
@@ -268,7 +272,7 @@ def main() -> None:
     ap.add_argument("--cell-population-root", default="results/dataset_analysis")
     ap.add_argument(
         "--output-dir",
-        default="docs/feature_to_mcherry/figures/feature_vs_time_for_fatima",
+        default="docs/feature_to_mcherry/figures/feature_vs_time_pre_collapse",
     )
     ap.add_argument("--rho-threshold", type=float, default=DEFAULT_RHO_THRESHOLD)
     ap.add_argument("--max-features", type=int, default=6)
@@ -285,6 +289,18 @@ def main() -> None:
     estimability.to_csv(out_dir / "estimability_table.csv", index=False)
     logger.info("estimability table:\n%s", estimability.to_string(index=False))
 
+    # KNOWN LIMITATION (adversarial review, 2026-08-23):
+    # univariate_correlations.csv is produced by the informativeness pipeline on the raw
+    # joined CELL_KEY, which INCLUDES z_index -- so the features selected here, and the
+    # max_abs_rho reported in feature_selection_summary.csv, remain slice-weighted
+    # even though the trend table and figures below are now per-cell.
+    #
+    # This does NOT bias the reported within-window trend: selection ranks on
+    # |rho(feature, mCherry)| while the reported statistic is rho(feature, time) -- a
+    # different quantity, so this is not selection on the outcome. What it does mean is
+    # that the plotted feature SET may not be the per-cell top-k. Fixing it requires
+    # recomputing the univariate correlations per cell, which changes which features are
+    # plotted; deferred deliberately rather than done silently.
     selections: Dict[str, pd.DataFrame] = {}
     for experiment in EXP_DIR:
         path = _univariate_path(results_root, experiment)
@@ -342,29 +358,59 @@ def main() -> None:
         feature_frame = pd.DataFrame(X, columns=feature_names)
         keep = truncate_to_pre_collapse(metadata, summary, experiment)
         mask = keep.to_numpy()
+
+        # Collapse to one observation per cell ONCE, here, and feed the same frame
+        # to the figure and to the trend table. The joined matrix is one row per
+        # (cell, z_slice), so raw rows weight each cell by its z-span -- and
+        # treatment changes morphology, so that weighting correlates with the trend
+        # being measured. Doing it here (not only inside within_window_trend) keeps
+        # the plotted rolling median and the reported rho describing the same
+        # observation unit; a figure drawn on slice rows beside a per-cell rho could
+        # visibly disagree with its own caption.
+        per_cell = collapse_slices_to_cells(
+            pd.concat(
+                [
+                    metadata.loc[mask].reset_index(drop=True)[CELL_OBSERVATION_KEY],
+                    feature_frame.loc[mask].reset_index(drop=True)[usable],
+                ],
+                axis=1,
+            ),
+            usable,
+        )
+        logger.info(
+            "%s: %d pre-collapse slice rows -> %d cell observations",
+            experiment,
+            int(keep.sum()),
+            len(per_cell),
+        )
+        per_cell_metadata = per_cell[CELL_OBSERVATION_KEY]
+        per_cell_features = per_cell[usable]
+
         _plot_feature_vs_time(
-            metadata.loc[mask].reset_index(drop=True),
-            feature_frame.loc[mask].reset_index(drop=True),
+            per_cell_metadata,
+            per_cell_features,
             usable,
             experiment,
             int(row["n_timepoints_pre_cross"]),
             row["t_cross_peak"],
             exp_dir / "features_vs_time.png",
         )
+        # within_window_trend collapses defensively as well; on an already-per-cell
+        # frame that is a no-op (one row per key), not a double reduction.
         trend = within_window_trend(
-            metadata.loc[mask].reset_index(drop=True),
-            feature_frame.loc[mask].reset_index(drop=True),
+            per_cell_metadata,
+            per_cell_features,
             usable,
             row["t_cross_peak"],
         )
         trend.insert(0, "experiment", experiment)
         trend.to_csv(exp_dir / "within_window_trend.csv", index=False)
         logger.info(
-            "%s: %s — plotted %d features on %d pre-collapse rows",
+            "%s: %s — plotted %d features on %d pre-collapse cells",
             experiment,
             row["verdict"],
             len(usable),
-            int(keep.sum()),
+            len(per_cell),
         )
         logger.info(
             "%s within-window trend:\n%s", experiment, trend.to_string(index=False)

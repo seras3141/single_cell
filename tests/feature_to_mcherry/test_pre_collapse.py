@@ -308,7 +308,11 @@ def test_within_window_trend_detects_a_real_trend() -> None:
     from src.feature_to_mcherry.pre_collapse import within_window_trend
 
     metadata = pd.DataFrame(
-        {"sample_id": ["A"] * 6, "timepoint": ["1", "11", "21", "31", "41", "51"]}
+        {
+            "sample_id": ["A"] * 6,
+            "timepoint": ["1", "11", "21", "31", "41", "51"],
+            "cell_id": ["1"] * 6,
+        }
     )
     features = pd.DataFrame({"rising": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]})
     out = within_window_trend(metadata, features, ["rising"], dmso_t_cross=51)
@@ -326,7 +330,11 @@ def test_within_window_trend_reports_a_flat_feature_as_near_zero() -> None:
     from src.feature_to_mcherry.pre_collapse import within_window_trend
 
     metadata = pd.DataFrame(
-        {"sample_id": ["A"] * 6, "timepoint": ["1", "11", "21", "31", "41", "51"]}
+        {
+            "sample_id": ["A"] * 6,
+            "timepoint": ["1", "11", "21", "31", "41", "51"],
+            "cell_id": ["1"] * 6,
+        }
     )
     features = pd.DataFrame({"flat": [5.0, 5.0, 5.0, 5.0, 5.0, 5.0]})
     out = within_window_trend(metadata, features, ["flat"], dmso_t_cross=51)
@@ -342,7 +350,11 @@ def test_within_window_trend_returns_plain_floats_not_a_scipy_result() -> None:
     from src.feature_to_mcherry.pre_collapse import within_window_trend
 
     metadata = pd.DataFrame(
-        {"sample_id": ["A"] * 4, "timepoint": ["1", "11", "21", "31"]}
+        {
+            "sample_id": ["A"] * 4,
+            "timepoint": ["1", "11", "21", "31"],
+            "cell_id": ["1"] * 4,
+        }
     )
     features = pd.DataFrame({"f": [1.0, 2.0, 3.0, 4.0]})
     row = within_window_trend(metadata, features, ["f"], dmso_t_cross=31).iloc[0]
@@ -354,7 +366,9 @@ def test_within_window_trend_handles_too_few_points_without_raising() -> None:
     """Two in-window points cannot support a rank correlation."""
     from src.feature_to_mcherry.pre_collapse import within_window_trend
 
-    metadata = pd.DataFrame({"sample_id": ["A", "A"], "timepoint": ["1", "11"]})
+    metadata = pd.DataFrame(
+        {"sample_id": ["A", "A"], "timepoint": ["1", "11"], "cell_id": ["1", "1"]}
+    )
     features = pd.DataFrame({"f": [1.0, 2.0]})
     row = within_window_trend(metadata, features, ["f"], dmso_t_cross=11).iloc[0]
     assert row["n_within"] == 2
@@ -366,7 +380,11 @@ def test_within_window_trend_splits_at_the_dmso_crossing() -> None:
     from src.feature_to_mcherry.pre_collapse import within_window_trend
 
     metadata = pd.DataFrame(
-        {"sample_id": ["A"] * 4, "timepoint": ["1", "11", "101", "201"]}
+        {
+            "sample_id": ["A"] * 4,
+            "timepoint": ["1", "11", "101", "201"],
+            "cell_id": ["1"] * 4,
+        }
     )
     features = pd.DataFrame({"f": [10.0, 10.0, 50.0, 50.0]})
     out = within_window_trend(metadata, features, ["f"], dmso_t_cross=11)
@@ -381,7 +399,13 @@ def test_within_window_trend_splits_at_the_dmso_crossing() -> None:
 def test_within_window_trend_without_a_crossing_uses_every_row() -> None:
     from src.feature_to_mcherry.pre_collapse import within_window_trend
 
-    metadata = pd.DataFrame({"sample_id": ["A"] * 3, "timepoint": ["1", "11", "21"]})
+    metadata = pd.DataFrame(
+        {
+            "sample_id": ["A"] * 3,
+            "timepoint": ["1", "11", "21"],
+            "cell_id": ["1"] * 3,
+        }
+    )
     features = pd.DataFrame({"f": [1.0, 2.0, 3.0]})
     out = within_window_trend(metadata, features, ["f"], dmso_t_cross=None)
     assert out.iloc[0]["n_within"] == 3
@@ -411,3 +435,59 @@ def test_selection_summary_handles_an_empty_selection() -> None:
     row = out.iloc[0]
     assert row["n_pairs_selected"] == 0
     assert row["strongest_pair"] is None
+
+
+def test_within_window_trend_counts_cells_not_slices() -> None:
+    """Two cells spanning 3 and 1 z-slices are 2 observations, not 4."""
+    from src.feature_to_mcherry.pre_collapse import within_window_trend
+
+    metadata = pd.DataFrame(
+        {
+            "sample_id": ["A"] * 4,
+            "timepoint": ["1"] * 4,
+            "z_index": ["5", "6", "7", "5"],
+            "cell_id": ["1", "1", "1", "2"],
+        }
+    )
+    features = pd.DataFrame({"f": [10.0, 20.0, 30.0, 100.0]})
+    row = within_window_trend(metadata, features, ["f"], dmso_t_cross=None).iloc[0]
+    assert row["n_within"] == 2
+    # median over cells {median(10, 20, 30) = 20, 100} = median(20, 100) = 60
+    assert row["median_within"] == pytest.approx(60.0)
+
+
+def test_within_window_trend_is_not_skewed_by_slice_span() -> None:
+    """The load-bearing regression test for the slice-weighting defect.
+
+    Two cells at each of two timepoints. At t=1 the low-valued cell spans 3 z-slices;
+    at t=11 the high-valued one does. On raw slice rows the median is pulled toward
+    whichever cell spans more z, manufacturing a time trend; per cell there is none.
+
+    Raw rows   t=1: [1, 1, 1, 9] -> median 1    t=11: [1, 9, 9, 9] -> median 9
+    Per cell   t=1: [1, 9]       -> median 5    t=11: [1, 9]       -> median 5
+    """
+    from src.feature_to_mcherry.pre_collapse import within_window_trend
+
+    metadata = pd.DataFrame(
+        {
+            "sample_id": ["A"] * 8,
+            "timepoint": ["1"] * 4 + ["11"] * 4,
+            "z_index": ["5", "6", "7", "5", "5", "5", "6", "7"],
+            "cell_id": ["1", "1", "1", "2", "1", "2", "2", "2"],
+        }
+    )
+    features = pd.DataFrame({"f": [1.0, 1.0, 1.0, 9.0, 1.0, 9.0, 9.0, 9.0]})
+    row = within_window_trend(metadata, features, ["f"], dmso_t_cross=None).iloc[0]
+    assert row["n_within"] == 4  # 2 cells x 2 timepoints
+    # Both timepoints now hold the same pair {1, 9}, so no time trend survives.
+    assert row["rho_within"] == pytest.approx(0.0)
+
+
+def test_within_window_trend_requires_the_observation_unit() -> None:
+    """No silent fall-back to slice rows: metadata without cell_id must fail."""
+    from src.feature_to_mcherry.pre_collapse import within_window_trend
+
+    metadata = pd.DataFrame({"sample_id": ["A", "A"], "timepoint": ["1", "11"]})
+    features = pd.DataFrame({"f": [1.0, 2.0]})
+    with pytest.raises(ValueError, match="cell_id"):
+        within_window_trend(metadata, features, ["f"], dmso_t_cross=None)

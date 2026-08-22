@@ -10,7 +10,7 @@ The estimability verdict is the deliverable, not a gate on the rest: "this desig
 resolve a pre-confluence trajectory for these cultures" is itself the answer to the
 dataset-design question.
 
-See ``docs/feature_to_mcherry/plan_fatima_deliverable_pipeline.md`` §Step 5'.
+See ``docs/feature_to_mcherry/plan_dataset_design_assessment.md`` §Step 5'.
 """
 
 from __future__ import annotations
@@ -236,9 +236,24 @@ def within_window_trend(
     confluency, however clean the culture looks — a materially different conclusion from
     "no trend was plotted".
 
+    ``metadata``/``features`` arrive one row per ``(cell, z_slice)``, so they are
+    collapsed to one observation per cell first (median across z, via the shared
+    :func:`src.feature_to_mcherry.data.collapse_slices_to_cells`). Without that, each
+    cell would be weighted by how many z-slices it spans, and since treatment changes
+    morphology that weighting correlates with the trend being measured. The counts
+    below are therefore **cells, not slices**.
+
+    Args:
+        metadata: Must carry ``sample_id``, ``timepoint_column`` and ``cell_id`` — the
+            observation unit. Row-aligned with ``features``.
+
     Returns:
         One row per feature: ``n_within``, ``n_post``, ``rho_within``, ``p_within``,
         ``median_within``, ``median_post``, ``pct_change_post_vs_within``.
+
+    Raises:
+        ValueError: If ``metadata`` lacks a key column. There is no fall-back to raw
+            slice rows, which would silently reinstate the slice-weighting bug.
     """
     # Reuse the informativeness module's own guarded wrapper rather than calling
     # scipy directly: it tuple-unpacks (``result.statistic`` only exists from scipy
@@ -247,7 +262,27 @@ def within_window_trend(
     # package unpacks the same way.
     from src.feature_to_mcherry.informativeness.univariate import _safe_spearmanr
 
-    times = pd.to_numeric(metadata[timepoint_column], errors="coerce").to_numpy(
+    from .data.collapse import collapse_slices_to_cells
+
+    names = list(feature_names)
+    key_columns = [
+        column
+        for column in ("sample_id", timepoint_column, "cell_id")
+        if column in metadata.columns
+    ]
+    per_cell = collapse_slices_to_cells(
+        pd.concat(
+            [
+                metadata.reset_index(drop=True)[key_columns],
+                features.reset_index(drop=True)[names],
+            ],
+            axis=1,
+        ),
+        names,
+        time_column=timepoint_column,
+    )
+
+    times = pd.to_numeric(per_cell[timepoint_column], errors="coerce").to_numpy(
         dtype=float
     )
     within = (
@@ -258,8 +293,8 @@ def within_window_trend(
     post = np.isfinite(times) & ~within
 
     rows = []
-    for name in feature_names:
-        values = features[name].to_numpy(dtype=float)
+    for name in names:
+        values = per_cell[name].to_numpy(dtype=float)
         finite = np.isfinite(values)
         w = within & finite
         p = post & finite
