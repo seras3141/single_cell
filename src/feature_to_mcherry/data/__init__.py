@@ -1,5 +1,6 @@
 """Data contract, loaders, and join logic for feature_to_mcherry."""
 
+from .collapse import CELL_OBSERVATION_KEY, collapse_slices_to_cells
 from .contract import (
     CELL_KEY,
     TARGET_COLUMNS,
@@ -12,6 +13,8 @@ from .normalize import compute_dmso_reference, normalize_targets_to_dmso
 
 __all__ = [
     "CELL_KEY",
+    "CELL_OBSERVATION_KEY",
+    "collapse_slices_to_cells",
     "TARGET_COLUMNS",
     "normalize_cell_key",
     "taus_from_target_columns",
