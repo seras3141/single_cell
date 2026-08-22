@@ -9,7 +9,7 @@ plots.
 Read-only with respect to ``results/`` and every config/source file: outputs go to the
 scratch directory only.
 
-See docs/feature_to_mcherry/plan_fatima_deliverable_pipeline.md, Step 2.
+See docs/feature_to_mcherry/plan_dataset_design_assessment.md, Step 2.
 
 Example::
 

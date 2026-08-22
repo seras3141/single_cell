@@ -10,7 +10,7 @@ Runs the plate-layout regression guard (8 drug + 1 DMSO well per experiment, zer
 annotated ``empty``) and fails loudly if it trips -- that is the check which would have
 caught the column-7 mislabelling fixed in ``b35396f``.
 
-See docs/feature_to_mcherry/plan_fatima_deliverable_pipeline.md, Step 1.
+See docs/feature_to_mcherry/plan_dataset_design_assessment.md, Step 1.
 
 Example::
 

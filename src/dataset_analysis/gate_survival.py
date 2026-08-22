@@ -23,7 +23,7 @@ Thresholds are expressed against **peak**, not the mean of the first three sampl
 ~2 h sampling several wells fall severalfold across their first three timepoints, so a
 first-3 "baseline" already sits partway down the collapse (see the plan's §B3).
 
-See ``docs/feature_to_mcherry/plan_fatima_deliverable_pipeline.md`` §Step 2.
+See ``docs/feature_to_mcherry/plan_dataset_design_assessment.md`` §Step 2.
 """
 
 from __future__ import annotations

@@ -19,7 +19,7 @@ from ``docs/_phase6_scratch/dmso_vs_drug_cell_count/analyze_dmso_vs_drug.py``
 (``characterize()``), so the two remain comparable; the reference against which they are
 evaluated is ``peak`` here rather than that script's first-3 mean.
 
-See ``docs/feature_to_mcherry/plan_fatima_deliverable_pipeline.md`` §Step 1.
+See ``docs/feature_to_mcherry/plan_dataset_design_assessment.md`` §Step 1.
 """
 
 from __future__ import annotations
