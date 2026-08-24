@@ -371,3 +371,95 @@ def test_pipeline_end_to_end_with_directory_feature_and_target_csv(
             assert math.isfinite(metrics["mae"])
             assert math.isfinite(metrics["r2"])
             assert math.isfinite(metrics["pinball_loss"])
+
+
+_DMSO_VALID_PER_WELL_T = 6  # cells per (well, valid timepoint)
+_DMSO_RETAINED = 3 * _DMSO_VALID_PER_WELL_T * 2  # 3 wells x 6 cells x timepoints {1,2}
+
+
+def _write_synthetic_dmso_csvs(tmp_path: Path, seed: int = 0) -> Tuple[Path, Path]:
+    """DMSO well (M11) + two drug wells. Timepoints 1-2 are valid; timepoint 3 has an
+    INVALID DMSO reference (only 1 DMSO cell < min_cells), so every t3 row must be
+    dropped by the normalize path — exercising NaN-z drop with a known retained count.
+    """
+    rng = np.random.default_rng(seed)
+    rows_features = []
+    rows_targets = []
+
+    def _add(well: str, timepoint: int, n: int, offset: float) -> None:
+        for j in range(n):
+            cell_id = timepoint * 100 + j  # unique within (well, timepoint)
+            f1 = float(rng.uniform(0, 10))
+            f2 = float(rng.uniform(0, 10))
+            base = 2 * f1 + 3 * f2 + float(rng.normal(0, 0.5)) + 5.0 * offset
+            rows_features.append(
+                {
+                    "instance_id": cell_id,
+                    "well": well,
+                    "frame": timepoint,
+                    "z": 1,
+                    "feature_1": f1,
+                    "feature_2": f2,
+                }
+            )
+            rows_targets.append(
+                {
+                    "sample_id": well,
+                    "timepoint": timepoint,
+                    "z_index": 1,
+                    "cell_id": cell_id,
+                    "percentile_75": base,
+                    "percentile_90": base + 5.0,
+                    "percentile_95": base + 10.0,
+                }
+            )
+
+    for offset, well in enumerate(["M11", "A01", "A02"]):
+        _add(well, 1, _DMSO_VALID_PER_WELL_T, offset)
+        _add(well, 2, _DMSO_VALID_PER_WELL_T, offset)
+    # timepoint 3: DMSO reference invalid (1 cell) -> all t3 rows dropped by normalize.
+    _add("M11", 3, 1, 0)
+    _add("A01", 3, 2, 1)
+    _add("A02", 3, 2, 2)
+
+    feature_csv = tmp_path / "features.csv"
+    target_csv = tmp_path / "instance_metrics.csv"
+    pd.DataFrame(rows_features).to_csv(feature_csv, index=False)
+    pd.DataFrame(rows_targets).to_csv(target_csv, index=False)
+    return feature_csv, target_csv
+
+
+def test_run_with_dmso_normalization(tmp_path: Path) -> None:
+    """normalize_to_dmso: z_ targets, NaN-z rows dropped, crossing n/a for z targets."""
+    feature_csv, target_csv = _write_synthetic_dmso_csvs(tmp_path)
+    config = FeatureToMcherryConfig(
+        feature_csv=str(feature_csv),
+        target_csv=str(target_csv),
+        id_column="instance_id",
+        sample_id_column="well",
+        timepoint_column="frame",
+        z_index_column="z",
+        n_splits=2,
+        normalize_to_dmso=True,
+        dmso_well="M11",
+        output_dir=str(tmp_path / "out"),
+    )
+    results = run(config)
+
+    assert results.target_names == [
+        "z_percentile_75",
+        "z_percentile_90",
+        "z_percentile_95",
+    ]
+    # invalid-reference timepoint 3 (5 rows) dropped; only t1/t2 retained.
+    assert results.n_cells == _DMSO_RETAINED
+    assert np.isfinite(results.ridge.oof_predictions).all()
+    # crossing rate is not meaningful for z targets -> reported as NaN.
+    assert math.isnan(results.linear_quantile.pooled_crossing_rate)
+    # persisted oof targets are exactly the z_ names.
+    oof = pd.read_csv(tmp_path / "out" / "oof_predictions.csv")
+    assert set(oof["target_name"].unique()) == {
+        "z_percentile_75",
+        "z_percentile_90",
+        "z_percentile_95",
+    }

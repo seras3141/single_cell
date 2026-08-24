@@ -76,6 +76,16 @@ class InformativenessConfig:
         Path to a plate-layout JSON (see ``config/MF5v1_plate_layout.json``) used to
         map wells to drug/dose conditions for the noise-ceiling estimate. If ``None``
         or the file is missing, the noise ceiling is reported as unavailable.
+    normalize_to_dmso : bool
+        If True, DMSO-normalize the targets before the gate: per-timepoint robust
+        z-scores against ``dmso_well`` (``z_``-prefixed), dropping undefined-reference
+        cells; the univariate/floor/noise-ceiling then run on the normalized targets.
+        Requires ``dmso_well``. **The target input must cover a single experiment** (the
+        loaders drop any non-target column, so there is nothing to scope by); for
+        multi-experiment use call ``data.normalize.normalize_targets_to_dmso`` directly
+        with ``experiment_column``. See ``data.normalize``.
+    dmso_well : str, optional
+        DMSO control well label; required when ``normalize_to_dmso`` is True.
     output_dir : str
         Directory to write the results bundle (CSVs, JSON, report, figures) to.
     """
@@ -104,6 +114,8 @@ class InformativenessConfig:
     well_timepoint_scatter_seed: int = 0
     well_timepoint_colormap: str = "viridis"
     plate_layout_json: Optional[str] = None
+    normalize_to_dmso: bool = False
+    dmso_well: Optional[str] = None
     output_dir: str = "results/morphology_informativeness"
 
     def __post_init__(self) -> None:
@@ -143,6 +155,8 @@ class InformativenessConfig:
             raise ValueError(
                 "well_timepoint_scatter_max_points_per_well must be at least 1"
             )
+        if self.normalize_to_dmso and not self.dmso_well:
+            raise ValueError("dmso_well must be set when normalize_to_dmso is True")
 
 
 def load_config(
