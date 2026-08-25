@@ -23,30 +23,50 @@
         "total_bytes": 27180273816
       },
       "inference": {
-        "folder_md5": "f1465ea940af5d6fda70d6f7abdb7817",
+        "folder_md5": "516b582496803a57006da79b4bc39371",
         "nfiles": 27218,
         "n_symlinks": 0,
-        "total_bytes": 832308834,
+        "total_bytes": 836831460,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "78bfc66487a72ef7b835cd256cf153e4",
+            "folder_md5": "f6f951ea27efdc6acf41ec8905b76294",
             "nfiles": 27218,
             "n_symlinks": 0,
-            "total_bytes": 832308834
+            "total_bytes": 836831460
           }
         }
       },
       "inference_tracked": {
-        "folder_md5": "5eaefe85d55d6178ef6eda759a58f95b",
-        "nfiles": 18909,
+        "folder_md5": "beb1c8cb1a5b78f80b14cd0759d31646",
+        "nfiles": 19758,
         "n_symlinks": 0,
-        "total_bytes": 14082801530,
+        "total_bytes": 15010351500,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "5597643fcb84e821da5c965c23f8b769",
-            "nfiles": 18909,
+            "folder_md5": "fc1f56c1ad5022b86804b4709a3a8fc2",
+            "nfiles": 19758,
             "n_symlinks": 0,
-            "total_bytes": 14082801530
+            "total_bytes": 15010351500
+          }
+        }
+      },
+      "inference_scportrait": {
+        "folder_md5": "b215238780f51e862cd1ebbecb7d1580",
+        "nfiles": 19085,
+        "n_symlinks": 0,
+        "total_bytes": 80905338423,
+        "models": {
+          "features": {
+            "folder_md5": "98f3a9f10c8ee6ec9228d685245e636f",
+            "nfiles": 5476,
+            "n_symlinks": 0,
+            "total_bytes": 50572758602
+          },
+          "scportrait": {
+            "folder_md5": "22f1bbaca4d631b6fc0c1b22ddcfc9b2",
+            "nfiles": 13608,
+            "n_symlinks": 0,
+            "total_bytes": 28513672488
           }
         }
       }
@@ -71,30 +91,50 @@
         "total_bytes": 27180273816
       },
       "inference": {
-        "folder_md5": "0a7f19d6c71a0ab5d89451b59177a946",
+        "folder_md5": "177b694835f00630b4a51645605a2cbd",
         "nfiles": 27218,
         "n_symlinks": 0,
-        "total_bytes": 288146889,
+        "total_bytes": 288578502,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "3e2dcc3f1645b2943af33be49fce470a",
+            "folder_md5": "6f488e32e9b8a41b65cf6f2d799d45a2",
             "nfiles": 27218,
             "n_symlinks": 0,
-            "total_bytes": 288146889
+            "total_bytes": 288578502
           }
         }
       },
       "inference_tracked": {
-        "folder_md5": "313e4bc7bf3d69cad9ba0276ae737ce3",
-        "nfiles": 19439,
+        "folder_md5": "6b3b89e07e1c7a727ed8ef9a4c3633da",
+        "nfiles": 19440,
         "n_symlinks": 0,
-        "total_bytes": 11365589761,
+        "total_bytes": 11469814471,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "477dea788456ce4ac80469fbd6c529cd",
-            "nfiles": 19439,
+            "folder_md5": "5c6fc6f7a79edc8e24e8fda1083ce2d2",
+            "nfiles": 19440,
             "n_symlinks": 0,
-            "total_bytes": 11365589761
+            "total_bytes": 11469814471
+          }
+        }
+      },
+      "inference_scportrait": {
+        "folder_md5": "aa37601ee979797a3268e60221243330",
+        "nfiles": 18725,
+        "n_symlinks": 0,
+        "total_bytes": 50709586496,
+        "models": {
+          "features": {
+            "folder_md5": "86cd5300029b08ebf072c6f1f2a4bfc8",
+            "nfiles": 5116,
+            "n_symlinks": 0,
+            "total_bytes": 21448207685
+          },
+          "scportrait": {
+            "folder_md5": "aaf86718240cacf35637a005b054283c",
+            "nfiles": 13608,
+            "n_symlinks": 0,
+            "total_bytes": 28513672488
           }
         }
       }
@@ -119,30 +159,30 @@
         "total_bytes": 27176079334
       },
       "inference": {
-        "folder_md5": "a2f6ee68d2b94c5074930b888db76499",
+        "folder_md5": "7c1c6b5436383567d3ef3e889c9c6d5d",
         "nfiles": 63027,
         "n_symlinks": 0,
-        "total_bytes": 520660222,
+        "total_bytes": 525766846,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "a8116031f451b5a41a0456da48954404",
+            "folder_md5": "0544ae36f336122f0911502a3ebe7c66",
             "nfiles": 63027,
             "n_symlinks": 0,
-            "total_bytes": 520660222
+            "total_bytes": 525766846
           }
         }
       },
       "inference_tracked": {
-        "folder_md5": "8f3fc9f3997b91f013f38368b3fa878a",
-        "nfiles": 18891,
+        "folder_md5": "6a64e401424090bde4d5b65104300ce5",
+        "nfiles": 19548,
         "n_symlinks": 0,
-        "total_bytes": 12746209778,
+        "total_bytes": 13333174158,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "556ab1409780e52d9683d4d1045d1ffc",
-            "nfiles": 18891,
+            "folder_md5": "d1376427033691aa63d215b0fb327c17",
+            "nfiles": 19548,
             "n_symlinks": 0,
-            "total_bytes": 12746209778
+            "total_bytes": 13333174158
           }
         }
       }
@@ -167,50 +207,50 @@
         "total_bytes": 27180273816
       },
       "inference": {
-        "folder_md5": "b90378e72473630abcbe897bce0f0464",
+        "folder_md5": "854bc1bbef1eb5eed76df302b5833974",
         "nfiles": 52626,
         "n_symlinks": 0,
-        "total_bytes": 201817404,
+        "total_bytes": 202114737,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "a4e89f4064b1e659b0df381f536d46c7",
+            "folder_md5": "2eaf6c1fa7f6d31465aedebd300c98fb",
             "nfiles": 52626,
             "n_symlinks": 0,
-            "total_bytes": 201817404
+            "total_bytes": 202114737
           }
         }
       },
       "inference_tracked": {
-        "folder_md5": "0c8ba5e7850e3a426445b96327870420",
+        "folder_md5": "ae47898290154f78e148c8b00376ab11",
         "nfiles": 18906,
         "n_symlinks": 0,
-        "total_bytes": 11682569969,
+        "total_bytes": 11706208137,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "cdd8f64780b83ee6324c263b09a61893",
+            "folder_md5": "6895599f48b7c56d6dbbfe553372c67a",
             "nfiles": 18906,
             "n_symlinks": 0,
-            "total_bytes": 11682569969
+            "total_bytes": 11706208137
           }
         }
       },
       "inference_scportrait": {
-        "folder_md5": "8e9c5593ded484da07f3efd6da53168b",
-        "nfiles": 652,
+        "folder_md5": "ec5edc9cb1346dc1f3fe4a9d49e869b7",
+        "nfiles": 4218,
         "n_symlinks": 0,
-        "total_bytes": 2153766346,
+        "total_bytes": 10341267028,
         "models": {
           "features": {
-            "folder_md5": "ea4b89f1434ce436edbb24d378ab3554",
-            "nfiles": 328,
+            "folder_md5": "88e0e1d3a30ff10262c3c8ac30726781",
+            "nfiles": 1838,
             "n_symlinks": 0,
-            "total_bytes": 1475532610
+            "total_bytes": 5359179708
           },
           "scportrait": {
-            "folder_md5": "87628117ed58071b1ba258e5be0caccf",
-            "nfiles": 324,
+            "folder_md5": "2b4da8d381e741085658d73820ef2810",
+            "nfiles": 2380,
             "n_symlinks": 0,
-            "total_bytes": 678233736
+            "total_bytes": 4982087320
           }
         }
       }
@@ -235,50 +275,50 @@
         "total_bytes": 27180273816
       },
       "inference": {
-        "folder_md5": "1846d2a77acef327475139932e62aab5",
+        "folder_md5": "1ef879dc70a675f40aecf0f2557e4e17",
         "nfiles": 48346,
         "n_symlinks": 0,
-        "total_bytes": 95873966,
+        "total_bytes": 95916660,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "5408f82b9176296caee8049721212d3e",
+            "folder_md5": "4c7721536027028196f6f111e4a7d639",
             "nfiles": 48346,
             "n_symlinks": 0,
-            "total_bytes": 95873966
+            "total_bytes": 95916660
           }
         }
       },
       "inference_tracked": {
-        "folder_md5": "e1674f688c195512eb2c34d82650099b",
-        "nfiles": 18303,
+        "folder_md5": "71a047cbff2dd6387c5cdfcc3416ad24",
+        "nfiles": 18313,
         "n_symlinks": 0,
-        "total_bytes": 8088434060,
+        "total_bytes": 8091620721,
         "models": {
           "cellpose_sam": {
-            "folder_md5": "aaec7fdcc7956bd089250df73e87daa8",
-            "nfiles": 18303,
+            "folder_md5": "507b8a91d83cbc8f78d8145884f224bf",
+            "nfiles": 18313,
             "n_symlinks": 0,
-            "total_bytes": 8088439714
+            "total_bytes": 8091620721
           }
         }
       },
       "inference_scportrait": {
-        "folder_md5": "e81968b35d5a5f4e1a6513adb418c8f0",
-        "nfiles": 85,
+        "folder_md5": "1ca232a76fa37fb09fc2fece438a8e18",
+        "nfiles": 19287,
         "n_symlinks": 0,
-        "total_bytes": 147636206,
+        "total_bytes": 45839668739,
         "models": {
           "features": {
-            "folder_md5": "c2df8a329a6c3ba3897c5148b938a48c",
-            "nfiles": 43,
+            "folder_md5": "5698ff28f7cfffdb469866bc2fcc8a91",
+            "nfiles": 5678,
             "n_symlinks": 0,
-            "total_bytes": 59717018
+            "total_bytes": 16728405476
           },
           "scportrait": {
-            "folder_md5": "cc0be07fda1e5ab9cb4bc28806be215a",
-            "nfiles": 42,
+            "folder_md5": "b60f7ff48dae6eca98238eb39c93a664",
+            "nfiles": 13608,
             "n_symlinks": 0,
-            "total_bytes": 87919188
+            "total_bytes": 28513672488
           }
         }
       }
