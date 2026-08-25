@@ -10,7 +10,10 @@ from .contract import (
 from .join import build_matrix, build_matrix_with_metadata
 from .loaders import load_features, load_targets
 from .normalize import (
+    CONFIDENCE_REASON_COLUMN,
+    DEFAULT_MIN_PEAK_FRACTION,
     apply_dmso_normalization,
+    compute_confidence_flags,
     compute_dmso_reference,
     normalize_targets_to_dmso,
 )
@@ -29,4 +32,7 @@ __all__ = [
     "compute_dmso_reference",
     "normalize_targets_to_dmso",
     "apply_dmso_normalization",
+    "compute_confidence_flags",
+    "CONFIDENCE_REASON_COLUMN",
+    "DEFAULT_MIN_PEAK_FRACTION",
 ]
