@@ -86,6 +86,15 @@ class InformativenessConfig:
         with ``experiment_column``. See ``data.normalize``.
     dmso_well : str, optional
         DMSO control well label; required when ``normalize_to_dmso`` is True.
+    dmso_gate_min_peak_fraction : float, optional
+        Confidence-gate relative threshold, a fraction of each well's own peak
+        distinct-cell count. ``None`` (default) leaves the gate OFF; Step 2 recommends
+        ``0.10``. **Results-changing** — ~47% of well-timepoints survive at 0.10, and
+        retention is culture-asymmetric. Requires ``normalize_to_dmso``.
+    dmso_gate_absolute_floor : int, optional
+        Confidence-gate degenerate-statistics floor in distinct cells (Step 2 keeps
+        ``30``). ``None`` (default) disables that condition. Requires
+        ``normalize_to_dmso``.
     output_dir : str
         Directory to write the results bundle (CSVs, JSON, report, figures) to.
     """
@@ -116,6 +125,8 @@ class InformativenessConfig:
     plate_layout_json: Optional[str] = None
     normalize_to_dmso: bool = False
     dmso_well: Optional[str] = None
+    dmso_gate_min_peak_fraction: Optional[float] = None
+    dmso_gate_absolute_floor: Optional[int] = None
     output_dir: str = "results/morphology_informativeness"
 
     def __post_init__(self) -> None:
@@ -157,6 +168,32 @@ class InformativenessConfig:
             )
         if self.normalize_to_dmso and not self.dmso_well:
             raise ValueError("dmso_well must be set when normalize_to_dmso is True")
+        if (
+            self.dmso_gate_min_peak_fraction is not None
+            and not 0 < self.dmso_gate_min_peak_fraction <= 1
+        ):
+            raise ValueError(
+                "dmso_gate_min_peak_fraction must be in (0, 1]; it is a fraction of "
+                f"the well's peak, not a cell count (got "
+                f"{self.dmso_gate_min_peak_fraction!r})"
+            )
+        if (
+            self.dmso_gate_absolute_floor is not None
+            and self.dmso_gate_absolute_floor < 1
+        ):
+            raise ValueError(
+                "dmso_gate_absolute_floor must be at least 1 (got "
+                f"{self.dmso_gate_absolute_floor!r})"
+            )
+        if (
+            self.dmso_gate_min_peak_fraction is not None
+            or self.dmso_gate_absolute_floor is not None
+        ) and not self.normalize_to_dmso:
+            raise ValueError(
+                "the DMSO confidence gate (dmso_gate_min_peak_fraction / "
+                "dmso_gate_absolute_floor) only applies on the normalization path; set "
+                "normalize_to_dmso=True or clear the gate settings"
+            )
 
 
 def load_config(

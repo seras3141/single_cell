@@ -92,6 +92,17 @@ class FeatureToMcherryConfig:
     dmso_well : str, optional
         DMSO (vehicle) control well label (e.g. ``"M11"`` / ``"N11"``). Required when
         ``normalize_to_dmso`` is True.
+    dmso_gate_min_peak_fraction : float, optional
+        Confidence-gate relative threshold as a fraction of each well's own peak
+        distinct-cell count. ``None`` (default) leaves the gate OFF. Step 2 recommends
+        ``0.10``. **Results-changing:** at 0.10 only ~47% of well-timepoints survive and
+        the loss is culture-asymmetric (near-total retention for HD1509/HD1883, ~11-17%
+        for Ew2-1/Ew2-2/SA110), so enabling it narrows the analysis towards two of the
+        five cultures. Only meaningful with ``normalize_to_dmso``.
+    dmso_gate_absolute_floor : int, optional
+        Confidence-gate degenerate-statistics floor in distinct cells (Step 2 keeps
+        ``30``). ``None`` (default) disables that condition. Only meaningful with
+        ``normalize_to_dmso``.
     output_dir : str
         Directory to write the results CSV and summary report to.
     """
@@ -114,6 +125,8 @@ class FeatureToMcherryConfig:
     sort_quantiles: bool = True
     normalize_to_dmso: bool = False
     dmso_well: Optional[str] = None
+    dmso_gate_min_peak_fraction: Optional[float] = None
+    dmso_gate_absolute_floor: Optional[int] = None
     output_dir: str = "results/feature_to_mcherry"
 
     def __post_init__(self) -> None:
@@ -136,6 +149,35 @@ class FeatureToMcherryConfig:
             raise ValueError("quantile_train_subsample_size must be at least 1")
         if self.normalize_to_dmso and not self.dmso_well:
             raise ValueError("dmso_well must be set when normalize_to_dmso is True")
+        if (
+            self.dmso_gate_min_peak_fraction is not None
+            and not 0 < self.dmso_gate_min_peak_fraction <= 1
+        ):
+            raise ValueError(
+                "dmso_gate_min_peak_fraction must be in (0, 1]; it is a fraction of "
+                f"the well's peak, not a cell count (got "
+                f"{self.dmso_gate_min_peak_fraction!r})"
+            )
+        if (
+            self.dmso_gate_absolute_floor is not None
+            and self.dmso_gate_absolute_floor < 1
+        ):
+            raise ValueError(
+                "dmso_gate_absolute_floor must be at least 1 (got "
+                f"{self.dmso_gate_absolute_floor!r})"
+            )
+        gate_requested = (
+            self.dmso_gate_min_peak_fraction is not None
+            or self.dmso_gate_absolute_floor is not None
+        )
+        if gate_requested and not self.normalize_to_dmso:
+            # Silently ignoring the gate would let a config claim a filter it never
+            # applied -- the failure mode that makes a results-changing flag dangerous.
+            raise ValueError(
+                "the DMSO confidence gate (dmso_gate_min_peak_fraction / "
+                "dmso_gate_absolute_floor) only applies on the normalization path; set "
+                "normalize_to_dmso=True or clear the gate settings"
+            )
 
 
 def load_config(

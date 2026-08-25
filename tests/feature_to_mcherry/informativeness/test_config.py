@@ -74,3 +74,54 @@ def test_normalize_to_dmso_with_well_is_valid() -> None:
     )
     assert config.normalize_to_dmso is True
     assert config.dmso_well == "M11"
+
+
+# --- DMSO confidence gate (Step 3) -----------------------------------------------
+
+
+def test_gate_defaults_to_off() -> None:
+    config = InformativenessConfig(**_valid_kwargs())
+    assert config.dmso_gate_min_peak_fraction is None
+    assert config.dmso_gate_absolute_floor is None
+
+
+def test_gate_without_normalization_raises() -> None:
+    """Silently ignoring the gate would let a config claim a filter it never applied."""
+    with pytest.raises(ValueError, match="only applies on the normalization path"):
+        InformativenessConfig(**_valid_kwargs(dmso_gate_min_peak_fraction=0.1))
+
+
+@pytest.mark.parametrize("fraction", [0.0, -0.1, 1.5, 10.0])
+def test_gate_fraction_must_be_a_fraction(fraction: float) -> None:
+    with pytest.raises(ValueError, match="dmso_gate_min_peak_fraction"):
+        InformativenessConfig(
+            **_valid_kwargs(
+                normalize_to_dmso=True,
+                dmso_well="M11",
+                dmso_gate_min_peak_fraction=fraction,
+            )
+        )
+
+
+def test_gate_floor_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="dmso_gate_absolute_floor"):
+        InformativenessConfig(
+            **_valid_kwargs(
+                normalize_to_dmso=True,
+                dmso_well="M11",
+                dmso_gate_absolute_floor=0,
+            )
+        )
+
+
+def test_gate_recommended_settings_are_valid() -> None:
+    config = InformativenessConfig(
+        **_valid_kwargs(
+            normalize_to_dmso=True,
+            dmso_well="M11",
+            dmso_gate_min_peak_fraction=0.10,
+            dmso_gate_absolute_floor=30,
+        )
+    )
+    assert config.dmso_gate_min_peak_fraction == 0.10
+    assert config.dmso_gate_absolute_floor == 30

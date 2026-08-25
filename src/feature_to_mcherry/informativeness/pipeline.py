@@ -116,6 +116,8 @@ def run(config: InformativenessConfig) -> ResultsBundle:
         enabled=config.normalize_to_dmso,
         dmso_well=config.dmso_well,
         target_columns=config.target_columns,
+        min_peak_fraction=config.dmso_gate_min_peak_fraction,
+        absolute_floor=config.dmso_gate_absolute_floor,
     )
 
     feature_path = Path(config.feature_csv)
