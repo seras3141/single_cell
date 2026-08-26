@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -39,9 +40,13 @@ from src.utils.logging_utils import setup_logging
 
 logger = logging.getLogger(__name__)
 
-DATA_ROOT = Path(
-    "/ictstr01/home/haicu/serena.sritharan/projects/single_cell/data/"
-    "MF5V1_processed Timelapse samples 19.03.2024"
+#: Processed-data root, relative to the repository, so the script is not tied to one
+#: user's home directory. Overridable with ``--data-root``; ``SINGLE_CELL_DATA_ROOT``
+#: takes precedence over the default when the data lives outside the checkout.
+DEFAULT_DATA_ROOT = (
+    Path(__file__).resolve().parents[1]
+    / "data"
+    / "MF5V1_processed Timelapse samples 19.03.2024"
 )
 MODEL = "cellpose_sam"
 
@@ -60,19 +65,19 @@ TARGET_COLUMNS = ["percentile_75", "percentile_90", "percentile_95"]
 CONDITIONS = ["flag_relative", "flag_absolute_floor", "flag_dmso_reference"]
 
 
-def _target_csv(exp_dir: str) -> Path:
-    return DATA_ROOT / exp_dir / "mcherry_metrics" / MODEL / "instance_metrics.csv"
+def _target_csv(data_root: Path, exp_dir: str) -> Path:
+    return data_root / exp_dir / "mcherry_metrics" / MODEL / "instance_metrics.csv"
 
 
 def _reconcile(
-    experiment: str, exp_dir: str, flags: pd.DataFrame
+    experiment: str, exp_dir: str, flags: pd.DataFrame, data_root: Path
 ) -> Optional[pd.DataFrame]:
     """Compare the gate's distinct-cell counts against ``cell_population.csv``.
 
     Step 2's threshold came from that file; the gate counts from the target table it
     actually filters. Report the gap rather than assuming the two agree.
     """
-    population_csv = DATA_ROOT / exp_dir / "cell_population.csv"
+    population_csv = data_root / exp_dir / "cell_population.csv"
     if not population_csv.is_file():
         logger.warning(
             "%s: no cell_population.csv; skipping reconciliation", experiment
@@ -192,6 +197,15 @@ def main() -> None:
         help="Degenerate-statistics floor in distinct cells (default: %(default)s).",
     )
     ap.add_argument(
+        "--data-root",
+        type=Path,
+        default=Path(os.environ.get("SINGLE_CELL_DATA_ROOT", DEFAULT_DATA_ROOT)),
+        help=(
+            "processed-data root holding the per-experiment dirs "
+            "(default: %(default)s)."
+        ),
+    )
+    ap.add_argument(
         "--out-dir",
         type=Path,
         default=Path("results/dmso_gate_impact"),
@@ -205,8 +219,14 @@ def main() -> None:
     flag_frames: List[pd.DataFrame] = []
     reconciliations: List[pd.DataFrame] = []
 
+    if not args.data_root.is_dir():
+        raise FileNotFoundError(
+            f"data root {args.data_root} does not exist; pass --data-root or set "
+            f"SINGLE_CELL_DATA_ROOT"
+        )
+
     for experiment, (exp_dir, dmso_well) in EXPERIMENTS.items():
-        csv = _target_csv(exp_dir)
+        csv = _target_csv(args.data_root, exp_dir)
         if not csv.is_file():
             raise FileNotFoundError(f"{experiment}: no target csv at {csv}")
         targets = load_targets(csv, target_columns=TARGET_COLUMNS)
@@ -228,7 +248,9 @@ def main() -> None:
         flag_frames.append(flags)
         well_rows.extend(_well_rows(experiment, targets, flags))
 
-        reconciled = _reconcile(experiment, exp_dir, flags.drop(columns=["experiment"]))
+        reconciled = _reconcile(
+            experiment, exp_dir, flags.drop(columns=["experiment"]), args.data_root
+        )
         if reconciled is not None:
             reconciliations.append(reconciled)
 
