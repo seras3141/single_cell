@@ -47,6 +47,11 @@ class ResultsBundle:
     floor_metrics: pd.DataFrame
     noise_ceiling: pd.DataFrame
     figures: Dict[str, List[Path]] = field(default_factory=dict)
+    #: Normalization/gate provenance. Recorded because the confidence gate changes WHICH
+    #: cells are modelled: without it, two runs differing only in the gate give output
+    #: dirs distinguishable only by ``n_cells``, making a floor-R2 comparison between
+    #: them unauditable -- and comparing floors across populations is the point.
+    normalization: Dict[str, object] = field(default_factory=dict)
 
 
 def _floor_metrics_dataframe(
@@ -87,6 +92,7 @@ def _write_summary_json(bundle: ResultsBundle, output_dir: Path) -> None:
         "n_features_clean": bundle.n_features_clean,
         "suspect_feature_names": bundle.suspect_feature_names,
         "target_columns": bundle.target_columns,
+        "normalization": bundle.normalization,
         "floor_metrics": bundle.floor_metrics.to_dict("records"),
         "noise_ceiling": bundle.noise_ceiling.to_dict("records"),
     }
@@ -111,6 +117,7 @@ def run(config: InformativenessConfig) -> ResultsBundle:
     # Optional DMSO normalization: swaps in z_-prefixed targets (see data.normalize).
     # Single-experiment input only (loaders drop non-target columns). Everything below
     # uses `target_columns` (effective names); taus stay from the original names.
+    n_cells_before_normalization = len(targets_df)
     targets_df, target_columns = apply_dmso_normalization(
         targets_df,
         enabled=config.normalize_to_dmso,
@@ -255,6 +262,13 @@ def run(config: InformativenessConfig) -> ResultsBundle:
         floor_metrics=floor_metrics_df,
         noise_ceiling=noise_ceiling_df,
         figures=figures,
+        normalization={
+            "normalize_to_dmso": config.normalize_to_dmso,
+            "dmso_well": config.dmso_well,
+            "dmso_gate_min_peak_fraction": config.dmso_gate_min_peak_fraction,
+            "dmso_gate_absolute_floor": config.dmso_gate_absolute_floor,
+            "n_cells_before_normalization": n_cells_before_normalization,
+        },
     )
 
     univariate_df.to_csv(output_dir / "univariate_correlations.csv", index=False)
