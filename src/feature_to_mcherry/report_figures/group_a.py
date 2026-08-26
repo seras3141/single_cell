@@ -16,7 +16,7 @@ from .a5_paths import MASK_SOURCES, resolve_area_p90_csv
 from .config import ReportFiguresConfig
 from .manifest import FigureStatus
 from .paths import resolve_experiment_paths
-from .theme import EXPERIMENT_COLORS, PERCENTILE_ORDER, save_fig
+from .theme import EXPERIMENT_COLORS, ordered_percentiles, save_fig
 
 import matplotlib.pyplot as plt
 
@@ -52,7 +52,18 @@ def figure_a1(config: ReportFiguresConfig) -> FigureStatus:
             rows.append({"experiment": exp, "target": row["target"], "r2": row["r2"]})
     table = pd.DataFrame(rows)
     pivot = table.pivot(index="experiment", columns="target", values="r2")
-    percentiles = [p for p in PERCENTILE_ORDER if p in pivot.columns]
+    percentiles = ordered_percentiles(pivot.columns)
+    if not percentiles:
+        return FigureStatus(
+            figure_id="A1",
+            title="Cross-experiment Ridge floor ranking",
+            status="blocked",
+            missing=missing,
+            note=(
+                "No percentile targets in baseline_ladder.csv; found "
+                f"{sorted(map(str, pivot.columns))}."
+            ),
+        )
     pivot = pivot[percentiles]
     order = pivot.mean(axis=1).sort_values(ascending=True).index
     pivot = pivot.loc[order]
@@ -305,7 +316,18 @@ def figure_a4(config: ReportFiguresConfig) -> FigureStatus:
                 }
             )
     table = pd.DataFrame(rows)
-    percentiles = [p for p in PERCENTILE_ORDER if p in table["target"].unique()]
+    percentiles = ordered_percentiles(table["target"].unique())
+    if not percentiles:
+        return FigureStatus(
+            figure_id="A4",
+            title="Informativeness performance floor - linear vs nonlinear",
+            status="blocked",
+            missing=missing,
+            note=(
+                "No percentile targets in floor_metrics.csv; found "
+                f"{sorted(map(str, table['target'].unique()))}."
+            ),
+        )
 
     # Order experiments by mean nonlinear floor (ascending), once, and reuse that
     # order across every percentile facet so experiments don't jump around
@@ -557,7 +579,20 @@ def figure_a6(config: ReportFiguresConfig) -> FigureStatus:
 
     r2_table = pd.DataFrame(r2_rows)
     pivot_r2 = r2_table.pivot(index="variant", columns="target", values="r2")
-    percentiles = [p for p in PERCENTILE_ORDER if p in pivot_r2.columns]
+    percentiles = ordered_percentiles(pivot_r2.columns)
+    if not percentiles:
+        # The figure was already opened above; close it rather than leaking it.
+        plt.close(fig)
+        return FigureStatus(
+            figure_id="A6",
+            title="MAE vs R^2 across population variants (Ew2-1 only)",
+            status="blocked",
+            missing=missing,
+            note=(
+                "No percentile targets in the population-variant metrics; found "
+                f"{sorted(map(str, pivot_r2.columns))}."
+            ),
+        )
     pivot_r2 = pivot_r2.reindex(index=variant_order)[percentiles]
     pivot_r2.plot(kind="bar", ax=ax_r2)
     ax_r2.axhline(0, color="grey", linewidth=1)
@@ -567,7 +602,26 @@ def figure_a6(config: ReportFiguresConfig) -> FigureStatus:
     ax_r2.tick_params(axis="x", rotation=0)
 
     mae_table = pd.DataFrame(mae_rows)
-    representative_target = "percentile_75"
+    # Lowest available percentile, read from the data rather than hard-coded: on a
+    # DMSO-normalized run the targets are z_-prefixed, so a literal "percentile_75"
+    # selected zero rows and produced an all-NaN panel with no error at all.
+    mae_percentiles = ordered_percentiles(mae_table["target"].unique())
+    if not mae_percentiles:
+        # Falling back to None here selected zero rows and drew an all-NaN "MAE (None)"
+        # panel while still reporting status="generated" -- silently wrong output, worse
+        # than the crash this helper replaced. Block, as the sibling call sites do.
+        plt.close(fig)
+        return FigureStatus(
+            figure_id="A6",
+            title="MAE vs R^2 across population variants (Ew2-1 only)",
+            status="blocked",
+            missing=missing,
+            note=(
+                "No percentile targets in the MAE metrics; found "
+                f"{sorted(map(str, mae_table['target'].unique()))}."
+            ),
+        )
+    representative_target = mae_percentiles[0]
     mae_subset = mae_table[mae_table["target"] == representative_target]
     pivot_mae = mae_subset.pivot(index="variant", columns="model", values="mae")
     pivot_mae = pivot_mae.reindex(index=variant_order, columns=["Ridge", "LightGBM"])

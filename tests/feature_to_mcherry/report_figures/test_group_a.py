@@ -441,3 +441,60 @@ def test_figure_a6_blocked_when_nothing_present(tmp_path: Path) -> None:
     status = group_a.figure_a6(config)
 
     assert status.status == "blocked"
+
+
+# --- DMSO-normalized runs (z_-prefixed targets) -----------------------------------
+
+
+def _write_ladder_with_targets(path: Path, r2_by_target: dict) -> None:
+    """Like ``_write_baseline_ladder`` but accepts arbitrary target names.
+
+    The shared helper keys tau off the raw ``percentile_<N>`` names, so it cannot write
+    a DMSO-normalized ladder.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "model": "ridge",
+            "target": target,
+            "tau": 0.9,
+            "mae": 10.0,
+            "r2": r2,
+            "pinball_loss": 5.0,
+            "quantile_crossing_rate": 0.0,
+        }
+        for target, r2 in r2_by_target.items()
+    ]
+    pd.DataFrame(rows, columns=BASELINE_LADDER_COLUMNS).to_csv(path, index=False)
+
+
+def test_figure_a1_handles_dmso_normalized_targets(tmp_path: Path) -> None:
+    """A normalized run's targets are ``z_percentile_<N>``; the figure must still draw.
+
+    Filtering against a hard-coded list of raw names selected nothing here, and the bar
+    layout then divided by a zero target count -- a crash, not a degraded figure.
+    """
+    config = _make_config(tmp_path, ["Ew2-1"])
+    _write_ladder_with_targets(
+        Path(config.feature_to_mcherry_dir) / "Ew2-1" / "baseline_ladder.csv",
+        {"z_percentile_75": 0.15, "z_percentile_90": 0.15, "z_percentile_95": 0.16},
+    )
+
+    status = group_a.figure_a1(config)
+
+    assert status.status == "generated"
+    assert status.output_paths
+
+
+def test_figure_a1_blocks_when_no_percentile_targets(tmp_path: Path) -> None:
+    """An unrecognised target set is reported as blocked, never drawn empty."""
+    config = _make_config(tmp_path, ["Ew2-1"])
+    _write_ladder_with_targets(
+        Path(config.feature_to_mcherry_dir) / "Ew2-1" / "baseline_ladder.csv",
+        {"area": 0.15},
+    )
+
+    status = group_a.figure_a1(config)
+
+    assert status.status == "blocked"
+    assert "No percentile targets" in (status.note or "")

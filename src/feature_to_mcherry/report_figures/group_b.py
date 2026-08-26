@@ -14,7 +14,7 @@ from ..informativeness.plots import plot_correlation_heatmap
 from .config import ReportFiguresConfig
 from .manifest import FigureStatus
 from .paths import resolve_experiment_paths
-from .theme import EXPERIMENT_COLORS, PERCENTILE_ORDER, save_fig
+from .theme import EXPERIMENT_COLORS, ordered_percentiles, save_fig
 
 import matplotlib.pyplot as plt
 
@@ -95,7 +95,18 @@ def figure_b2(config: ReportFiguresConfig) -> FigureStatus:
         )
 
     table = pd.DataFrame(rows)
-    percentiles = [p for p in PERCENTILE_ORDER if p in table["target"].unique()]
+    percentiles = ordered_percentiles(table["target"].unique())
+    if not percentiles:
+        return FigureStatus(
+            figure_id="B2",
+            title="Signal survives intensity-proxy removal",
+            status="blocked",
+            missing=missing,
+            note=(
+                "No percentile targets in floor_metrics.csv; found "
+                f"{sorted(map(str, table['target'].unique()))}."
+            ),
+        )
 
     fig, axes = plt.subplots(
         1, len(percentiles), figsize=(4 * len(percentiles), 4), squeeze=False

@@ -239,3 +239,54 @@ def test_figure_b4_axis_limits_are_robust_to_a_single_extreme_outlier(
     # The outlier (y_true=10_000) must be clipped out of the visible range --
     # otherwise the bulk of the data (y_true in [0, 100]) would be invisible.
     assert xlim[1] < 1000
+
+
+# --- DMSO-normalized runs (z_-prefixed targets) -----------------------------------
+
+
+def _write_floor_metrics_for_target(path: Path, target: str) -> None:
+    """A minimal two-variant floor_metrics.csv for an arbitrary target name."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "variant": variant,
+            "model": "gradient_boosting",
+            "backend": "lightgbm",
+            "target": target,
+            "tau": 0.75,
+            "mae": 8.0,
+            "r2": r2,
+            "pinball_loss": 4.0,
+        }
+        for variant, r2 in (("with_suspect", 0.20), ("without_suspect", 0.18))
+    ]
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+def test_figure_b2_handles_dmso_normalized_targets(tmp_path: Path) -> None:
+    """Normalized targets must still draw; they previously selected zero percentiles.
+
+    ``plt.subplots(1, 0)`` is an error, not an empty grid, so this crashed outright.
+    """
+    config = _make_config(tmp_path, ["Ew2-1"])
+    _write_floor_metrics_for_target(
+        Path(config.informativeness_dir) / "Ew2-1" / "floor_metrics.csv",
+        "z_percentile_75",
+    )
+
+    status = group_b.figure_b2(config)
+
+    assert status.status == "generated"
+    assert status.output_paths
+
+
+def test_figure_b2_blocks_when_no_percentile_targets(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["Ew2-1"])
+    _write_floor_metrics_for_target(
+        Path(config.informativeness_dir) / "Ew2-1" / "floor_metrics.csv", "area"
+    )
+
+    status = group_b.figure_b2(config)
+
+    assert status.status == "blocked"
+    assert "No percentile targets" in (status.note or "")
