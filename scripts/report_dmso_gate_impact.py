@@ -17,7 +17,7 @@ conditions at the requested threshold, and reports what would be discarded:
   fatal: the two need not agree (``load_targets`` drops NaN-target rows), but silent
   divergence would hide a real data problem.
 
-Read-only. Run under SLURM (``slurm/gate_step3_impact.sbatch``), not on a login node.
+Read-only. Run under SLURM (``slurm/gate_step3_tests.sbatch``), not on a login node.
 """
 
 from __future__ import annotations

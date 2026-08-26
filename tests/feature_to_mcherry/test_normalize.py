@@ -409,13 +409,8 @@ def test_gate_drops_low_confidence_rows_when_enabled() -> None:
     assert "low_confidence" not in gated.columns
 
 
-def test_relative_condition_can_never_flag_a_whole_trajectory() -> None:
-    """A well's peak timepoint is never below a fraction of its own peak.
-
-    So the ratchet alone cannot empty a table however strict the fraction -- the only
-    route to an all-flagged reference is the absolute floor. Worth pinning: it is what
-    makes the empty-gate error message's diagnosis correct.
-    """
+def test_relative_condition_flags_from_the_peak_onward() -> None:
+    """A declining well is flagged from its first crossing, and stays flagged."""
     targets = _make_population({"M11": {"1": 100, "2": 4, "3": 4}})
     flags = compute_confidence_flags(
         targets, "M11", min_peak_fraction=1.0, absolute_floor=None
@@ -423,6 +418,52 @@ def test_relative_condition_can_never_flag_a_whole_trajectory() -> None:
     assert bool(flags.loc["1", "flag_relative"]) is False  # the peak survives
     assert bool(flags.loc["2", "flag_relative"]) is True
     assert bool(flags.loc["3", "flag_relative"]) is True
+
+
+def test_a_well_that_grows_into_its_peak_is_not_flagged_as_collapsed() -> None:
+    """Ramp-up must not read as collapse, and must not flag the peak that follows it.
+
+    ``ratcheted_flags`` flags the first sub-threshold timepoint and everything after, so
+    anchoring it at index 0 marked a well going 5 -> 100 -> 100 as collapsed at every
+    timepoint, the two 100-cell peaks included. An earlier version of this file claimed
+    the opposite ("a well's peak timepoint is never below a fraction of its own peak, so
+    the ratchet alone cannot empty a table"), confusing the peak's *value* not being
+    sub-threshold with the peak's *timepoint* not being flagged.
+    """
+    targets = _make_population({"M11": {"1": 5, "2": 100, "3": 100}})
+    flags = compute_confidence_flags(
+        targets, "M11", min_peak_fraction=0.1, absolute_floor=None
+    ).set_index("timepoint")
+    # Pre-peak scarcity is the absolute floor's business, not the collapse ratchet's.
+    assert bool(flags.loc["1", "flag_relative"]) is False
+    assert bool(flags.loc["2", "flag_relative"]) is False
+    assert bool(flags.loc["3", "flag_relative"]) is False
+
+
+def test_a_well_that_grows_then_collapses_is_flagged_only_after_the_peak() -> None:
+    targets = _make_population({"M11": {"1": 5, "2": 100, "3": 100, "4": 3}})
+    flags = compute_confidence_flags(
+        targets, "M11", min_peak_fraction=0.1, absolute_floor=None
+    ).set_index("timepoint")
+    assert [bool(flags.loc[t, "flag_relative"]) for t in ("1", "2", "3", "4")] == [
+        False,
+        False,
+        False,
+        True,
+    ]
+
+
+def test_absent_dmso_well_in_one_experiment_raises() -> None:
+    """Ew2-1/Ew2-2 use M11 and the rest N11; a pooled table must fail, not vanish."""
+    frames = []
+    for experiment, well in (("Ew2-1", "M11"), ("HD1509", "N11")):
+        frame = _make_population({well: {"1": 100}})
+        frame["experiment"] = experiment
+        frames.append(frame)
+    targets = pd.concat(frames, ignore_index=True)
+
+    with pytest.raises(ValueError, match="absent from 1 experiment"):
+        compute_confidence_flags(targets, "M11", experiment_column="experiment")
 
 
 def test_gate_that_discards_everything_raises() -> None:

@@ -363,7 +363,26 @@ def compute_confidence_flags(
             f"cells per (well, timepoint) and cannot fall back to row counts -- "
             f"the row unit is (cell, z_slice), so that would overcount ~5x."
         )
-    if dmso_well not in set(targets_df[sample_id_column]):
+    # Checked per experiment when scoped, not just globally: condition (3) matches on
+    # (experiment, timepoint), so an experiment without `dmso_well` finds no reference
+    # row, is flagged wholesale, and vanishes without an error. This dataset makes that
+    # concrete -- Ew2-1/Ew2-2 use M11 while HD1509/HD1883/SA110 use N11, so a single
+    # `dmso_well` over a pooled table would silently discard three of five cultures.
+    if experiment_column:
+        without = sorted(
+            str(experiment)
+            for experiment, group in targets_df.groupby(experiment_column, sort=True)
+            if dmso_well not in set(group[sample_id_column])
+        )
+        if without:
+            raise ValueError(
+                f"DMSO well {dmso_well!r} is absent from {len(without)} experiment(s): "
+                f"{without}. Every row of those experiments would be flagged by the "
+                f"inherited condition and disappear silently. Pass a table whose "
+                f"experiments share this reference well, or normalize each experiment "
+                f"separately with its own dmso_well."
+            )
+    elif dmso_well not in set(targets_df[sample_id_column]):
         wells = sorted(map(str, targets_df[sample_id_column].unique()))
         raise ValueError(
             f"DMSO well {dmso_well!r} not found in {sample_id_column}; a silently "
@@ -388,7 +407,20 @@ def compute_confidence_flags(
         if min_peak_fraction is not None and np.isfinite(peak) and peak > 0:
             threshold = min_peak_fraction * peak
             ordered["relative_threshold"] = threshold
-            ordered["flag_relative"] = ratcheted_flags(values, threshold)
+            # Anchor the ratchet at the PEAK, not at index 0. `ratcheted_flags` flags
+            # the first sub-threshold timepoint and everything after it, so feeding it a
+            # whole trajectory flags the peak itself whenever the well *grew* into that
+            # peak from below the threshold -- counts 5, 100, 100 come back all-True,
+            # marking two 100-cell timepoints as collapsed. This condition asks "has the
+            # population collapsed", meaningful only from the peak on; genuinely tiny
+            # ramp-up timepoints are the absolute floor's job, which is why that one is
+            # evaluated per timepoint instead.
+            peak_position = int(np.argmax(values))
+            relative = np.zeros(values.shape, dtype=bool)
+            relative[peak_position:] = ratcheted_flags(
+                values[peak_position:], threshold
+            )
+            ordered["flag_relative"] = relative
         else:
             # A zero/NaN peak cannot anchor a relative threshold: `fraction x 0` is
             # never exceeded, so the well would read "never flagged" rather than
@@ -607,15 +639,22 @@ def apply_dmso_normalization(
             reason_counts,
         )
     if gated.empty:
+        active = [
+            name
+            for name, value in (
+                ("min_peak_fraction", min_peak_fraction),
+                ("absolute_floor", absolute_floor),
+            )
+            if value is not None
+        ]
         raise ValueError(
             f"the confidence gate discarded every row "
             f"(min_peak_fraction={min_peak_fraction!r}, "
-            f"absolute_floor={absolute_floor!r}). This means the DMSO reference well "
-            f"{dmso_well!r} is flagged at every timepoint, which flags every other "
-            f"well through the inherited condition. Note the relative condition alone "
-            f"cannot cause this -- a well's peak timepoint is never below a fraction "
-            f"of its own peak -- so the reference well's count is below absolute_floor "
-            f"across its whole trajectory. Lower absolute_floor or exclude this "
-            f"experiment rather than modelling an empty table."
+            f"absolute_floor={absolute_floor!r}). The DMSO reference well "
+            f"{dmso_well!r} is flagged at every timepoint, flagging every other well "
+            f"through the inherited condition. Loosen whichever of {active} applies -- "
+            f"the "
+            f"per-condition tallies are in compute_confidence_flags' output -- or "
+            f"exclude this experiment rather than modelling an empty table."
         )
     return gated, z_columns
