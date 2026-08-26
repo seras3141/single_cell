@@ -440,6 +440,65 @@ def test_a_well_that_grows_into_its_peak_is_not_flagged_as_collapsed() -> None:
     assert bool(flags.loc["3", "flag_relative"]) is False
 
 
+def test_a_dip_before_the_global_peak_is_still_flagged() -> None:
+    """A late count spike must not blind the gate to an earlier collapse.
+
+    Anchoring the ratchet at ``argmax`` (the first attempt at fixing the ramp-up bug)
+    made this a no-op: with counts 10000, 500, 10001 the global peak is last, so nothing
+    before it was ever examined and the 20x dip passed. The module docstring's own
+    re-fragmenting spheroid is exactly how a late spike arises, so this is the well the
+    condition exists to catch. The running maximum judges each timepoint against the
+    high-water mark so far, which catches it.
+    """
+    targets = _make_population({"M11": {"1": 10000, "2": 500, "3": 10001}})
+    flags = compute_confidence_flags(
+        targets, "M11", min_peak_fraction=0.1, absolute_floor=None
+    ).set_index("timepoint")
+    assert bool(flags.loc["1", "flag_relative"]) is False
+    assert bool(flags.loc["2", "flag_relative"]) is True
+    # Ratcheted: the recovery does not restore trust.
+    assert bool(flags.loc["3", "flag_relative"]) is True
+
+
+def test_ratchet_reduces_to_the_global_peak_when_the_peak_is_first() -> None:
+    """The common case -- 40 of 45 wells -- must be unchanged by the running max."""
+    targets = _make_population({"M11": {"1": 100, "2": 50, "3": 9, "4": 40}})
+    flags = compute_confidence_flags(
+        targets, "M11", min_peak_fraction=0.1, absolute_floor=None
+    ).set_index("timepoint")
+    assert [bool(flags.loc[t, "flag_relative"]) for t in ("1", "2", "3", "4")] == [
+        False,
+        False,
+        True,
+        True,
+    ]
+
+
+def test_all_rows_dropped_before_the_gate_blames_the_reference_not_the_gate() -> None:
+    """An invalid reference at every timepoint is not the gate's doing; say so."""
+    rows = []
+    for timepoint in ("1", "2"):
+        for cell in range(4):
+            rows.append(
+                dict(
+                    sample_id="M11",
+                    timepoint=timepoint,
+                    z_index="1",
+                    cell_id=f"c{cell}",
+                    percentile_90=10.0,  # identical -> MAD 0 -> invalid -> z NaN
+                )
+            )
+    with pytest.raises(ValueError, match="before the confidence gate ran"):
+        apply_dmso_normalization(
+            pd.DataFrame(rows),
+            enabled=True,
+            dmso_well="M11",
+            target_columns=["percentile_90"],
+            min_peak_fraction=0.1,
+            absolute_floor=30,
+        )
+
+
 def test_a_well_that_grows_then_collapses_is_flagged_only_after_the_peak() -> None:
     targets = _make_population({"M11": {"1": 5, "2": 100, "3": 100, "4": 3}})
     flags = compute_confidence_flags(

@@ -30,10 +30,15 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
+# Two reviews have flagged this import for dragging matplotlib/skimage onto the model
+# path. Measured, it does not: `feature_to_mcherry/__init__` imports `informativeness`,
+# whose `noise_ceiling` imports `src.dataset_analysis.layout` at module scope, so any
+# `feature_to_mcherry` import already executes `dataset_analysis/__init__` -- importing
+# `...data.contract` alone loads pyplot and skimage.io in ~8 s, the same as this module.
+# Removing this import changes nothing; a lazy import was tried and reverted.
 from src.dataset_analysis.gate_survival import (
     DEFAULT_ABSOLUTE_FLOOR,
     per_timepoint_flags,
-    ratcheted_flags,
 )
 
 from .contract import TARGET_COLUMNS
@@ -407,19 +412,32 @@ def compute_confidence_flags(
         if min_peak_fraction is not None and np.isfinite(peak) and peak > 0:
             threshold = min_peak_fraction * peak
             ordered["relative_threshold"] = threshold
-            # Anchor the ratchet at the PEAK, not at index 0. `ratcheted_flags` flags
-            # the first sub-threshold timepoint and everything after it, so feeding it a
-            # whole trajectory flags the peak itself whenever the well *grew* into that
-            # peak from below the threshold -- counts 5, 100, 100 come back all-True,
-            # marking two 100-cell timepoints as collapsed. This condition asks "has the
-            # population collapsed", meaningful only from the peak on; genuinely tiny
-            # ramp-up timepoints are the absolute floor's job, which is why that one is
-            # evaluated per timepoint instead.
-            peak_position = int(np.argmax(values))
+            # Compare each timepoint against a fraction of the RUNNING maximum, then
+            # ratchet from the first crossing. Two wrong variants were tried first and
+            # both are worth naming, because each looks right in isolation:
+            #   * fraction x global peak, from index 0 -- flags a well that *grew* into
+            #     its peak across its whole trajectory, peak included (5, 100, 100 comes
+            #     back all-True, marking two 100-cell timepoints as collapsed);
+            #   * fraction x global peak, anchored at argmax -- fixes that, but goes
+            #     blind to any collapse BEFORE the global peak, so a late count spike
+            #     from a re-fragmenting spheroid (10000, 500, 10001) makes it a no-op on
+            #     the 20x dip -- silent on exactly the well it exists to catch.
+            # The running maximum handles both: early timepoints are judged only
+            # against what has been seen so far, so ramp-up cannot trip it, while a dip
+            # after an earlier high-water mark still does. It reduces to the global peak
+            # once the peak has occurred, so for a well peaking at its first timepoint
+            # -- 40 of 45 here -- it is identical to the plain global-peak form.
+            # `gate_survival.ratcheted_flags` cannot express this: it takes a SCALAR
+            # threshold, and this needs one per timepoint. The ratchet itself is four
+            # lines, so it is inlined rather than adding a variant to that module, whose
+            # published Step 2 numbers depend on its current behaviour.
+            high_water = np.maximum.accumulate(values)
+            below = values < min_peak_fraction * high_water
             relative = np.zeros(values.shape, dtype=bool)
-            relative[peak_position:] = ratcheted_flags(
-                values[peak_position:], threshold
-            )
+            if below.any():
+                # Ratchet: a re-fragmenting spheroid does not restore trustworthy
+                # per-cell statistics, so an uptick must not un-flag.
+                relative[int(np.argmax(below)) :] = True
             ordered["flag_relative"] = relative
         else:
             # A zero/NaN peak cannot anchor a relative threshold: `fraction x 0` is
@@ -587,6 +605,16 @@ def apply_dmso_normalization(
     gate_active = min_peak_fraction is not None or absolute_floor is not None
     if not gate_active:
         return normalized, z_columns
+    if normalized.empty:
+        # Everything was already removed by the undefined-z drop above, before the gate
+        # saw the frame. Say so here: the gate's own empty-result error below would
+        # otherwise blame the confidence thresholds for rows it never rejected.
+        raise ValueError(
+            f"no rows survived the undefined-z drop, before the confidence gate ran: "
+            f"the DMSO reference for well {dmso_well!r} is invalid (zero MAD, or fewer "
+            f"than min_cells={min_cells} finite values) at every timepoint. The gate "
+            f"thresholds are not responsible; check the reference well's data."
+        )
 
     # Flags come from `targets_df`, the UNFILTERED input -- not from `normalized`,
     # which has already had its undefined-z rows dropped above. Each well's relative
