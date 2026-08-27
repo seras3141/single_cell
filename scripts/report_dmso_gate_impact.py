@@ -199,7 +199,11 @@ def main() -> None:
     ap.add_argument(
         "--data-root",
         type=Path,
-        default=Path(os.environ.get("SINGLE_CELL_DATA_ROOT", DEFAULT_DATA_ROOT)),
+        # `or`, not a .get default: a set-but-EMPTY variable (export X="$UNSET" in a
+        # wrapper) returns "", and Path("") is PosixPath("."), which passes the
+        # is_dir() check below and then fails per-experiment with a baffling
+        # relative path instead of falling back.
+        default=Path(os.environ.get("SINGLE_CELL_DATA_ROOT") or DEFAULT_DATA_ROOT),
         help=(
             "processed-data root holding the per-experiment dirs "
             "(default: %(default)s)."
@@ -213,7 +217,6 @@ def main() -> None:
     )
     args = ap.parse_args()
     setup_logging()
-    args.out_dir.mkdir(parents=True, exist_ok=True)
 
     well_rows: List[dict] = []
     flag_frames: List[pd.DataFrame] = []
@@ -224,6 +227,8 @@ def main() -> None:
             f"data root {args.data_root} does not exist; pass --data-root or set "
             f"SINGLE_CELL_DATA_ROOT"
         )
+    # Only now: a misconfigured root should not leave an empty output dir behind.
+    args.out_dir.mkdir(parents=True, exist_ok=True)
 
     for experiment, (exp_dir, dmso_well) in EXPERIMENTS.items():
         csv = _target_csv(args.data_root, exp_dir)

@@ -45,7 +45,12 @@ from .contract import TARGET_COLUMNS
 
 logger = logging.getLogger(__name__)
 
-#: Relative confidence-gate threshold, as a fraction of each well's own peak cell count.
+#: Relative confidence-gate threshold, as a fraction of each well's RUNNING-MAXIMUM cell
+#: count. Note the value was derived in Step 2 against the *global-peak* form still
+#: implemented by ``gate_survival.build_flag_frame``; the two coincide except for wells
+#: that grow into their peak, and the measured retention is identical on this dataset --
+#: but the two implementations of this named condition have diverged, so re-derive the
+#: threshold if that ever stops being true.
 #: Picked from data in Step 2 (``gate_threshold_survival_summary.md``): 0.5 merely
 #: reproduces ``t_cross_peak`` (it is the verdict definition, not a gate) and 0.05 fails
 #: to flag Ew2-2's DMSO well even though it ends at 9.1% of peak. 0.10 lands within one
@@ -290,11 +295,17 @@ def compute_confidence_flags(
 
     Implements the three-condition gate designed in Step 2
     (``src/dataset_analysis/gate_survival.py``'s module docstring), reusing that
-    module's ``ratcheted_flags`` / ``per_timepoint_flags`` primitives rather than
-    reimplementing them:
+    module's ``per_timepoint_flags`` primitive for the floor. The ratchet itself is
+    inlined -- ``ratcheted_flags`` takes a scalar threshold and condition (1) needs one
+    per timepoint:
 
     1. **relative, ratcheted** -- the well's own distinct-cell count falls below
-       ``min_peak_fraction x peak``. Once crossed it stays flagged: a re-fragmenting
+       ``min_peak_fraction x`` its **running maximum**, not its global peak. Judging
+       against the global peak from the first timepoint flags a well that *grew* into
+       that peak; anchoring at the peak instead goes blind to any collapse before it.
+       The running maximum does neither, and coincides with the global peak for a well
+       peaking at its first timepoint (40 of 45 here). Once crossed it stays flagged: a
+       re-fragmenting
        spheroid does not restore trustworthy per-cell statistics.
     2. **absolute floor, per timepoint** -- fewer than ``absolute_floor`` cells *here*.
        Deliberately NOT ratcheted; it asks whether a percentile is computable at this
@@ -325,16 +336,19 @@ def compute_confidence_flags(
         (cultures reuse DMSO well labels). If omitted the table is assumed to be one
         experiment.
     min_peak_fraction : float, optional
-        Relative threshold as a fraction of the well's own peak. ``None`` disables
-        condition (1).
+        Relative threshold as a fraction of the well's running maximum -- the
+        high-water mark so far, which reduces to the global peak once the peak has
+        occurred. ``None`` disables condition (1).
     absolute_floor : int, optional
         Minimum distinct cells at a timepoint. ``None`` disables condition (2).
 
     Returns
     -------
     pd.DataFrame
-        One row per (experiment?, well, timepoint) with ``n_cells``, ``peak``,
-        ``relative_threshold``, the three boolean conditions
+        One row per (experiment?, well, timepoint) with ``n_cells``, ``peak`` (global,
+        for reference), ``relative_threshold`` (**per timepoint** -- the running-max
+        value actually compared against, so the column explains its own flags), the
+        three boolean conditions
         (``flag_relative``, ``flag_absolute_floor``, ``flag_dmso_reference``),
         ``low_confidence`` (their OR) and ``low_confidence_reason``.
 
@@ -410,8 +424,6 @@ def compute_confidence_flags(
         ordered["peak"] = peak
 
         if min_peak_fraction is not None and np.isfinite(peak) and peak > 0:
-            threshold = min_peak_fraction * peak
-            ordered["relative_threshold"] = threshold
             # Compare each timepoint against a fraction of the RUNNING maximum, then
             # ratchet from the first crossing. Two wrong variants were tried first and
             # both are worth naming, because each looks right in isolation:
@@ -432,6 +444,12 @@ def compute_confidence_flags(
             # lines, so it is inlined rather than adding a variant to that module, whose
             # published Step 2 numbers depend on its current behaviour.
             high_water = np.maximum.accumulate(values)
+            # Record the PER-TIMEPOINT threshold actually compared against, not
+            # `min_peak_fraction * peak`. The column exists only for the audit CSV, and
+            # global-peak value would not explain its own flags: a well going 50 -> 5000
+            # would print threshold 500 next to n_cells 50 and flag_relative False --
+            # reading as a gate bug to anyone reconciling the evidence artifact.
+            ordered["relative_threshold"] = min_peak_fraction * high_water
             below = values < min_peak_fraction * high_water
             relative = np.zeros(values.shape, dtype=bool)
             if below.any():
@@ -440,8 +458,8 @@ def compute_confidence_flags(
                 relative[int(np.argmax(below)) :] = True
             ordered["flag_relative"] = relative
         else:
-            # A zero/NaN peak cannot anchor a relative threshold: `fraction x 0` is
-            # never exceeded, so the well would read "never flagged" rather than
+            # A zero/NaN peak cannot anchor a threshold: `fraction x 0` is
+            # never exceeded, so the well reads "never flagged" rather than
             # "unknown". Mirrors gate_survival._usable_peak.
             ordered["relative_threshold"] = float("nan")
             ordered["flag_relative"] = False
@@ -474,7 +492,7 @@ def compute_confidence_flags(
 
     reasons = {
         "flag_relative": (
-            f"below {min_peak_fraction:g}x peak (ratcheted)"
+            f"below {min_peak_fraction:g}x running max (ratcheted)"
             if min_peak_fraction is not None
             else ""
         ),
@@ -526,7 +544,7 @@ def apply_dmso_normalization(
     cell_id_column : str
         Cell identifier, used by the confidence gate to count DISTINCT cells.
     min_peak_fraction : float, optional
-        Confidence-gate relative threshold, a fraction of each well's own peak
+        Confidence-gate relative threshold, a fraction of each well's running-maximum
         distinct-cell count (Step 2's recommendation: ``0.10``, available as
         :data:`DEFAULT_MIN_PEAK_FRACTION`). ``None`` -- the default -- leaves the gate
         OFF, preserving the historical behaviour of this function.

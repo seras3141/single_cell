@@ -93,8 +93,8 @@ class FeatureToMcherryConfig:
         DMSO (vehicle) control well label (e.g. ``"M11"`` / ``"N11"``). Required when
         ``normalize_to_dmso`` is True.
     dmso_gate_min_peak_fraction : float, optional
-        Confidence-gate relative threshold as a fraction of each well's own peak
-        distinct-cell count. ``None`` (default) leaves the gate OFF. Step 2 recommends
+        Confidence-gate relative threshold as a fraction of each well's
+        running-maximum distinct-cell count. ``None`` (default) leaves the gate OFF. Step 2 recommends
         ``0.10``. **Results-changing:** at 0.10 only ~47% of well-timepoints survive and
         the loss is culture-asymmetric (near-total retention for HD1509/HD1883, ~11-17%
         for Ew2-1/Ew2-2/SA110), so enabling it narrows the analysis towards two of the

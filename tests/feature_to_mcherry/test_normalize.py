@@ -564,7 +564,7 @@ def test_reason_names_every_condition_that_fired() -> None:
         targets, "M11", min_peak_fraction=0.1, absolute_floor=30
     ).set_index("timepoint")
     reason = flags.loc["2", CONFIDENCE_REASON_COLUMN]
-    assert "0.1x peak" in reason
+    assert "0.1x running max" in reason
     assert "fewer than 30 cells" in reason
     assert "DMSO reference degraded" in reason
     assert flags.loc["1", CONFIDENCE_REASON_COLUMN] == ""
@@ -621,3 +621,38 @@ def test_non_positive_absolute_floor_raises(floor: int) -> None:
     targets = _make_population({"M11": {"1": 100}})
     with pytest.raises(ValueError, match="absolute_floor must be at least 1"):
         compute_confidence_flags(targets, "M11", absolute_floor=floor)
+
+
+def test_audited_threshold_explains_its_own_flags() -> None:
+    """``relative_threshold`` must be the value the decision actually compared against.
+
+    It was ``min_peak_fraction * global peak`` while the flag used the running max, so
+    a well growing 50 -> 5000 printed threshold 500 beside ``n_cells`` 50 with
+    ``flag_relative`` False. That column is only emitted to the audit CSV -- the
+    artifact the plan requires as evidence before enabling the gate -- so a threshold
+    that contradicts its own flag reads as a gate bug.
+    """
+    targets = _make_population({"M11": {"1": 50, "2": 5000}})
+    flags = compute_confidence_flags(
+        targets, "M11", min_peak_fraction=0.1, absolute_floor=None
+    ).set_index("timepoint")
+
+    # Per timepoint: 0.1 x running max, not 0.1 x 5000.
+    assert flags.loc["1", "relative_threshold"] == pytest.approx(5.0)
+    assert flags.loc["2", "relative_threshold"] == pytest.approx(500.0)
+    # ...and each row's count is consistent with its own threshold and flag.
+    for timepoint in ("1", "2"):
+        row = flags.loc[timepoint]
+        assert bool(row["flag_relative"]) == (
+            row["n_cells"] < row["relative_threshold"]
+        )
+    # The global peak stays available separately, for reference.
+    assert flags.loc["1", "peak"] == 5000
+
+
+def test_reason_names_the_running_max_not_the_peak() -> None:
+    targets = _make_population({"M11": {"1": 100, "2": 5}})
+    flags = compute_confidence_flags(
+        targets, "M11", min_peak_fraction=0.1, absolute_floor=None
+    ).set_index("timepoint")
+    assert "running max" in flags.loc["2", CONFIDENCE_REASON_COLUMN]

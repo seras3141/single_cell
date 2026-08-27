@@ -87,8 +87,8 @@ class InformativenessConfig:
     dmso_well : str, optional
         DMSO control well label; required when ``normalize_to_dmso`` is True.
     dmso_gate_min_peak_fraction : float, optional
-        Confidence-gate relative threshold, a fraction of each well's own peak
-        distinct-cell count. ``None`` (default) leaves the gate OFF; Step 2 recommends
+        Confidence-gate relative threshold, a fraction of each well's
+        running-maximum distinct-cell count. ``None`` (default) leaves the gate OFF; Step 2 recommends
         ``0.10``. **Results-changing** — ~47% of well-timepoints survive at 0.10, and
         retention is culture-asymmetric. Requires ``normalize_to_dmso``.
     dmso_gate_absolute_floor : int, optional
