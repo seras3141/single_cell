@@ -5,8 +5,10 @@ Per well, three onset signals reported side-by-side plus a consensus:
     (``dataset_analysis.collapse_summary``); first ti where n_cells < 0.5 * global peak.
   - coverage onset: first ti where coverage_fraction < 0.5 * max coverage, sustained >=2 frames
     (read from per-experiment cell_population.csv).
-  - feature-drift onset: first ti where >=50% biological features have moved >1 early-IQR from
-    their early-window (first-3-timepoint) median, sustained >=2 frames.
+  - feature-drift onset (control-chart): first ti (after the early window) where >=50% of
+    biological features have their median departed > K * the early *temporal* scale (scaled-MAD
+    of the early per-timepoint medians, floored at 2%*|center|) from the early-window median,
+    sustained >=2 frames. Advisory/noisy at 3 early points; the consensus is robust to it.
 The consensus is the median of the available onsets; not a single hard-coded signal.
 See docs/feature_analysis/plan_feature_variation_over_time.md.
 """

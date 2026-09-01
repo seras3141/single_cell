@@ -3,8 +3,8 @@
 Flags adjacent-timepoint distribution jumps per (well, feature): a median jump AND a shape
 jump (both must fire). Would have caught the uint8 mask wrap.
 
-METRIC NOTE (deviation from the approved plan, flagged at the Phase-2 checkpoint): the plan
-specced the median step z-scored by the *delta-series* MAD. That fails this monitor's own
+METRIC NOTE (approved 2026-08-25; the plan now specs this): an earlier draft z-scored the median
+step by the *delta-series* MAD. That fails this monitor's own
 calibration target — a single clean jump in an otherwise-flat series gives a zero delta-series
 MAD (undefined z), and a *bounce* (the uint8-wrap signature) has many large deltas so each
 step's z stays ~1. So `median_jump` here normalizes the median step by the **within-timepoint
