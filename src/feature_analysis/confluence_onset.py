@@ -39,6 +39,13 @@ DRIFT_ONSET_K = 3.0
 DRIFT_ONSET_REL_FLOOR = 0.02
 
 
+def _require_columns(df: pd.DataFrame, cols: Sequence[str], name: str) -> None:
+    """Raise a clear ValueError if ``df`` is missing any required column."""
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        raise ValueError(f"{name} is missing required columns {missing}; has {list(df.columns)}")
+
+
 def _sustained_first_crossing(ti: np.ndarray, below: np.ndarray, sustain: int = SUSTAIN) -> Optional[int]:
     """First ti where ``below`` is True for ``sustain`` consecutive sampled frames; else None."""
     run = 0
@@ -127,11 +134,22 @@ def compute_confluence_onset(
         summary: all_experiments_cell_population_summary.csv (has t_cross_peak, is_dmso, …).
         experiment_label: e.g. "HD1509" — matched against summary.experiment.
         dmso_well: the DMSO well id, for the estimability verdict + is_dmso flag.
+
+    Raises:
+        ValueError: if summary (needs experiment/well/t_cross_peak), cell_population, or traj
+            are missing required columns.
     """
+    # `experiment` is REQUIRED, not optional: the summary is an all-experiment table and well
+    # IDs repeat across the 5 experiments (all reuse N11/M11/…). Without the experiment filter,
+    # `pop` would be built from every experiment and the last-written well would silently win —
+    # a wrong onset with no error. Guarding the column makes that failure loud.
+    _require_columns(summary, ("experiment", "well", "t_cross_peak"), "summary")
+    _require_columns(cell_population, ("sample_id", "ti", "coverage_fraction"), "cell_population")
+    _require_columns(traj, ("sample_id", "feature", "ti", "median", "iqr"), "traj")
+
     # population onset from the summary CSV (matched to this experiment)
     s = summary.copy()
-    if "experiment" in s.columns:
-        s = s[s["experiment"].astype(str).str.contains(experiment_label, case=False, na=False, regex=False)]
+    s = s[s["experiment"].astype(str).str.contains(experiment_label, case=False, na=False, regex=False)]
     pop = {str(r["well"]).upper(): r.get("t_cross_peak") for _, r in s.iterrows()}
     dmso_pre = None
     if len(s):

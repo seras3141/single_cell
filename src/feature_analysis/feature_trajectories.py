@@ -10,7 +10,7 @@ Design decisions folded from the codex cross-check:
   per-cell observation-unit convention). Heterogeneity (Phase 2) then measures the
   across-cell spread.
 - Feature groups: **shape (12)** + **intensity (4)** are the biological set; **spatial (5)**
-  are QC-only (excluded from biology); **gabor (2)** dropped (aliased/unreliable).
+  are excluded and consumed by no metric; **gabor (2)** dropped (aliased/unreliable).
 - Divergence: KS is the PRIMARY distance when DMSO ``n < 30`` or MAD≈0; the MAD-standardized
   median shift (reusing ``normalize._scaled_mad``) is carried as an interpretable effect size
   with per-feature n/MAD validity and a ``low_confidence`` flag.
@@ -33,6 +33,7 @@ from scipy.stats import ks_2samp, spearmanr, theilslopes
 from src.dataset_analysis.layout import get_well_annotation
 from src.feature_to_mcherry.data.collapse import collapse_slices_to_cells
 from src.feature_to_mcherry.data.normalize import _scaled_mad
+from src.feature_to_mcherry.dataset_design import cliffs_delta as _cliffs_delta
 from src.feature_to_mcherry.pre_collapse import classify_estimability
 
 _WELL_RE = re.compile(r"^([A-Za-z]+)(\d+)$")
@@ -51,7 +52,7 @@ SPATIAL_FEATURES = (
 )
 GABOR_FEATURES = ("gabor_mean", "gabor_std")
 
-#: The biological feature set (shape + intensity). Spatial is QC-only; gabor is dropped.
+#: The biological feature set (shape + intensity). Spatial is excluded/unused; gabor is dropped.
 BIOLOGICAL_FEATURES = SHAPE_FEATURES + INTENSITY_FEATURES
 
 FEATURE_GROUP = {
@@ -263,12 +264,13 @@ def compute_divergence_from_dmso(
                 if n_dmso >= 2 and n_well >= 2:
                     ks_stat, ks_p = ks_2samp(wv, dv)
                     ks_stat, ks_p = float(ks_stat), float(ks_p)
+                    cliffs_delta = _cliffs_delta(wv, dv)  # rank effect size (robust at low n)
                 else:
-                    ks_stat = ks_p = np.nan
+                    ks_stat = ks_p = cliffs_delta = np.nan
                 low_conf = (n_dmso < n_floor) or (n_well < n_floor) or not (np.isfinite(mad) and mad > 0)
                 rows.append(dict(
                     sample_id=well, timepoint=tv, ti=ti, feature=f, group=FEATURE_GROUP.get(f),
-                    ks_stat=ks_stat, ks_p=ks_p, std_shift=std_shift,
+                    ks_stat=ks_stat, ks_p=ks_p, cliffs_delta=cliffs_delta, std_shift=std_shift,
                     median_well=med_w, median_dmso=med_d, mad_dmso=mad,
                     n_well=n_well, n_dmso=n_dmso, low_confidence=bool(low_conf),
                 ))
@@ -276,7 +278,7 @@ def compute_divergence_from_dmso(
                     per_feat_shift.append(abs(std_shift))
             rows.append(dict(
                 sample_id=well, timepoint=tv, ti=ti, feature="__overall__", group="overall",
-                ks_stat=np.nan, ks_p=np.nan,
+                ks_stat=np.nan, ks_p=np.nan, cliffs_delta=np.nan,
                 std_shift=float(np.mean(per_feat_shift)) if per_feat_shift else np.nan,
                 median_well=np.nan, median_dmso=np.nan, mad_dmso=np.nan,
                 n_well=len(well_t), n_dmso=(len(dmso_t) if dmso_t is not None else 0),

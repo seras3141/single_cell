@@ -95,6 +95,8 @@ def test_divergence_from_dmso(cells_df):
     assert a02_t1["std_shift"] > 0            # drug area >> DMSO area
     assert a02_t1["low_confidence"]           # n well/dmso are tiny (< 30)
     assert 0.0 <= a02_t1["ks_stat"] <= 1.0
+    # rank effect size: A02 area strictly greater than N11 area -> Cliff's delta == 1.0
+    assert a02_t1["cliffs_delta"] == pytest.approx(1.0)
     # an overall row exists per (well, timepoint)
     assert ((div.feature == "__overall__") & (div.sample_id == "A02")).any()
 

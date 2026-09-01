@@ -108,3 +108,24 @@ def test_confluence_onset_three_signals_and_consensus():
     assert w["onset_consensus_ti"] == 31  # median(21,41,31)
     assert w["n_signals"] == 3 and w["disagreement_span"] == 20
     assert w["estimable"] == VERDICT_ESTIMABLE  # from DMSO n_pre_cross=12
+
+
+def test_confluence_onset_requires_columns():
+    traj = pd.DataFrame([dict(sample_id="W", feature="area", ti=1, median=10.0, iqr=2.0)])
+    cov = pd.DataFrame([dict(sample_id="W", ti=1, coverage_fraction=0.2)])
+    bad_summary = pd.DataFrame([dict(experiment="X", well="W")])  # missing t_cross_peak
+    with pytest.raises(ValueError, match="summary is missing required columns"):
+        compute_confluence_onset(traj, cov, bad_summary, "X", dmso_well="N11", features=["area"])
+
+
+def test_confluence_onset_requires_experiment_column():
+    # Wells repeat across experiments; a summary without `experiment` must raise, not silently
+    # mix rows from other experiments (the last-written well would win the population onset).
+    traj = pd.DataFrame([dict(sample_id="W", feature="area", ti=1, median=10.0, iqr=2.0)])
+    cov = pd.DataFrame([dict(sample_id="W", ti=1, coverage_fraction=0.2)])
+    no_exp_summary = pd.DataFrame([
+        dict(well="W", t_cross_peak=21),   # this experiment's well
+        dict(well="W", t_cross_peak=99),   # a same-named well from a DIFFERENT experiment
+    ])
+    with pytest.raises(ValueError, match="summary is missing required columns.*experiment"):
+        compute_confluence_onset(traj, cov, no_exp_summary, "X", dmso_well="N11", features=["area"])
