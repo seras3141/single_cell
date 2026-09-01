@@ -10,6 +10,11 @@ Reads Step 1's 45-well summary and each experiment's mCherry targets, then write
 - ``drug_effect_two_windows.csv`` (7c') rank-based effect per well, BOTH windows
 - ``drug_effect_summary.md``    (7c') the readable roll-up
 
+- ``figures/percentile90_dmso_vs_drug/<culture>_<drug>.{png,pdf}`` — the raw values
+  behind 7a/7c': one line per well, DMSO as the reference, window boundaries marked.
+  Drawn by default; ``--no-figures`` skips them, ``--all-targets`` draws all three
+  percentiles instead of only the headline one.
+
 7d (feature-vs-time figures) comes from Step 5' output; no computation needed here.
 
 Targets come from ``mcherry_metrics/<model>/instance_metrics.csv`` — one CSV per
@@ -39,6 +44,7 @@ from src.feature_to_mcherry.dataset_design import (
     build_effect_table,
     density_vs_collapse,
 )
+from src.feature_to_mcherry.dataset_design_figures import write_dmso_vs_drug_figures
 from src.utils.logging_utils import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -186,11 +192,35 @@ def main() -> None:
         default=0.10,
         help="Step 2's recommended relative gate; pass a negative value to omit it",
     )
+    ap.add_argument(
+        "--figures",
+        dest="figures",
+        action="store_true",
+        default=True,
+        help="draw the per-(culture, drug) DMSO-vs-drug time plots (the default)",
+    )
+    ap.add_argument(
+        "--no-figures",
+        dest="figures",
+        action="store_false",
+        help="skip the time plots; the CSVs and markdown are unchanged either way",
+    )
+    ap.add_argument(
+        "--all-targets",
+        action="store_true",
+        help=(
+            f"draw every target in {TARGET_COLUMNS} rather than only "
+            f"{HEADLINE_TARGET} (the §1 cross-check across percentiles)"
+        ),
+    )
     args = ap.parse_args()
 
     setup_logging()
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Leaf name follows HEADLINE_TARGET so the path cannot come to disagree with
+    # what is actually drawn in it.
+    fig_dir = out_dir / "figures" / f"{HEADLINE_TARGET}_dmso_vs_drug"
     summary = pd.read_csv(args.summary)
     logger.info("read Step 1 summary: %d rows", len(summary))
 
@@ -208,13 +238,36 @@ def main() -> None:
     _plot_density_vs_collapse(summary, out_dir / "density_vs_collapse.png")
 
     # --- 7c' -------------------------------------------------------------------
+    # The figures (below) ride along inside this loop rather than in a pass of
+    # their own: each experiment's target CSV is 68 MB-695 MB, and re-reading it to
+    # draw from the same numbers would be pure waste.
+    #
+    # This does NOT make the reduction cheap. build_effect_table collapses the frame
+    # once per target column (three times), and the figures collapse it a fourth --
+    # four full copies of a ~1.4M-row frame per experiment. Collapsing all three
+    # targets once up front and passing the result to both would cut that by ~a
+    # quarter, but build_effect_table takes raw targets by design, and reshaping the
+    # shipped 7c' path is not something to do in a commit that adds a figure.
     frames = []
+    figures: List[Path] = []
     for experiment, (_, dmso_well) in EXPERIMENTS.items():
         targets = _load_targets(experiment)
         for target_column in TARGET_COLUMNS:
             frames.append(
                 build_effect_table(
                     targets, summary, experiment, dmso_well, target_column
+                )
+            )
+        if args.figures:
+            figures.extend(
+                write_dmso_vs_drug_figures(
+                    targets,
+                    summary,
+                    experiment,
+                    fig_dir,
+                    target_columns=TARGET_COLUMNS,
+                    headline_target=HEADLINE_TARGET,
+                    all_targets=args.all_targets,
                 )
             )
     effects = pd.concat(frames, ignore_index=True)
@@ -234,6 +287,8 @@ def main() -> None:
         "descriptive for that well and cannot support a condition-level 'no effect' "
         "claim.\n" + _summarise_effects(effects) + "\n"
     )
+    if args.figures:
+        logger.info("wrote %d figure files to %s", len(figures), fig_dir)
     logger.info("wrote outputs to %s", out_dir)
 
 
