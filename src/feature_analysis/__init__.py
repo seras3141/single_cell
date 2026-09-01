@@ -17,6 +17,9 @@ from .feature_trajectories import (
     load_features,
 )
 from .plots import plot_overall_divergence, plot_trajectories_grid
+from .heterogeneity import compute_heterogeneity, compute_heterogeneity_trend
+from .integrity import compute_integrity_flags
+from .confluence_onset import compute_confluence_onset
 
 __all__ = [
     "BIOLOGICAL_FEATURES",
@@ -33,4 +36,8 @@ __all__ = [
     "compute_divergence_from_dmso",
     "plot_trajectories_grid",
     "plot_overall_divergence",
+    "compute_heterogeneity",
+    "compute_heterogeneity_trend",
+    "compute_integrity_flags",
+    "compute_confluence_onset",
 ]

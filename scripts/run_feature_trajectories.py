@@ -17,8 +17,12 @@ from src.dataset_analysis.layout import load_plate_layout
 from src.feature_analysis import (
     BIOLOGICAL_FEATURES,
     collapse_to_cell,
+    compute_confluence_onset,
     compute_divergence_from_dmso,
     compute_drift,
+    compute_heterogeneity,
+    compute_heterogeneity_trend,
+    compute_integrity_flags,
     compute_trajectories,
     load_features,
     plot_overall_divergence,
@@ -37,10 +41,10 @@ def _dmso_pre_cross(summary_csv: Path, label: str, dmso_well: str):
     s = pd.read_csv(summary_csv)
     m = s["well"].astype(str).str.upper() == str(dmso_well).upper()
     if "experiment" in s.columns:
-        m = m & s["experiment"].astype(str).str.contains(label, case=False, na=False)
+        m = m & s["experiment"].astype(str).str.contains(label, case=False, na=False, regex=False)
     hit = s[m]
     if not len(hit) and "is_dmso" in s.columns:  # fall back to the flagged DMSO row
-        hit = s[s["is_dmso"].astype(bool) & s["experiment"].astype(str).str.contains(label, case=False, na=False)]
+        hit = s[s["is_dmso"].astype(bool) & s["experiment"].astype(str).str.contains(label, case=False, na=False, regex=False)]
     if not len(hit) or "n_timepoints_pre_cross" not in hit.columns:
         return None
     val = hit.iloc[0]["n_timepoints_pre_cross"]
@@ -56,6 +60,9 @@ def main() -> None:
     ap.add_argument("--layout", default="config/MF5v1_plate_layout.json")
     ap.add_argument("--summary-csv",
                     default="results/dataset_analysis/all_experiments_cell_population_summary.csv")
+    ap.add_argument("--cell-population-csv", default=None,
+                    help="per-experiment cell_population.csv (for #4 coverage onset); "
+                         "default results/dataset_analysis/<label>/cell_population/cell_population.csv")
     args = ap.parse_args()
 
     setup_logging()
@@ -92,7 +99,32 @@ def main() -> None:
                            title=f"{label} — feature trajectories (median vs t)")
     plot_overall_divergence(div, out / "divergence_overall.png",
                             title=f"{label} — divergence from DMSO over time")
-    logger.info("[%s] wrote trajectories/drift/divergence CSVs + PNGs -> %s", label, out)
+    logger.info("[%s] wrote Phase-1 CSVs + PNGs -> %s", label, out)
+
+    # --- Phase 2: heterogeneity (#5), integrity (#6), confluence-onset (#4) ---
+    het = compute_heterogeneity(cells, BIOLOGICAL_FEATURES)
+    het.to_csv(out / "heterogeneity.csv", index=False)
+    compute_heterogeneity_trend(het, dmso_n_timepoints_pre_cross=n_pre).to_csv(
+        out / "heterogeneity_trend.csv", index=False)
+
+    integ = compute_integrity_flags(cells, BIOLOGICAL_FEATURES)
+    integ.to_csv(out / "integrity_flags.csv", index=False)
+    n_flag = int(integ["flagged"].sum()) if len(integ) else 0
+    logger.info("[%s] integrity: %d flagged of %d adjacent-timepoint pairs (expect ~0 on clean data)",
+                label, n_flag, len(integ))
+
+    cp_path = Path(args.cell_population_csv) if args.cell_population_csv else Path(
+        f"results/dataset_analysis/{label}/cell_population/cell_population.csv")
+    if cp_path.exists() and Path(args.summary_csv).exists():
+        onset = compute_confluence_onset(
+            traj, pd.read_csv(cp_path), pd.read_csv(args.summary_csv),
+            experiment_label=label, dmso_well=args.dmso_well, features=BIOLOGICAL_FEATURES)
+        onset.to_csv(out / "confluence_onset.csv", index=False)
+        logger.info("[%s] confluence onset written (%d wells)", label, len(onset))
+    else:
+        logger.warning("[%s] confluence onset SKIPPED — missing %s or %s",
+                       label, cp_path, args.summary_csv)
+    logger.info("[%s] wrote Phase-2 CSVs -> %s", label, out)
 
 
 if __name__ == "__main__":

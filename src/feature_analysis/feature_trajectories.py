@@ -135,13 +135,16 @@ def _annotate(df: pd.DataFrame, dmso_well: Optional[str], layout: Optional[Mappi
     return df
 
 
-def compute_trajectories(
+def grouped_feature_stats(
     cells: pd.DataFrame,
     features: Sequence[str] = BIOLOGICAL_FEATURES,
-    dmso_well: Optional[str] = None,
-    layout: Optional[Mapping[str, Any]] = None,
+    with_mad: bool = False,
 ) -> pd.DataFrame:
-    """Per (well, timepoint, feature): median + IQR across cells (long form)."""
+    """Long-form per (sample_id, timepoint, ti, feature): median, q25, q75, n_cells, iqr (+ mad).
+
+    Shared reduction for compute_trajectories (#1) and compute_heterogeneity (#5) so the
+    per-(well,timepoint,feature) IQR is defined in exactly one place.
+    """
     feats = _resolve_features(cells.columns, features)
     long = cells.melt(
         id_vars=["sample_id", "timepoint", "ti"],
@@ -149,14 +152,27 @@ def compute_trajectories(
         var_name="feature",
         value_name="val",
     ).dropna(subset=["val"])
-    g = long.groupby(["sample_id", "timepoint", "ti", "feature"])["val"]
-    traj = g.agg(
+    aggs = dict(
         median="median",
         q25=lambda x: x.quantile(0.25),
         q75=lambda x: x.quantile(0.75),
         n_cells="count",
-    ).reset_index()
-    traj["iqr"] = traj["q75"] - traj["q25"]
+    )
+    if with_mad:
+        aggs["mad"] = lambda x: _scaled_mad(x.to_numpy(float))
+    out = long.groupby(["sample_id", "timepoint", "ti", "feature"])["val"].agg(**aggs).reset_index()
+    out["iqr"] = out["q75"] - out["q25"]
+    return out
+
+
+def compute_trajectories(
+    cells: pd.DataFrame,
+    features: Sequence[str] = BIOLOGICAL_FEATURES,
+    dmso_well: Optional[str] = None,
+    layout: Optional[Mapping[str, Any]] = None,
+) -> pd.DataFrame:
+    """Per (well, timepoint, feature): median + IQR across cells (long form)."""
+    traj = grouped_feature_stats(cells, features)
     traj["group"] = traj["feature"].map(FEATURE_GROUP)
     traj = _annotate(traj, dmso_well, layout)
     return traj.sort_values(["feature", "sample_id", "ti"]).reset_index(drop=True)
