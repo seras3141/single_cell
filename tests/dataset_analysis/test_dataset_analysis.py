@@ -20,11 +20,10 @@ from src.dataset_analysis import (  # noqa: E402
     plot_z_completeness,
 )
 
-#: Canonical, actively-maintained layout file. NOTE: this used to point at
-#: docs/layout/MF5v1_plate_layout.json (an HPC-mirrored, read-only-locally copy)
-#: which still has the pre-2026-08-18 buggy quadrant schema and would break once
-#: src/dataset_analysis/layout.py was fixed to require the new schema -- see
-#: docs_local/feature_to_mcherry/note_plate_layout_column_bug.md.
+#: Canonical, actively-maintained layout file, and the only one: a redundant
+#: machine-readable copy under docs/layout/ was removed 2026-09-01 (it was loaded by
+#: nothing and had to be kept in sync by hand). The pre-2026-08-18 quadrant-schema bug
+#: is written up in docs_local/feature_to_mcherry/note_plate_layout_column_bug.md.
 LAYOUT_PATH = Path("config/MF5v1_plate_layout.json")
 
 
