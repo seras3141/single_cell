@@ -169,6 +169,48 @@ python scripts/run_pipeline.py \
 
 ---
 
+## `run_dataset_design_report.py`
+
+Assembles the dataset-design assessment: per-culture pre-collapse windows, the seeding-density/time-to-collapse correlation, and the rank-based drug effect per well over two windows — plus the figures showing the raw mCherry values behind those tables.
+
+**Usage:**
+```bash
+# Tables and figures (the default)
+python scripts/run_dataset_design_report.py \
+    --summary results/dataset_analysis/all_experiments_cell_population_summary.csv \
+    --output-dir <report-dir>
+
+# Tables only — skip the figures
+python scripts/run_dataset_design_report.py --no-figures
+
+# Draw all three percentile targets, not just the headline one
+python scripts/run_dataset_design_report.py --all-targets
+
+# Omit Step 2's relative gate from the cutoff table
+python scripts/run_dataset_design_report.py --gate-threshold -1
+```
+
+**Arguments:**
+- `--summary` — the 45-well cell-population summary CSV (default: `results/dataset_analysis/...`)
+- `--output-dir` — where tables and figures are written
+- `--gate-threshold` — relative gate recorded alongside the verdict cutoff; negative omits it
+- `--figures` / `--no-figures` — draw the per-(culture, drug) time plots; on by default
+- `--all-targets` — draw `percentile_75` and `percentile_95` as well as the headline target, into per-target subdirectories
+
+**Outputs:**
+- `cutoff_table.csv` — per-culture pre-collapse keep-window
+- `density_vs_collapse.csv` / `.png` — peak density vs time-to-collapse, censored wells kept as their own marker
+- `drug_effect_two_windows.csv` — Cliff's δ per well, both windows
+- `drug_effect_summary.md` — the readable roll-up
+- `figures/<headline-target>_dmso_vs_drug/<culture>_<drug>.{png,pdf}` — one figure per culture and drug: a line per well coloured by dose, the DMSO well as a bold black reference, and each well's `t_cross_peak` as a dashed line
+
+**Notes:**
+- Every run **regenerates all of the above**, figures or not. Point `--output-dir` at a scratch directory first if the target directory holds anything you are not prepared to have rewritten.
+- Targets are read from `mcherry_metrics/<model>/instance_metrics.csv`, one CSV per experiment (68 MB–695 MB each); the per-slice feature CSVs are never loaded. Budget ~64 GB and a few minutes for all five cultures.
+- `scripts/verify_dataset_design_numbers.py` re-checks the generated numbers against the claims made about them.
+
+---
+
 ## `launch_gui_safe.py`
 
 Safe GUI launcher with dependency checking and Qt backend configuration.
