@@ -29,6 +29,27 @@ from .cell_population import (
     compute_cell_population,
     plot_population,
 )
+from .z0_tree import (
+    VALID_MODES,
+    ProcessedName,
+    build_z0_tree,
+    iter_z0_entries,
+    parse_processed_name,
+)
+from .z0_population import (
+    OUTPUT_COLUMNS as Z0_OUTPUT_COLUMNS,
+    SATURATION_BOUNDARIES,
+    compute_z0_population,
+    drop_unmeasurable,
+    measure_z0_mask,
+    saturation_report,
+)
+from .z0_collapse import (
+    SIGNATURE_COLUMNS,
+    summarize_z0_collapse,
+    summarize_z0_signature,
+    write_drug_dose_figures,
+)
 from .collapse_summary import (
     SUMMARY_COLUMNS,
     assert_well_composition,
@@ -93,6 +114,22 @@ __all__ = [
     "discover_image_files",
     "find_dataset_issues",
     "get_well_annotation",
+    # z0 projection staging, measurement and collapse metrics
+    "VALID_MODES",
+    "ProcessedName",
+    "build_z0_tree",
+    "iter_z0_entries",
+    "parse_processed_name",
+    "Z0_OUTPUT_COLUMNS",
+    "SATURATION_BOUNDARIES",
+    "compute_z0_population",
+    "drop_unmeasurable",
+    "measure_z0_mask",
+    "saturation_report",
+    "SIGNATURE_COLUMNS",
+    "summarize_z0_collapse",
+    "summarize_z0_signature",
+    "write_drug_dose_figures",
     # Collapse summary (per-well reduction of a cell-population trajectory)
     "SUMMARY_COLUMNS",
     "assert_well_composition",
