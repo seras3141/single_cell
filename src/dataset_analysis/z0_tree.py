@@ -154,7 +154,11 @@ def _dest_state(dest: Path, src: Path, mode: str) -> str:
         if Path(os.readlink(dest)) != src.absolute():
             return "stale"
         return "current" if dest.exists() else "stale"
-    return "stale" if mode == "symlink" else "current"
+    if mode == "symlink":
+        return "stale"
+    # Copy mode: a .zarr store replaced by a regular file (or the reverse) is a
+    # kind mismatch, which the contract above says must be rebuilt.
+    return "current" if dest.is_dir() == src.is_dir() else "stale"
 
 
 def _stage_one_dir(
@@ -241,6 +245,15 @@ def build_z0_tree(
     if not source.is_dir():
         raise FileNotFoundError(f"source root not found: {source}")
     dest = Path(dest_root)
+
+    # Staging onto the source would classify every source file as stale, delete it,
+    # and replace it with a self-referential symlink — destroying the processed tree
+    # on a single CLI typo.
+    if source.resolve() == dest.resolve():
+        raise ValueError(
+            f"source_root and dest_root resolve to the same directory ({source}); "
+            f"staging in place would destroy the source"
+        )
 
     if experiments is None:
         names = sorted(p.name for p in source.iterdir() if p.is_dir())

@@ -31,7 +31,7 @@ from src.visualize.headless_layers import normalize_for_display, render_layers
 
 logger = logging.getLogger(__name__)
 
-#: Frames span 72 h across 351 indices; 1 index = 10 min.
+#: Acquisition cadence: one frame index is 10 min, so frame 351 sits at 58.3 h.
 MINUTES_PER_INDEX = 10.0
 TI_TO_HOURS = MINUTES_PER_INDEX / 60.0
 
@@ -121,7 +121,12 @@ def condition_label(well: str, annotation: Optional[Mapping[str, Any]] = None) -
     """
     if not annotation:
         return str(well)
-    if bool(annotation.get("is_dmso")):
+    # Only an explicit true counts: a missing is_dmso loaded from CSV is NaN, and
+    # `bool(float("nan"))` is True, which would label every unannotated well DMSO.
+    is_dmso = annotation.get("is_dmso")
+    if isinstance(is_dmso, float) and math.isnan(is_dmso):
+        is_dmso = False
+    if is_dmso is True or str(is_dmso).strip().lower() == "true":
         return "DMSO"
     drug = annotation.get("drug")
     # `bool(float("nan"))` is True, so an `or` fallback would print the string
@@ -212,7 +217,10 @@ def _centre_crop(array: np.ndarray, fraction: float) -> np.ndarray:
     if fraction == 1:
         return array
     height, width = array.shape[-2], array.shape[-1]
-    new_h, new_w = int(height * fraction), int(width * fraction)
+    # A small fraction on a small frame truncates to 0, and an empty array breaks
+    # display normalisation downstream.
+    new_h = max(1, int(height * fraction))
+    new_w = max(1, int(width * fraction))
     top, left = (height - new_h) // 2, (width - new_w) // 2
     return array[..., top : top + new_h, left : left + new_w]
 
@@ -304,7 +312,13 @@ def build_filmstrip(
             if mask is not None:
                 overlay_ax.imshow(_outline_rgba(mask))
         else:
-            render_layers(bf, mask=mask, ax=overlay_ax, mask_alpha=mask_alpha)
+            # render_layers hardcodes gray for its base, so a non-default cmap
+            # (mCherry's inferno) has to be applied to the artist it returns.
+            _, artists = render_layers(
+                bf, mask=mask, ax=overlay_ax, mask_alpha=mask_alpha
+            )
+            if base_cmap != "gray" and artists.get("bf") is not None:
+                artists["bf"].set_cmap(base_cmap)
         if not show_raw_row:
             overlay_ax.set_title(_panel_title(frame, annotations), fontsize=9)
         _strip_axis(overlay_ax, keep_frame_for_label=column == 0)

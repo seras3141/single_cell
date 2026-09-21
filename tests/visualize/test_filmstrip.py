@@ -338,3 +338,29 @@ def test_one_frame_index_is_ten_minutes():
 
     assert MINUTES_PER_INDEX == 10.0
     assert (351 - 1) * TI_TO_HOURS == pytest.approx(58.333, abs=0.01)
+
+
+class TestCopilotEdgeCases:
+    def test_nan_is_dmso_is_not_read_as_true(self):
+        """bool(nan) is True, which would label every unannotated well DMSO."""
+        row = {"drug": "Navitoclax", "concentration_uM": 75.0, "is_dmso": float("nan")}
+        assert condition_label("E07", row) == "Navitoclax 75 µM"
+
+    def test_explicit_true_is_still_dmso(self):
+        row = {"drug": "control", "concentration_uM": None, "is_dmso": True}
+        assert condition_label("N11", row) == "DMSO"
+
+    def test_string_true_from_csv_is_dmso(self):
+        row = {"drug": "control", "concentration_uM": None, "is_dmso": "True"}
+        assert condition_label("N11", row) == "DMSO"
+
+    def test_tiny_crop_keeps_at_least_one_pixel(self):
+        """0.01 of a 16px axis truncates to 0, and an empty array breaks display."""
+        cropped = _centre_crop(np.arange(256).reshape(16, 16), 0.01)
+        assert cropped.shape == (1, 1)
+        assert cropped.size > 0
+
+    def test_tiny_crop_renders_without_error(self, tmp_path):
+        split, masks = _make_tree(tmp_path)
+        frames = resolve_frames(split, masks, "M11", [1])
+        assert build_filmstrip(frames, tmp_path / "tiny.png", crop=0.01).is_file()

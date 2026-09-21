@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -301,3 +302,42 @@ class TestZ0TreeRepair:
         second = build_z0_tree(src, dest, force=True)
 
         assert second["n_z0"].sum() == first["n_z0"].sum()
+
+
+class TestDestructiveRoots:
+    def test_identical_roots_are_rejected(self, tmp_path):
+        """Staging in place would delete every source file and self-symlink it."""
+        src = _make_source_tree(tmp_path / "src")
+        with pytest.raises(ValueError, match="same directory"):
+            build_z0_tree(src, src)
+
+    def test_roots_that_resolve_the_same_are_rejected(self, tmp_path):
+        src = _make_source_tree(tmp_path / "src")
+        alias = tmp_path / "alias"
+        alias.symlink_to(src)
+        with pytest.raises(ValueError, match="same directory"):
+            build_z0_tree(src, alias)
+
+    def test_the_source_survives_a_rejected_run(self, tmp_path):
+        src = _make_source_tree(tmp_path / "src")
+        before = sorted(p.name for p in (src / EXPERIMENT / "split_data").iterdir())
+        with pytest.raises(ValueError):
+            build_z0_tree(src, src)
+        after = sorted(p.name for p in (src / EXPERIMENT / "split_data").iterdir())
+        assert before == after
+
+    def test_copy_mode_rebuilds_a_kind_mismatch(self, tmp_path):
+        """A .zarr store replaced by a regular file must be repaired, not kept."""
+        src = _make_source_tree(tmp_path / "src")
+        dest = tmp_path / "dest"
+        build_z0_tree(src, dest, mode="copy")
+
+        staged = dest / EXPERIMENT / MASKS_REL / "pMF5V1_C09_t1_z0_pred_mask.zarr"
+        assert staged.is_dir()
+        shutil.rmtree(staged)
+        staged.write_text("not a store")  # wrong kind
+
+        summary = build_z0_tree(src, dest, mode="copy")
+
+        assert summary["n_repaired"].sum() == 1
+        assert staged.is_dir()
