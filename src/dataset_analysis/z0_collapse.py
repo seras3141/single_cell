@@ -41,15 +41,16 @@ logger = logging.getLogger(__name__)
 #: The z0 count column. ``cell_population`` calls its (different) quantity ``n_cells``.
 Z0_COUNT_COLUMN = "n_objects"
 
-#: Hours per frame index, mirroring the collaborator deliverable's Table 1 convention
-#: (``dataset_design_figures.TI_TO_HOURS``) so the two sets of figures agree.
+#: Acquisition cadence. One frame index is 10 minutes (owner decision, 2026-09-21,
+#: confirming the 2026-08 scope note), so frame 351 sits at 58.3 h — the run is not
+#: 72 h wide on this axis.
 #:
-#: NOTE, unresolved: this maps ti 1..351 onto 0..72 h, i.e. ~12.3 min per index,
-#: while the 2026-08 scope decisions state "1 index = 10 min" (frame 351 would be at
-#: 58.5 h, not 72 h). Both conventions are in use in this repo. Figures here follow the
-#: deliverable so they can be read beside it; the axis is labelled in frame index, with
-#: hours as a secondary axis, so the ambiguity stays visible rather than baked in.
-TI_TO_HOURS = 72.0 / 350.0
+#: NOTE: ``feature_to_mcherry.dataset_design_figures.TI_TO_HOURS`` still uses the older
+#: ``72/350`` (~12.3 min per index) convention, so its published figures overstate
+#: elapsed time by ~23 %. Fixing that means regenerating the deliverable and is tracked
+#: separately.
+MINUTES_PER_INDEX = 10.0
+TI_TO_HOURS = MINUTES_PER_INDEX / 60.0
 
 #: Signature thresholds. Heuristic and deliberately explicit — every underlying ratio is
 #: emitted alongside the label so a reader can disagree with the cut.

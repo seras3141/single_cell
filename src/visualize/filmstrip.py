@@ -32,7 +32,8 @@ from src.visualize.headless_layers import normalize_for_display, render_layers
 logger = logging.getLogger(__name__)
 
 #: Frames span 72 h across 351 indices; 1 index = 10 min.
-TI_TO_HOURS = 72.0 / 350.0
+MINUTES_PER_INDEX = 10.0
+TI_TO_HOURS = MINUTES_PER_INDEX / 60.0
 
 #: Requested timepoints the user is most likely to reach for. The acquisition grid is
 #: ``1, 11, 21, ... 351``, so round numbers like 50/100 do not exist and are snapped.

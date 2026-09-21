@@ -330,3 +330,11 @@ class TestConditionLabelNaN:
     def test_nan_drug_is_not_rendered_as_the_string_nan(self):
         row = {"drug": float("nan"), "concentration_uM": 5.0, "is_dmso": False}
         assert "nan" not in condition_label("E07", row)
+
+
+def test_one_frame_index_is_ten_minutes():
+    """Owner decision 2026-09-21: frame 351 is 58.3 h, not 72 h."""
+    from src.visualize.filmstrip import MINUTES_PER_INDEX, TI_TO_HOURS
+
+    assert MINUTES_PER_INDEX == 10.0
+    assert (351 - 1) * TI_TO_HOURS == pytest.approx(58.333, abs=0.01)
