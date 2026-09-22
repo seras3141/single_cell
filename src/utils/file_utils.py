@@ -29,10 +29,14 @@ class FilePattern:
     output_format: Optional[str]
 
 
-# Ew2-1, Ew2-2: apoptosis marker (FlipGFP) on w1, brightfield on w3
+# Ew2-1, Ew2-2, HD1883: apoptosis marker (FlipGFP) on w1, brightfield on w3
 WAVELENGTH_MAPPINGS_EW2: Dict[int, str] = {1: "FlipGFP", 2: "mCherry", 3: "BF"}
 
-# HD1509, HD1883, SA110: brightfield on w1, apoptosis marker (FlipGFP) on w3
+# HD1509, SA110: brightfield on w1, apoptosis marker (FlipGFP) on w3.
+# The ``_HD_SA`` name predates the 2026-08-06 correction that moved HD1883 to
+# the Ew2 convention; it covers HD1509 and SA110 only. Verified again
+# 2026-09-22 from raw pixels: brightfield reads a mean of ~3.3-3.7 k against
+# ~150-500 for the fluorescence channels.
 WAVELENGTH_MAPPINGS_HD_SA: Dict[int, str] = {1: "BF", 2: "mCherry", 3: "FlipGFP"}
 
 # Default uses the Ew2 convention

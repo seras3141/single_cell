@@ -1,0 +1,37 @@
+# Morphology-informativeness gate tuned for the scPortrait DEEP-EMBEDDING backend
+# (ConvNeXt features reduced to 100 principal components), NOT incarta handcrafted
+# morphology. This gives the scPortrait features their fair NONLINEAR comparison
+# against incarta's floor: the incarta gate reports a linear (Ridge) vs nonlinear
+# (LightGBM) floor gap, and the scPortrait baseline ladder only measured the LINEAR
+# (Ridge) floor. Running the same gate here surfaces whether a nonlinear head unlocks
+# signal the linear ladder missed.
+#
+# feature_csv  -> inference_scportrait/features_pca100.csv  (single file; 100 PCs +
+#                 sample_id/timepoint/z_index/cell_id; 89.9% ConvNeXt variance retained)
+# target_csv   -> mcherry_metrics/scportrait/instance_metrics.csv  (mCherry RE-EXTRACTED
+#                 against the scPortrait masks, so cell_id matches the PCA feature rows)
+#
+# A per-experiment driver (slurm/scportrait_informativeness.sbatch) overrides
+# feature_csv/target_csv/output_dir for HD1509 and SA110.
+
+morphology_informativeness:
+  feature_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/HD1509 MF5V1 0-72h 23-02-26/inference_scportrait/features_pca100.csv"
+  target_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/HD1509 MF5V1 0-72h 23-02-26/mcherry_metrics/scportrait/instance_metrics.csv"
+  id_column: cell_id
+  sample_id_column: null
+  timepoint_column: null
+  z_index_column: null
+  target_columns: [percentile_75, percentile_90, percentile_95]
+  group_by: sample_id
+  n_splits: 5
+  # The 100 principal components of the ConvNeXt embedding. fnmatch is case-insensitive.
+  morphology_feature_patterns:
+    - "PC_*"
+  # Deep-embedding PCs are not raw-intensity proxies in the way incarta's *intensity
+  # columns are, and there are no intensity-named columns here anyway -> no suspects.
+  suspect_feature_patterns: []
+  ridge_alpha: 1.0
+  nonlinear_backend: auto        # LightGBM if importable, else sklearn GBR
+  top_k_features: 5
+  plate_layout_json: config/MF5v1_plate_layout.json   # well->drug/dose for the noise ceiling
+  output_dir: results/feature_to_mcherry_hd1509_scportrait/morphology_informativeness

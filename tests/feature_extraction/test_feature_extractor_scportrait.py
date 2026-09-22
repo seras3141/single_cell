@@ -7,12 +7,17 @@ CI. These tests mock scPortrait's ``Project`` class (and the pipeline-level
 """
 
 import pytest
+import numpy as np
 import pandas as pd
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from src.feature_extraction import feature_extractor_scportrait as fes
 from src.feature_extraction.feature_extractor_scportrait import get_scportrait_features
-from src.feature_extraction.feature_extraction_pipeline import FeatureExtractionPipeline
+from src.feature_extraction.feature_extraction_pipeline import (
+    FeatureExtractionPipeline,
+    resolve_cellpose_mask,
+)
 
 
 def _make_pipeline(tmp_path, output=None):
@@ -381,3 +386,304 @@ class TestProcessSingleImage:
 
         mock_indiv.assert_not_called()
         mock_combined.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Milestone 2 — external-mask injection (_inject_mask + mask_path branch)
+# ---------------------------------------------------------------------------
+
+def _make_inject_project(seg_name="seg_all_cytosol", frame=(1023, 1023)):
+    """Mock project whose filehandler supports mask injection.
+
+    Returns (project, filehandler). The filehandler exposes ``cyto_seg_name``,
+    ``_get_input_image`` (with a ``.sizes`` frame) and a spy
+    ``_write_segmentation_sdata``.
+    """
+    proj = MagicMock()
+    fh = proj.filehandler
+    fh.cyto_seg_name = seg_name
+    img = MagicMock()
+    img.sizes = {"y": frame[0], "x": frame[1]}
+    fh._get_input_image.return_value = img
+    return proj, fh
+
+
+class TestInjectMask:
+    """Unit tests for the _inject_mask helper (Milestone 2)."""
+
+    def test_crops_offbyone_and_preserves_ids(self):
+        """1024 mask + 1023 frame -> bottom-right crop to 1023; IDs preserved."""
+        proj, fh = _make_inject_project(frame=(1023, 1023))
+        mask = np.zeros((1024, 1024), dtype=np.uint16)
+        mask[10:20, 10:20] = 101
+        mask[30:40, 30:40] = 777
+        with patch.object(fes.tifffile, "imread", return_value=mask):
+            n = fes._inject_mask(proj, "m.tif")
+
+        assert n == 2
+        fh._write_segmentation_sdata.assert_called_once()
+        args, kwargs = fh._write_segmentation_sdata.call_args
+        written = args[0]
+        assert written.shape == (1023, 1023)  # cropped, not resized
+        assert args[1] == "seg_all_cytosol"  # runtime-resolved seg name
+        assert set(int(v) for v in np.unique(written)) == {0, 101, 777}
+
+    def test_exact_frame_no_crop(self):
+        """Mask already matching the frame is written unchanged."""
+        proj, fh = _make_inject_project(frame=(1023, 1023))
+        mask = np.zeros((1023, 1023), dtype=np.uint32)
+        mask[5:8, 5:8] = 42
+        with patch.object(fes.tifffile, "imread", return_value=mask):
+            n = fes._inject_mask(proj, "m.tif")
+
+        assert n == 1
+        written = fh._write_segmentation_sdata.call_args[0][0]
+        assert written.shape == (1023, 1023)
+
+    def test_big_mismatch_raises(self):
+        """A >1px frame mismatch refuses to resize integer labels."""
+        proj, fh = _make_inject_project(frame=(1023, 1023))
+        mask = np.zeros((512, 512), dtype=np.uint32)
+        with patch.object(fes.tifffile, "imread", return_value=mask):
+            with pytest.raises(ValueError, match=r">1"):
+                fes._inject_mask(proj, "m.tif")
+        fh._write_segmentation_sdata.assert_not_called()
+
+    def test_smaller_by_one_raises(self):
+        """A mask 1px SMALLER than the frame cannot be cropped into shape.
+
+        It slips through the +/-1 tolerance, and ``mask[:ty, :tx]`` is a no-op,
+        so without an explicit check a misregistered label array is written.
+        """
+        proj, fh = _make_inject_project(frame=(1024, 1024))
+        mask = np.zeros((1023, 1023), dtype=np.uint32)
+        mask[5:8, 5:8] = 9
+        with patch.object(fes.tifffile, "imread", return_value=mask):
+            with pytest.raises(ValueError, match="smaller than image frame"):
+                fes._inject_mask(proj, "m.tif")
+        fh._write_segmentation_sdata.assert_not_called()
+
+    def test_empty_mask_returns_zero(self):
+        """An all-background mask reports 0 cells."""
+        proj, fh = _make_inject_project()
+        mask = np.zeros((1024, 1024), dtype=np.uint32)
+        with patch.object(fes.tifffile, "imread", return_value=mask):
+            n = fes._inject_mask(proj, "m.tif")
+        assert n == 0
+
+
+class TestMaskPathBranch:
+    """Tests for get_scportrait_features() with mask_path set (injection)."""
+
+    def _run(self, mock_project, mask, mask_path="m.tif"):
+        with patch.object(fes, "Project", return_value=mock_project), patch.object(
+            fes.tifffile, "imread", return_value=mask
+        ):
+            return get_scportrait_features(
+                image_paths=["bf.tif", "bf.tif"],
+                channel_names=["brightfield", "brightfield_ch1"],
+                config_path="config.yml",
+                project_location="proj",
+                segmentation_f=_DummySeg,
+                extraction_f=_DummyExt,
+                featurization_f=_DummyFeat,
+                mask_path=mask_path,
+                plots_dir=None,
+            )
+
+    def test_mask_path_skips_segmentation(self):
+        """mask_path set -> segment() skipped; mask injected; extract runs."""
+        mock_project = _make_mock_project()
+        fh = mock_project.filehandler
+        fh.cyto_seg_name = "seg_all_cytosol"
+        img = MagicMock()
+        img.sizes = {"y": 1023, "x": 1023}
+        fh._get_input_image.return_value = img
+
+        mask = np.zeros((1024, 1024), dtype=np.uint32)
+        mask[10:20, 10:20] = 5
+        result = self._run(mock_project, mask)
+
+        mock_project.segment.assert_not_called()
+        fh._write_segmentation_sdata.assert_called_once()
+        assert fh._write_segmentation_sdata.call_args[0][1] == "seg_all_cytosol"
+        mock_project.extract.assert_called_once()
+        mock_project.featurize.assert_called_once()
+        assert list(result["scportrait_cell_id"]) == [10, 20, 30]
+
+    def test_mask_path_empty_returns_empty_and_skips_extract(self):
+        """An empty injected mask returns an empty DataFrame and skips extraction."""
+        mock_project = _make_mock_project()
+        fh = mock_project.filehandler
+        fh.cyto_seg_name = "seg_all_cytosol"
+        img = MagicMock()
+        img.sizes = {"y": 1023, "x": 1023}
+        fh._get_input_image.return_value = img
+
+        mask = np.zeros((1024, 1024), dtype=np.uint32)
+        result = self._run(mock_project, mask)
+
+        assert isinstance(result, pd.DataFrame)
+        assert result.empty
+        mock_project.segment.assert_not_called()
+        mock_project.extract.assert_not_called()
+        mock_project.featurize.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Milestone 2 — Phase 2 pipeline/CLI wiring (mask resolution + injection dispatch)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.unit
+class TestResolveCellposeMask:
+    """Tests for resolve_cellpose_mask() (deterministic stem pairing)."""
+
+    def test_direct_stem_match(self, tmp_path):
+        (tmp_path / "pMF5V1_E07_t1_z10_pred_mask.tif").write_bytes(b"x")
+        bf = tmp_path / "pMF5V1_E07_t1_z10_BF.tif"
+        got = resolve_cellpose_mask(bf, tmp_path)
+        assert got.name == "pMF5V1_E07_t1_z10_pred_mask.tif"
+
+    def test_no_match_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            resolve_cellpose_mask(tmp_path / "x_BF.tif", tmp_path)
+
+    def test_two_matches_raises(self, tmp_path):
+        (tmp_path / "a").mkdir()
+        (tmp_path / "b").mkdir()
+        (tmp_path / "a" / "s_pred_mask.tif").write_bytes(b"x")
+        (tmp_path / "b" / "s_pred_mask.tif").write_bytes(b"x")
+        with pytest.raises(FileNotFoundError):
+            resolve_cellpose_mask(tmp_path / "s_BF.tif", tmp_path)
+
+    def test_custom_pattern(self, tmp_path):
+        (tmp_path / "s_mask.tif").write_bytes(b"x")
+        got = resolve_cellpose_mask(tmp_path / "s_BF.tif", tmp_path, "{stem}_mask.tif")
+        assert got.name == "s_mask.tif"
+
+
+@pytest.mark.unit
+class TestScportraitInjectionDispatch:
+    """Tests that a mask supplied for scportrait routes to injection."""
+
+    def test_dispatch_passes_mask_and_injected_root(self, tmp_path):
+        image_path = tmp_path / "pMF5V1_E07_t1_z10_BF.tif"
+        mask_path = tmp_path / "pMF5V1_E07_t1_z10_pred_mask.tif"
+        image_path.write_bytes(b"x")
+        mask_path.write_bytes(b"x")
+        pipeline = _make_pipeline(tmp_path)
+
+        returned = pd.DataFrame(
+            {"convnext_feature_0": [1.0], "scportrait_cell_id": [5]}
+        )
+        mock_fn = MagicMock(return_value=returned)
+        with patch(
+            "src.feature_extraction.feature_extraction_pipeline"
+            ".get_scportrait_features",
+            mock_fn,
+        ):
+            result = pipeline.extract_features_from_path(image_path, mask_path)
+
+        assert result is not None
+        _, kwargs = mock_fn.call_args
+        assert kwargs["mask_path"] == str(mask_path)  # injection triggered
+        # injected project subtree keeps native + injected runs from colliding
+        assert "injected" in kwargs["project_location"]
+
+    def test_missing_injection_mask_returns_none(self, tmp_path):
+        image_path = tmp_path / "a_BF.tif"
+        image_path.write_bytes(b"x")
+        mask_path = tmp_path / "missing_pred_mask.tif"  # not created
+        pipeline = _make_pipeline(tmp_path)
+
+        result = pipeline.extract_features_from_path(image_path, mask_path)
+        assert result is None
+        assert pipeline.error_files
+
+    def test_no_mask_stays_native(self, tmp_path):
+        """Without a mask, scportrait dispatch passes mask_path=None (native)."""
+        image_path = tmp_path / "a_BF.tif"
+        image_path.write_bytes(b"x")
+        pipeline = _make_pipeline(tmp_path)
+
+        returned = pd.DataFrame({"f": [1.0], "scportrait_cell_id": [0]})
+        mock_fn = MagicMock(return_value=returned)
+        with patch(
+            "src.feature_extraction.feature_extraction_pipeline"
+            ".get_scportrait_features",
+            mock_fn,
+        ):
+            pipeline.extract_features_from_path(image_path, None)
+
+        _, kwargs = mock_fn.call_args
+        assert kwargs["mask_path"] is None
+        assert "injected" not in kwargs["project_location"]
+
+
+@pytest.mark.unit
+class TestProcessBatchScportraitInjection:
+    """Tests for process_batch_scportrait() injection mode."""
+
+    def test_injection_resolves_and_passes_mask(self, tmp_path):
+        imgdir = tmp_path / "imgs"
+        imgdir.mkdir()
+        (imgdir / "s1_BF.tif").write_bytes(b"x")
+        maskdir = tmp_path / "masks"
+        maskdir.mkdir()
+        (maskdir / "s1_pred_mask.tif").write_bytes(b"x")
+        pipeline = _make_pipeline(tmp_path, output={"save_individual_files": False})
+
+        with patch.object(
+            pipeline,
+            "extract_features_from_path",
+            return_value=pd.DataFrame({"f": [1]}),
+        ) as spy:
+            pipeline.process_batch_scportrait(imgdir, mask_dir=maskdir)
+
+        spy.assert_called_once()
+        _, kwargs = spy.call_args
+        assert Path(kwargs["mask_path"]).name == "s1_pred_mask.tif"
+
+    def test_glob_mask_pattern_falls_back_to_template(self, tmp_path):
+        """A glob (the other backends' convention) must not silently no-op.
+
+        ``"*_pred_mask.tif".format(stem=...)`` returns itself, which then
+        matches every mask in the tree and fails each lookup -- an empty run
+        with exit 0. The glob is ignored and the default template used.
+        """
+        imgdir = tmp_path / "imgs"
+        imgdir.mkdir()
+        (imgdir / "s1_BF.tif").write_bytes(b"x")
+        maskdir = tmp_path / "masks"
+        maskdir.mkdir()
+        (maskdir / "s1_pred_mask.tif").write_bytes(b"x")
+        (maskdir / "s2_pred_mask.tif").write_bytes(b"x")  # glob would match 2
+        pipeline = _make_pipeline(tmp_path, output={"save_individual_files": False})
+
+        with patch.object(
+            pipeline,
+            "extract_features_from_path",
+            return_value=pd.DataFrame({"f": [1]}),
+        ) as spy:
+            pipeline.process_batch_scportrait(
+                imgdir, mask_dir=maskdir, mask_pattern="*_pred_mask.tif"
+            )
+
+        spy.assert_called_once()
+        _, kwargs = spy.call_args
+        assert Path(kwargs["mask_path"]).name == "s1_pred_mask.tif"
+
+    def test_injection_skips_image_with_no_mask(self, tmp_path):
+        imgdir = tmp_path / "imgs"
+        imgdir.mkdir()
+        (imgdir / "s1_BF.tif").write_bytes(b"x")
+        maskdir = tmp_path / "masks"
+        maskdir.mkdir()  # no mask present
+        pipeline = _make_pipeline(tmp_path)
+
+        with patch.object(pipeline, "extract_features_from_path") as spy:
+            out = pipeline.process_batch_scportrait(imgdir, mask_dir=maskdir)
+
+        spy.assert_not_called()
+        assert out.empty
+        assert pipeline.error_files

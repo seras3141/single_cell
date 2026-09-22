@@ -17,6 +17,14 @@ Usage:
     python scripts/run_feature_extraction.py --method scportrait --image-file path/to/img_BF.tif --output-dir data/features_output
     #   batch over a directory:
     python scripts/run_feature_extraction.py --method scportrait --image-dir path/to/bf_images --image-pattern "*_BF.tif" --output-dir data/features_output
+
+    # scPortrait with mask INJECTION (Milestone 2): featurize external
+    # cellpose_sam masks, skipping scPortrait's internal Cellpose.
+    # Injection is opt-in -- it triggers on --mask-dir and nothing else.
+    python scripts/run_feature_extraction.py --method scportrait \
+        --image-dir path/to/bf_images \
+        --mask-dir path/to/inference_tracked/cellpose_sam/final_2d \
+        --image-pattern "*_BF.tif" --output-dir data/features_output
 """
 
 import argparse
@@ -50,7 +58,11 @@ def get_args():
         "--mask-dir",
         "-m",
         type=str,
-        help="Directory containing masks (batch mode; not needed for scportrait)",
+        help=(
+            "Directory containing masks (batch mode). Not required for scportrait "
+            "native mode; when given with --method scportrait it triggers Milestone-2 "
+            "mask injection (featurize these external masks instead of segmenting)."
+        ),
     )
     # Single-file mode
     parser.add_argument(
@@ -136,6 +148,11 @@ def load_config(args) -> Dict[str, Any]:
         config["paths"]["image_dir"] = args.image_dir
     if args.mask_dir:
         config["paths"]["mask_dir"] = args.mask_dir
+        # scPortrait injection is opt-in via this flag ONLY. Every shipped
+        # config sets ``paths.mask_dir``, so gating injection on that key would
+        # silently switch scPortrait from native segmentation to injection for
+        # existing runs. Record the CLI value separately instead.
+        config["paths"]["mask_dir_cli"] = args.mask_dir
     if args.image_file:
         config["paths"]["image_file"] = args.image_file
     if args.mask_file:
@@ -221,10 +238,19 @@ def run_feature_extraction_from_config(config: Dict[str, Any]) -> pd.DataFrame:
 
     image_dir = paths_config.get("image_dir", "data/sample_data")
     if method == "scportrait":
-        # Mask-free batch: scPortrait runs its own segmentation
+        # Native batch runs scPortrait's own segmentation (no --mask-dir). When
+        # --mask-dir is given (Milestone 2), the cellpose_sam masks there are
+        # injected instead, skipping scPortrait's internal Cellpose.
         features_df = pipeline.process_batch_scportrait(
             image_dir=image_dir,
             image_patterns=[image_pattern] if image_pattern else None,
+            mask_dir=paths_config.get("mask_dir_cli"),
+            # ``feature_extraction.mask_pattern`` is a glob for the mask-paired
+            # backends; injection needs a ``{stem}`` template. Forward it only
+            # when it actually is one.
+            mask_pattern=(
+                mask_pattern if mask_pattern and "{stem}" in mask_pattern else None
+            ),
         )
     else:
         mask_dir = paths_config.get("mask_dir", "data/sample_data")

@@ -304,6 +304,87 @@ def _export_scportrait_labels_to_tif(project: Any, export_path: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# External-mask injection (Milestone 2)
+# ---------------------------------------------------------------------------
+
+def _inject_mask(project: Any, mask_path: str) -> int:
+    """Inject a pre-computed external segmentation mask into a scPortrait project.
+
+    Bypasses scPortrait's internal Cellpose segmentation (Milestone 2): the mask is
+    written through the project ``filehandler`` — the *same* API scPortrait's own
+    segmentation uses (``segmentation.py`` calls ``_write_segmentation_sdata`` +
+    relies on ``extract()`` to add centers). The filehandler persists the array to
+    the on-disk sdata zarr and builds the multiscale pyramid itself, so **no
+    ``Labels2DModel`` and no ``project.segment()`` are needed**.
+
+    Direct ``project.sdata[key] = ...`` assignment does NOT work: ``project.sdata``
+    is a property that re-reads the zarr on each access, so in-memory mutation is
+    discarded (verified: probes 38880516/38880560). The filehandler path is the
+    only one that persists (verified: Phase 0 probe 38880668).
+
+    The mask pixel values are cellpose ``cell_id``s and are preserved exactly
+    through extraction as ``scportrait_cell_id`` (Phase 0 gate 4, PASS).
+
+    Geometry: the mask is cropped (bottom-right, **never resized** — labels must
+    stay integer) to the sdata image frame when it differs by <=1px. cellpose
+    ``final_2d`` masks are 1024x1024; scPortrait's image frame is 1023x1023.
+
+    Parameters
+    ----------
+    project : scportrait Project
+        A project with input images already loaded (``load_input_from_tif_files``);
+        segmentation must NOT have been run.
+    mask_path : str
+        Path to the external (cellpose) segmentation mask TIFF.
+
+    Returns
+    -------
+    int
+        Number of injected cells (unique non-zero labels). 0 means the mask is
+        empty — the caller should skip this FOV.
+    """
+    fh = project.filehandler
+    seg_name = fh.cyto_seg_name  # 'seg_all_cytosol', resolved at runtime
+    img = fh._get_input_image(fh.get_sdata())
+    ty, tx = int(img.sizes["y"]), int(img.sizes["x"])
+
+    mask = np.squeeze(tifffile.imread(str(mask_path)).astype(np.uint32))
+    if mask.ndim != 2:
+        raise ValueError(
+            f"Expected a 2D mask, got shape {mask.shape} from {mask_path}"
+        )
+    if mask.shape != (ty, tx):
+        dy, dx = abs(mask.shape[0] - ty), abs(mask.shape[1] - tx)
+        if dy > 1 or dx > 1:
+            raise ValueError(
+                f"Mask {mask.shape} vs image frame {(ty, tx)} differ by "
+                f"({dy},{dx}) px (>1); refusing to resize integer labels."
+            )
+        # Cropping can only shrink, so a mask smaller than the frame would slip
+        # through the +/-1 tolerance unrepaired and misregister the labels by a
+        # pixel. Padding integer labels is not meaningful, so refuse instead.
+        if mask.shape[0] < ty or mask.shape[1] < tx:
+            raise ValueError(
+                f"Mask {mask.shape} is smaller than image frame {(ty, tx)}; "
+                "refusing to pad integer labels."
+            )
+        mask = mask[:ty, :tx]
+        assert mask.shape == (ty, tx)
+
+    fh._write_segmentation_sdata(mask, seg_name, overwrite=True)
+    n_cells = int(np.count_nonzero(np.unique(mask)))
+    log.info(
+        "Injected external mask '%s' under label '%s' (frame %dx%d, %d cells).",
+        mask_path,
+        seg_name,
+        ty,
+        tx,
+        n_cells,
+    )
+    return n_cells
+
+
+# ---------------------------------------------------------------------------
 # Main pipeline function
 # ---------------------------------------------------------------------------
 
@@ -360,10 +441,14 @@ def get_scportrait_features(
     selection_f : callable or None, optional
         LMD selection workflow class. Pass None (default) to skip selection.
     mask_path : str or None, optional
-        Path to a pre-computed segmentation mask TIF. Currently unused.
-        # TODO: if mask_path is provided, skip scPortrait segmentation and
-        # inject the external mask directly into the project's sdata so that
-        # extract() and featurize() use the user-supplied labels instead.
+        Path to a pre-computed external segmentation mask TIF (e.g. a
+        ``cellpose_sam`` ``final_2d`` mask). If provided, scPortrait's internal
+        Cellpose segmentation is **skipped** and the external mask is injected
+        into the project via the filehandler (see ``_inject_mask``); ``extract()``
+        and ``featurize()`` then operate on the supplied labels. The mask pixel
+        values (cellpose ``cell_id``s) are preserved exactly as
+        ``scportrait_cell_id``. If the mask is empty (0 cells), an empty
+        DataFrame is returned. If None (default), scPortrait segments normally.
     plots_dir : str or None, optional
         Directory to save diagnostic figures. If None, no figures are saved.
     scportrait_mask_export_path : str or None, optional
@@ -409,13 +494,30 @@ def get_scportrait_features(
     project.load_input_from_tif_files(image_paths, channel_names=channel_names)
     log.info("Input loaded (%d channel(s)).", len(image_paths))
 
-    log.info("Running segmentation (%s)...", segmentation_f.__name__)
-    project.segment()
-    log.info("Segmentation complete.")
-    if scportrait_mask_export_path is not None:
-        _export_scportrait_labels_to_tif(project, Path(scportrait_mask_export_path))
-    if _plots is not None:
-        _plot_segmentation(project, _plots, Path(project_location).name)
+    if mask_path is not None:
+        # Milestone 2: inject a pre-computed external (cellpose_sam) mask and
+        # skip scPortrait's internal Cellpose segmentation entirely.
+        log.info("Injecting external mask (skipping segmentation): %s", mask_path)
+        n_cells = _inject_mask(project, mask_path)
+        if n_cells == 0:
+            log.warning(
+                "Injected mask %s has 0 cells; skipping this image.", mask_path
+            )
+            return pd.DataFrame()
+        if scportrait_mask_export_path is not None:
+            _export_scportrait_labels_to_tif(
+                project, Path(scportrait_mask_export_path)
+            )
+    else:
+        log.info("Running segmentation (%s)...", segmentation_f.__name__)
+        project.segment()
+        log.info("Segmentation complete.")
+        if scportrait_mask_export_path is not None:
+            _export_scportrait_labels_to_tif(
+                project, Path(scportrait_mask_export_path)
+            )
+        if _plots is not None:
+            _plot_segmentation(project, _plots, Path(project_location).name)
 
     log.info("Running extraction (image_size from config)...")
     project.extract()
