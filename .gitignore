@@ -248,8 +248,22 @@ notebooks/output*
 notebooks/archive/
 
 demo_files/
-results/
+/results/
 
 tests/cell_activity_labeler/
 test_sample_summary_comprehensive.py
 tests/feature_visualization/
+
+# Planning/reference notes and scratch space — never committed. These are also in
+# .git/info/exclude, but that is local to one clone; keeping them here protects every
+# checkout.
+/scratch
+/docs/
+/docs_local/
+/docs_hpc/
+
+# Scratch credential dumps. Contents are secrets; the names are safe to record here so
+# no clone can stage them. Delete the files once the final data is validated.
+scratch_cookies.txt
+scratch_public.js
+scratch_share_page.html
