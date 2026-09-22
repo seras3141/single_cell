@@ -119,7 +119,9 @@ def condition_label(well: str, annotation: Optional[Mapping[str, Any]] = None) -
     Control wells carry ``drug == "control"`` in the shared plate annotation, with the
     vehicle identity in ``is_dmso`` — so the flag is checked before the drug name.
     """
-    if not annotation:
+    # Length, not truthiness: `bool(Series)` raises, and callers reasonably pass a
+    # `df.loc[...]` row rather than a dict.
+    if annotation is None or len(annotation) == 0:
         return str(well)
     # Only an explicit true counts: a missing is_dmso loaded from CSV is NaN, and
     # `bool(float("nan"))` is True, which would label every unannotated well DMSO.
@@ -367,7 +369,7 @@ def _panel_title(
     if frame.requested != frame.timepoint:
         label += f"\n[asked t={frame.requested}]"
     row = (annotations or {}).get(frame.timepoint)
-    if row:
+    if row is not None and len(row) > 0:
         label += (
             f"\nn={int(row['n_objects'])}  cov={float(row['coverage_fraction']):.3f}"
         )

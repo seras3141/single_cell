@@ -364,3 +364,28 @@ class TestCopilotEdgeCases:
         split, masks = _make_tree(tmp_path)
         frames = resolve_frames(split, masks, "M11", [1])
         assert build_filmstrip(frames, tmp_path / "tiny.png", crop=0.01).is_file()
+
+
+class TestSeriesAnnotations:
+    def test_condition_label_accepts_a_pandas_series(self):
+        """`bool(Series)` raises; a df.loc[...] row is a reasonable thing to pass."""
+        import pandas as pd
+
+        row = pd.Series(
+            {"drug": "Navitoclax", "concentration_uM": 75.0, "is_dmso": False}
+        )
+        assert condition_label("E07", row) == "Navitoclax 75 µM"
+
+    def test_empty_series_falls_back_to_the_well_id(self):
+        import pandas as pd
+
+        assert condition_label("E07", pd.Series(dtype=object)) == "E07"
+
+    def test_panel_annotation_accepts_a_series(self, tmp_path):
+        import pandas as pd
+
+        split, masks = _make_tree(tmp_path)
+        frames = resolve_frames(split, masks, "M11", [1])
+        annotations = {1: pd.Series({"n_objects": 412, "coverage_fraction": 0.153})}
+        out = build_filmstrip(frames, tmp_path / "series.png", annotations=annotations)
+        assert out.is_file()
