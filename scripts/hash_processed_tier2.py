@@ -2,7 +2,8 @@
 """Tier-2 processed-data folder hashing (Phase 4, hash-only — no bytes stored).
 
 For each experiment's large processed stage subfolders (split_data/, 3d_data/,
-blur_heatmaps/, inference/, inference_tracked/, inference_scportrait/) compute a single
+blur_heatmaps/, inference/, inference_tracked/, inference_scportrait/,
+inference_scportrait_injected/) compute a single
 folder-state hash and write a small git-tracked JSON index. The folder hash is the md5 of
 the sorted per-file md5 listing (computed recursively via `md5sum`), so it changes if any
 nested tif/zarr/file changes, or a file/subfolder is added/removed (e.g. a new model under
@@ -36,10 +37,16 @@ DEFAULT_SUBFOLDERS = [
     "inference",
     "inference_tracked",
     "inference_scportrait",
+    "inference_scportrait_injected",
 ]
 # Subfolders whose immediate children are per-model dirs (also hashed individually,
 # so a new model or a change within one model's outputs is attributable).
-MODEL_LEVEL = {"inference", "inference_tracked", "inference_scportrait"}
+MODEL_LEVEL = {
+    "inference",
+    "inference_tracked",
+    "inference_scportrait",
+    "inference_scportrait_injected",
+}
 
 DEFAULT_EXPERIMENTS = [
     "HD1509 MF5V1 0-72h 23-02-26",

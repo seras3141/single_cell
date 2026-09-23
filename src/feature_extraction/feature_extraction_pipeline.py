@@ -36,6 +36,16 @@ from src.utils.file_utils import ConfigurableFileHandler
 SCPORTRAIT_MASK_ROOT_NAME = "inference_scportrait"
 SCPORTRAIT_MASK_SUBDIRS = ("scportrait", "test", "final_2d")
 
+# Milestone 2 (mask injection): exported LABEL MASKS from an injected run go
+# under a SEPARATE sibling tree so they never collide with the native-scPortrait
+# masks above. This covers the mask export only -- the per-image and combined
+# feature CSVs follow ``output.output_dir`` like every other method, so an
+# injected run must be pointed at its own output directory or it will overwrite
+# a native run's CSVs (``slurm/gpu_feature_scportrait_injected.sbatch`` passes
+# ``--output-dir <sample>/inference_scportrait_injected/features`` for this
+# reason). ``_warn_on_existing_output`` flags the collision at run time.
+SCPORTRAIT_INJECTED_ROOT_NAME = "inference_scportrait_injected"
+
 # Child names whose presence marks a processed-experiment ("sample") folder,
 # e.g. ``.../HD1509 MF5V1 0-72h 23-02-26/``. No single marker is present in
 # every experiment (SA110 lacks manifest.json; HD1883 lacks inference_tracked),
@@ -78,6 +88,47 @@ def derive_sample_dir(image_path: Path) -> Optional[Path]:
         if child_names & _SAMPLE_DIR_MARKERS:
             return ancestor
     return None
+
+
+def resolve_cellpose_mask(
+    bf_path: Path,
+    mask_root: Path,
+    mask_pattern: str = "{stem}_pred_mask.tif",
+) -> Path:
+    """Resolve the cellpose_sam mask paired with a brightfield image (M2).
+
+    The BF stem ``<...>_BF`` maps to mask ``<...>_pred_mask.tif`` — the same
+    1:1-by-stem pairing ``mcherry_metrics`` uses. ``mask_pattern`` may use a
+    ``{stem}`` placeholder, where ``stem`` is the BF stem with a trailing
+    ``_BF`` removed. The direct ``mask_root/<filename>`` is checked first (the
+    common case: a ``.../cellpose_sam/final_2d`` dir); otherwise ``mask_root``
+    is searched recursively.
+
+    **Precedence is explicit:** a file sitting directly in ``mask_root`` wins
+    over a same-named file in a nested subdirectory. The direct hit is
+    unambiguous by construction (one exact path), and taking it avoids an
+    ``rglob`` over a ``final_2d`` tree of thousands of masks for every image.
+    Only when there is no direct hit does the recursive search apply, and that
+    path raises ``FileNotFoundError`` unless exactly one mask matches — it
+    never guesses among nested candidates.
+    """
+    stem = Path(bf_path).stem
+    if stem.endswith("_BF"):
+        stem = stem[: -len("_BF")]
+    filename = mask_pattern.format(stem=stem)
+
+    direct = Path(mask_root) / filename
+    if direct.exists():
+        return direct
+
+    matches = sorted(Path(mask_root).rglob(filename))
+    if len(matches) != 1:
+        raise FileNotFoundError(
+            f"Expected exactly one cellpose mask '{filename}' for "
+            f"'{Path(bf_path).name}' under {mask_root}, found {len(matches)}"
+            + (f": {[str(m) for m in matches[:5]]}" if matches else "")
+        )
+    return matches[0]
 
 
 def _extract_one_pair(
@@ -440,18 +491,25 @@ class FeatureExtractionPipeline:
         self,
         image_path: Path,
         sc_cfg: Dict[str, Any],
+        injected: bool = False,
     ) -> Optional[Path]:
         """Build the destination TIFF path for the exported scPortrait mask.
 
         The export root is derived from the input image's sample folder (see
         ``derive_sample_dir``) so the mask lands alongside the Cellpose outputs
-        under ``<sample>/inference_scportrait/``. An explicit
-        ``scportrait.mask_export_root`` config value overrides the derivation.
+        under ``<sample>/inference_scportrait/`` (native) or, when ``injected``
+        is set (Milestone 2), under ``<sample>/inference_scportrait_injected/``
+        so the injected run never overwrites the native one. An explicit
+        ``scportrait.mask_export_root`` (native) /
+        ``scportrait.injected_mask_export_root`` (injected) config value
+        overrides the derivation.
 
         Returns None (export skipped) when no sample folder can be derived and
         no override is configured.
         """
-        root = sc_cfg.get("mask_export_root")
+        root = sc_cfg.get(
+            "injected_mask_export_root" if injected else "mask_export_root"
+        )
         if root:
             export_root = Path(root)
         else:
@@ -459,12 +517,16 @@ class FeatureExtractionPipeline:
             if sample_dir is None:
                 self.logger.warning(
                     "Could not derive a sample folder for %s; skipping "
-                    "scPortrait mask export. Set scportrait.mask_export_root "
-                    "to export anyway.",
+                    "scPortrait mask export. Set scportrait.%s to export "
+                    "anyway.",
                     image_path,
+                    "injected_mask_export_root" if injected else "mask_export_root",
                 )
                 return None
-            export_root = sample_dir / SCPORTRAIT_MASK_ROOT_NAME
+            root_name = (
+                SCPORTRAIT_INJECTED_ROOT_NAME if injected else SCPORTRAIT_MASK_ROOT_NAME
+            )
+            export_root = sample_dir / root_name
 
         stem = image_path.stem
         if stem.endswith("_BF"):
@@ -493,9 +555,11 @@ class FeatureExtractionPipeline:
 
         Args:
             image_path: Path to image file
-            mask_path: Path to mask file. Optional and ignored for the
-                'scportrait' method (which runs its own segmentation); required
-                for all other methods.
+            mask_path: Path to mask file. Required for every method except
+                'scportrait'. For 'scportrait' it selects the mode: ``None``
+                runs scPortrait's own segmentation (native), while a supplied
+                path is injected as an external mask and must exist, skipping
+                scPortrait's internal Cellpose (Milestone 2).
             inner_n_jobs: Number of jobs for *inner* (per-cell) parallelism.
                 When the outer file loop is parallelized (see ``process_batch``),
                 the caller passes ``1`` so that N file workers do not each spawn
@@ -515,13 +579,20 @@ class FeatureExtractionPipeline:
             self.error_files.append((str(image_path), "File not found"))
             return None
 
-        # scPortrait runs its own segmentation and needs no mask; every other
-        # method requires an existing mask.
+        # scPortrait runs its own segmentation and normally needs no mask; every
+        # other method requires an existing mask. Milestone 2: when a mask IS
+        # supplied for scPortrait, it is injected (external cellpose_sam mask,
+        # skipping scPortrait's internal Cellpose) and must exist.
+        injecting = self.method == "scportrait" and mask_path is not None
         if self.method != "scportrait":
             if mask_path is None or not mask_path.exists():
                 self.logger.error(f"Mask file does not exist: {mask_path}")
                 self.error_files.append((str(mask_path), "File not found"))
                 return None
+        elif injecting and not mask_path.exists():
+            self.logger.error(f"Injection mask does not exist: {mask_path}")
+            self.error_files.append((str(mask_path), "Injection mask not found"))
+            return None
 
         try:
             if self.method == "scportrait":
@@ -532,11 +603,23 @@ class FeatureExtractionPipeline:
                         "scportrait is not installed. Install it with 'pip install scportrait' to use this method."
                     )
                 sc_cfg = self.feature_config.get("scportrait", {})
-                project_location = str(
-                    Path(sc_cfg.get("project_location", "tmp/scportrait_projects"))
-                    / image_path.stem
+                # Injected runs get their own project subtree so native and
+                # injected scPortrait projects (keyed by image stem) never clash.
+                project_root = Path(
+                    sc_cfg.get("project_location", "tmp/scportrait_projects")
                 )
-                mask_export_path = self._scportrait_mask_export_path(image_path, sc_cfg)
+                if injecting:
+                    project_root = project_root / "injected"
+                project_location = str(project_root / image_path.stem)
+                mask_export_path = self._scportrait_mask_export_path(
+                    image_path, sc_cfg, injected=injecting
+                )
+                if injecting:
+                    self.logger.info(
+                        "scPortrait mask injection: %s <- %s",
+                        image_path.name,
+                        mask_path,
+                    )
                 features_df = get_scportrait_features(
                     image_paths=[str(image_path), str(image_path)],
                     channel_names=sc_cfg.get(
@@ -549,6 +632,7 @@ class FeatureExtractionPipeline:
                     project_location=project_location,
                     overwrite=sc_cfg.get("overwrite", True),
                     debug=sc_cfg.get("debug", False),
+                    mask_path=str(mask_path) if injecting else None,
                     plots_dir=(
                         str(Path(project_location) / "plots")
                         if sc_cfg.get("save_plots", True)
@@ -833,21 +917,50 @@ class FeatureExtractionPipeline:
         self,
         image_dir: Path | str,
         image_patterns: List[str] | None = None,
+        mask_dir: Path | str | None = None,
+        mask_pattern: str | None = None,
     ) -> pd.DataFrame:
         """Extract scPortrait features from every image in a directory.
 
-        Mask-free counterpart to ``process_batch``: scPortrait runs its own
-        segmentation, so images are discovered directly (no mask pairing).
+        Two modes:
+        * **Native (default, ``mask_dir=None``):** scPortrait runs its own
+          segmentation; images are discovered directly (no mask pairing).
+        * **Injection (Milestone 2, ``mask_dir`` set):** each BF image's
+          cellpose_sam mask is resolved by stem and injected, skipping
+          scPortrait's internal Cellpose. Images with no resolvable mask are
+          skipped (recorded as errors), not silently dropped.
 
         Args:
             image_dir: Directory containing input images
             image_patterns: List of glob patterns for images
+            mask_dir: Directory of external masks to inject (None => native mode)
+            mask_pattern: Filename pattern for masks (``{stem}`` placeholder);
+                defaults to ``{stem}_pred_mask.tif``
 
         Returns:
             Combined DataFrame with features from all images
         """
         image_dir = Path(image_dir)
-        self.logger.info(f"Processing scPortrait batch from images in {image_dir}")
+        mask_dir = Path(mask_dir) if mask_dir else None
+        mask_pat = mask_pattern or "{stem}_pred_mask.tif"
+        mode = f"injection (masks from {mask_dir})" if mask_dir else "native"
+        self.logger.info(
+            f"Processing scPortrait batch [{mode}] from images in {image_dir}"
+        )
+        if mask_dir is not None:
+            if "{stem}" not in mask_pat:
+                # A glob such as "*_pred_mask.tif" survives .format() unchanged
+                # and then matches every mask in the tree, so each lookup raises
+                # and the run finishes empty with exit 0. Fall back loudly rather
+                # than fail quietly. This is the single validation point: callers
+                # forward whatever pattern they were configured with.
+                self.logger.warning(
+                    "Ignoring mask_pattern %r for scPortrait injection: it has "
+                    "no '{stem}' placeholder. Using the default template instead.",
+                    mask_pat,
+                )
+                mask_pat = "{stem}_pred_mask.tif"
+            self._warn_on_existing_output()
 
         images = self.find_images(image_dir, image_patterns=image_patterns)
         if not images:
@@ -857,7 +970,17 @@ class FeatureExtractionPipeline:
         processed_files = 0
         all_features = []
         for image_path in tqdm(images, desc="Processing images"):
-            features_df = self.extract_features_from_path(image_path, mask_path=None)
+            inject_mask: Path | None = None
+            if mask_dir is not None:
+                try:
+                    inject_mask = resolve_cellpose_mask(image_path, mask_dir, mask_pat)
+                except FileNotFoundError as exc:
+                    self.logger.warning("Skipping %s: %s", image_path.name, exc)
+                    self.error_files.append((str(image_path), str(exc)))
+                    continue
+            features_df = self.extract_features_from_path(
+                image_path, mask_path=inject_mask
+            )
             if features_df is not None:
                 all_features.append(features_df)
                 processed_files += 1
@@ -882,8 +1005,9 @@ class FeatureExtractionPipeline:
     ) -> Optional[pd.DataFrame]:
         """Extract features from a single image and save the results.
 
-        For scPortrait, ``mask_path`` is optional (segmentation is internal);
-        for mask-based methods it is required.
+        For scPortrait, ``mask_path`` selects the mode: omit it for native
+        segmentation, or pass a mask to inject it and skip scPortrait's internal
+        Cellpose. For mask-based methods it is required.
 
         Args:
             image_path: Path to the input image
@@ -904,6 +1028,42 @@ class FeatureExtractionPipeline:
             self.save_image_features(features_df, image_path)
         self.save_combined_features(features_df)
         return features_df
+
+    def _warn_on_existing_output(self) -> None:
+        """Warn when an injected run is about to overwrite existing CSVs.
+
+        Only the exported masks are namespaced by ``SCPORTRAIT_INJECTED_ROOT_NAME``;
+        the feature CSVs go to ``self.output_dir``. Pointing an injected run at a
+        native run's output directory silently replaces its output, so say so
+        rather than overwrite quietly.
+
+        Both output shapes are checked. The shipped config has
+        ``save_combined_file: false`` with ``save_individual_files: true``, so a
+        native run commonly leaves *only* per-image CSVs and no combined file --
+        looking for the combined file alone would miss the usual case. Per-image
+        files may sit in a per-source subdirectory (``create_subdirs``), hence
+        the recursive search.
+        """
+        existing = None
+        combined = self.output_dir / self.output_config.get(
+            "combined_filename", "all_features.csv"
+        )
+        if combined.exists():
+            existing = combined
+        else:
+            individual = self.output_config.get(
+                "individual_format", "{image_name}_features.csv"
+            ).format(image_name="*")
+            existing = next(iter(sorted(self.output_dir.rglob(individual))), None)
+
+        if existing is not None:
+            self.logger.warning(
+                "Injected scPortrait run will overwrite existing feature output "
+                "in %s (e.g. %s). Injected masks are namespaced, feature CSVs are "
+                "NOT -- pass a separate --output-dir to keep a native run's CSVs.",
+                self.output_dir,
+                existing.name,
+            )
 
     def save_combined_features(self, features_df: pd.DataFrame):
         """Save combined features to CSV file.

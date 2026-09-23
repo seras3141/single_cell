@@ -3,7 +3,12 @@
 Run: VIRTUAL_ENV="" uv run --extra dev pytest tests/dataset_analysis/test_processed_hash.py -q
 """
 
-from scripts.hash_processed_tier2 import aggregate_hash, hash_folder
+from scripts.hash_processed_tier2 import (
+    DEFAULT_SUBFOLDERS,
+    MODEL_LEVEL,
+    aggregate_hash,
+    hash_folder,
+)
 
 
 def _line(md5: str, relpath: str) -> str:
@@ -93,3 +98,20 @@ def test_hash_folder_symlinks_by_target(tmp_path):
     (link_dir / "sel.tif").unlink()
     (link_dir / "sel.tif").symlink_to(target_dir / "img2.tif")
     assert hash_folder(link_dir, jobs=2)["folder_md5"] != before
+
+
+def test_injected_scportrait_root_is_tracked():
+    """A new top-level output root must reach the tier-2 hash index.
+
+    ``DATA_VERSIONING.md`` requires a new ``inference_<framework>/`` dir to be
+    added to both lists, with ``inference_scportrait`` as the precedent. The
+    injected root has the same shape (``features/`` + per-model ``scportrait/``),
+    so omitting it would silently leave injected outputs out of the index.
+    """
+    assert "inference_scportrait_injected" in DEFAULT_SUBFOLDERS
+    assert "inference_scportrait_injected" in MODEL_LEVEL
+
+
+def test_model_level_roots_are_all_hashed():
+    """Every per-model root must also be a hashed subfolder."""
+    assert MODEL_LEVEL <= set(DEFAULT_SUBFOLDERS)

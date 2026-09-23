@@ -15,7 +15,7 @@ change-detection on top of the existing pipeline; it does **not** run the pipeli
 | Data | Mechanism | Bytes stored? |
 |---|---|---|
 | **Raw** TIFF trees | per-file `md5` manifest `data_versioning/raw/<exp>.md5` + folder hash in `raw_manifest_index.json` | no — hash only |
-| **Large processed** (`split_data`, `3d_data`, `blur_heatmaps`, `inference`, `inference_tracked`, `inference_scportrait`) | one folder-state hash per subfolder (+ per model) in `data_versioning/processed_hashes/processed_hash_index.json` | no — hash only |
+| **Large processed** (`split_data`, `3d_data`, `blur_heatmaps`, `inference`, `inference_tracked`, `inference_scportrait`, `inference_scportrait_injected`) | one folder-state hash per subfolder (+ per model) in `data_versioning/processed_hashes/processed_hash_index.json` | no — hash only |
 | **Small stats** (`processed_summary/`, `mcherry_metrics/`, `manifest.json`, CSVs) | DVC-stored to the local `store` remote (same Lustre mount, hardlinked) | yes — recoverable |
 | **Per-run provenance** | `manifest.json` per experiment: per-stage status + DVC hash/path + `config_git_commit` (written automatically by the `run_*` scripts) | n/a |
 
