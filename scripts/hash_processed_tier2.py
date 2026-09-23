@@ -36,10 +36,16 @@ DEFAULT_SUBFOLDERS = [
     "inference",
     "inference_tracked",
     "inference_scportrait",
+    "inference_scportrait_injected",
 ]
 # Subfolders whose immediate children are per-model dirs (also hashed individually,
 # so a new model or a change within one model's outputs is attributable).
-MODEL_LEVEL = {"inference", "inference_tracked", "inference_scportrait"}
+MODEL_LEVEL = {
+    "inference",
+    "inference_tracked",
+    "inference_scportrait",
+    "inference_scportrait_injected",
+}
 
 DEFAULT_EXPERIMENTS = [
     "HD1509 MF5V1 0-72h 23-02-26",
