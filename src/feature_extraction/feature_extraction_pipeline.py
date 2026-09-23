@@ -555,9 +555,11 @@ class FeatureExtractionPipeline:
 
         Args:
             image_path: Path to image file
-            mask_path: Path to mask file. Optional and ignored for the
-                'scportrait' method (which runs its own segmentation); required
-                for all other methods.
+            mask_path: Path to mask file. Required for every method except
+                'scportrait'. For 'scportrait' it selects the mode: ``None``
+                runs scPortrait's own segmentation (native), while a supplied
+                path is injected as an external mask and must exist, skipping
+                scPortrait's internal Cellpose (Milestone 2).
             inner_n_jobs: Number of jobs for *inner* (per-cell) parallelism.
                 When the outer file loop is parallelized (see ``process_batch``),
                 the caller passes ``1`` so that N file workers do not each spawn
@@ -1003,8 +1005,9 @@ class FeatureExtractionPipeline:
     ) -> Optional[pd.DataFrame]:
         """Extract features from a single image and save the results.
 
-        For scPortrait, ``mask_path`` is optional (segmentation is internal);
-        for mask-based methods it is required.
+        For scPortrait, ``mask_path`` selects the mode: omit it for native
+        segmentation, or pass a mask to inject it and skip scPortrait's internal
+        Cellpose. For mask-based methods it is required.
 
         Args:
             image_path: Path to the input image
