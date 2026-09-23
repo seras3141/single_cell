@@ -36,9 +36,14 @@ from src.utils.file_utils import ConfigurableFileHandler
 SCPORTRAIT_MASK_ROOT_NAME = "inference_scportrait"
 SCPORTRAIT_MASK_SUBDIRS = ("scportrait", "test", "final_2d")
 
-# Milestone 2 (mask injection): ConvNeXt embeddings computed on *injected*
-# external (cellpose_sam) masks are written under a SEPARATE sibling tree so
-# they never collide with the native-scPortrait outputs above.
+# Milestone 2 (mask injection): exported LABEL MASKS from an injected run go
+# under a SEPARATE sibling tree so they never collide with the native-scPortrait
+# masks above. This covers the mask export only -- the per-image and combined
+# feature CSVs follow ``output.output_dir`` like every other method, so an
+# injected run must be pointed at its own output directory or it will overwrite
+# a native run's CSVs (``slurm/gpu_feature_scportrait_injected.sbatch`` passes
+# ``--output-dir <sample>/inference_scportrait_injected/features`` for this
+# reason). ``_warn_on_existing_combined`` flags the collision at run time.
 SCPORTRAIT_INJECTED_ROOT_NAME = "inference_scportrait_injected"
 
 # Child names whose presence marks a processed-experiment ("sample") folder,
@@ -97,8 +102,15 @@ def resolve_cellpose_mask(
     ``{stem}`` placeholder, where ``stem`` is the BF stem with a trailing
     ``_BF`` removed. The direct ``mask_root/<filename>`` is checked first (the
     common case: a ``.../cellpose_sam/final_2d`` dir); otherwise ``mask_root``
-    is searched recursively. Raises ``FileNotFoundError`` unless exactly one
-    mask matches (deterministic — never guesses among candidates).
+    is searched recursively.
+
+    **Precedence is explicit:** a file sitting directly in ``mask_root`` wins
+    over a same-named file in a nested subdirectory. The direct hit is
+    unambiguous by construction (one exact path), and taking it avoids an
+    ``rglob`` over a ``final_2d`` tree of thousands of masks for every image.
+    Only when there is no direct hit does the recursive search apply, and that
+    path raises ``FileNotFoundError`` unless exactly one mask matches — it
+    never guesses among nested candidates.
     """
     stem = Path(bf_path).stem
     if stem.endswith("_BF"):
@@ -943,6 +955,8 @@ class FeatureExtractionPipeline:
         self.logger.info(
             f"Processing scPortrait batch [{mode}] from images in {image_dir}"
         )
+        if mask_dir is not None:
+            self._warn_on_existing_combined()
 
         images = self.find_images(image_dir, image_patterns=image_patterns)
         if not images:
@@ -1009,6 +1023,26 @@ class FeatureExtractionPipeline:
             self.save_image_features(features_df, image_path)
         self.save_combined_features(features_df)
         return features_df
+
+    def _warn_on_existing_combined(self) -> None:
+        """Warn when an injected run is about to overwrite existing CSVs.
+
+        Only the exported masks are namespaced by ``SCPORTRAIT_INJECTED_ROOT_NAME``;
+        the feature CSVs go to ``self.output_dir``. Pointing an injected run at a
+        native run's output directory silently replaces its ``all_features.csv``
+        and per-image CSVs, so say so rather than overwrite quietly.
+        """
+        combined = self.output_dir / self.output_config.get(
+            "combined_filename", "all_features.csv"
+        )
+        if combined.exists():
+            self.logger.warning(
+                "Injected scPortrait run will overwrite existing feature output "
+                "in %s (e.g. %s). Injected masks are namespaced, feature CSVs are "
+                "NOT -- pass a separate --output-dir to keep a native run's CSVs.",
+                self.output_dir,
+                combined.name,
+            )
 
     def save_combined_features(self, features_df: pd.DataFrame):
         """Save combined features to CSV file.

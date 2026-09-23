@@ -6,6 +6,8 @@ CI. These tests mock scPortrait's ``Project`` class (and the pipeline-level
 ``get_scportrait_features`` hook) so they run without scportrait installed.
 """
 
+import logging
+
 import pytest
 import numpy as np
 import pandas as pd
@@ -556,6 +558,21 @@ class TestResolveCellposeMask:
         with pytest.raises(FileNotFoundError):
             resolve_cellpose_mask(tmp_path / "s_BF.tif", tmp_path)
 
+    def test_direct_file_wins_over_nested_duplicate(self, tmp_path):
+        """A direct child of mask_root takes precedence over a nested twin.
+
+        The fast path returns before the rglob cardinality check, so this
+        precedence is deliberate, not accidental: it avoids an rglob over a
+        final_2d tree of thousands of masks for every image.
+        """
+        root = tmp_path / "masks"
+        (root / "nested").mkdir(parents=True)
+        direct = root / "s1_pred_mask.tif"
+        direct.write_bytes(b"x")
+        (root / "nested" / "s1_pred_mask.tif").write_bytes(b"x")
+
+        assert resolve_cellpose_mask(tmp_path / "s1_BF.tif", root) == direct
+
     def test_custom_pattern(self, tmp_path):
         (tmp_path / "s_mask.tif").write_bytes(b"x")
         got = resolve_cellpose_mask(tmp_path / "s_BF.tif", tmp_path, "{stem}_mask.tif")
@@ -643,6 +660,55 @@ class TestProcessBatchScportraitInjection:
         spy.assert_called_once()
         _, kwargs = spy.call_args
         assert Path(kwargs["mask_path"]).name == "s1_pred_mask.tif"
+
+    def test_warns_when_injection_would_overwrite_output(self, tmp_path, caplog):
+        """Injected masks are namespaced; the feature CSVs are not.
+
+        Pointing an injected run at a native run's output dir replaces its
+        all_features.csv, so the run must say so rather than overwrite quietly.
+        """
+        imgdir = tmp_path / "imgs"
+        imgdir.mkdir()
+        (imgdir / "s1_BF.tif").write_bytes(b"x")
+        maskdir = tmp_path / "masks"
+        maskdir.mkdir()
+        (maskdir / "s1_pred_mask.tif").write_bytes(b"x")
+        pipeline = _make_pipeline(tmp_path, output={"save_individual_files": False})
+        (pipeline.output_dir / "all_features.csv").write_text("pre-existing\n")
+
+        with patch.object(
+            pipeline,
+            "extract_features_from_path",
+            return_value=pd.DataFrame({"f": [1]}),
+        ):
+            with caplog.at_level(logging.WARNING):
+                pipeline.process_batch_scportrait(imgdir, mask_dir=maskdir)
+
+        assert any(
+            "will overwrite existing feature output" in r.message
+            for r in caplog.records
+        )
+
+    def test_no_overwrite_warning_for_native_run(self, tmp_path, caplog):
+        """A native (non-injected) run must not emit the injection warning."""
+        imgdir = tmp_path / "imgs"
+        imgdir.mkdir()
+        (imgdir / "s1_BF.tif").write_bytes(b"x")
+        pipeline = _make_pipeline(tmp_path, output={"save_individual_files": False})
+        (pipeline.output_dir / "all_features.csv").write_text("pre-existing\n")
+
+        with patch.object(
+            pipeline,
+            "extract_features_from_path",
+            return_value=pd.DataFrame({"f": [1]}),
+        ):
+            with caplog.at_level(logging.WARNING):
+                pipeline.process_batch_scportrait(imgdir)
+
+        assert not any(
+            "will overwrite existing feature output" in r.message
+            for r in caplog.records
+        )
 
     def test_glob_mask_pattern_falls_back_to_template(self, tmp_path):
         """A glob (the other backends' convention) must not silently no-op.
