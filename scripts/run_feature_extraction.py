@@ -237,6 +237,7 @@ def run_feature_extraction_from_config(config: Dict[str, Any]) -> pd.DataFrame:
         return features_df if features_df is not None else pd.DataFrame()
 
     image_dir = paths_config.get("image_dir", "data/sample_data")
+    inject_mask_dir = paths_config.get("mask_dir_cli")
     if method == "scportrait":
         # Native batch runs scPortrait's own segmentation (no --mask-dir). When
         # --mask-dir is given (Milestone 2), the cellpose_sam masks there are
@@ -244,13 +245,13 @@ def run_feature_extraction_from_config(config: Dict[str, Any]) -> pd.DataFrame:
         features_df = pipeline.process_batch_scportrait(
             image_dir=image_dir,
             image_patterns=[image_pattern] if image_pattern else None,
-            mask_dir=paths_config.get("mask_dir_cli"),
+            mask_dir=inject_mask_dir,
             # ``feature_extraction.mask_pattern`` is a glob for the mask-paired
-            # backends; injection needs a ``{stem}`` template. Forward it only
-            # when it actually is one.
-            mask_pattern=(
-                mask_pattern if mask_pattern and "{stem}" in mask_pattern else None
-            ),
+            # backends; injection needs a ``{stem}`` template. Forward it as-is
+            # so the pipeline is the single place that validates and warns --
+            # filtering here would suppress that warning. Native runs resolve no
+            # masks, so the pattern is irrelevant to them.
+            mask_pattern=mask_pattern if inject_mask_dir else None,
         )
     else:
         mask_dir = paths_config.get("mask_dir", "data/sample_data")

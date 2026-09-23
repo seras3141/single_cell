@@ -689,6 +689,56 @@ class TestProcessBatchScportraitInjection:
             for r in caplog.records
         )
 
+    def test_warns_on_existing_per_image_output_without_combined(
+        self, tmp_path, caplog
+    ):
+        """The shipped config writes per-image CSVs and no combined file.
+
+        Checking only all_features.csv would miss the common case entirely.
+        """
+        imgdir = tmp_path / "imgs"
+        imgdir.mkdir()
+        (imgdir / "s1_BF.tif").write_bytes(b"x")
+        maskdir = tmp_path / "masks"
+        maskdir.mkdir()
+        (maskdir / "s1_pred_mask.tif").write_bytes(b"x")
+        pipeline = _make_pipeline(tmp_path, output={"save_individual_files": False})
+        native = pipeline.output_dir / "split_data"
+        native.mkdir(parents=True, exist_ok=True)
+        (native / "s0_BF_features.csv").write_text("pre-existing\n")
+
+        with patch.object(
+            pipeline,
+            "extract_features_from_path",
+            return_value=pd.DataFrame({"f": [1]}),
+        ):
+            with caplog.at_level(logging.WARNING):
+                pipeline.process_batch_scportrait(imgdir, mask_dir=maskdir)
+
+        assert any(
+            "will overwrite existing feature output" in r.message
+            for r in caplog.records
+        )
+
+    def test_glob_pattern_does_not_warn_on_native_run(self, tmp_path, caplog):
+        """Native runs resolve no masks, so a glob pattern is irrelevant there."""
+        imgdir = tmp_path / "imgs"
+        imgdir.mkdir()
+        (imgdir / "s1_BF.tif").write_bytes(b"x")
+        pipeline = _make_pipeline(tmp_path, output={"save_individual_files": False})
+
+        with patch.object(
+            pipeline,
+            "extract_features_from_path",
+            return_value=pd.DataFrame({"f": [1]}),
+        ):
+            with caplog.at_level(logging.WARNING):
+                pipeline.process_batch_scportrait(
+                    imgdir, mask_pattern="*_pred_mask.tif"
+                )
+
+        assert not any("Ignoring mask_pattern" in r.message for r in caplog.records)
+
     def test_no_overwrite_warning_for_native_run(self, tmp_path, caplog):
         """A native (non-injected) run must not emit the injection warning."""
         imgdir = tmp_path / "imgs"
@@ -738,6 +788,28 @@ class TestProcessBatchScportraitInjection:
         spy.assert_called_once()
         _, kwargs = spy.call_args
         assert Path(kwargs["mask_path"]).name == "s1_pred_mask.tif"
+
+    def test_glob_mask_pattern_warns_when_ignored(self, tmp_path, caplog):
+        """Falling back to the template must be announced, not silent."""
+        imgdir = tmp_path / "imgs"
+        imgdir.mkdir()
+        (imgdir / "s1_BF.tif").write_bytes(b"x")
+        maskdir = tmp_path / "masks"
+        maskdir.mkdir()
+        (maskdir / "s1_pred_mask.tif").write_bytes(b"x")
+        pipeline = _make_pipeline(tmp_path, output={"save_individual_files": False})
+
+        with patch.object(
+            pipeline,
+            "extract_features_from_path",
+            return_value=pd.DataFrame({"f": [1]}),
+        ):
+            with caplog.at_level(logging.WARNING):
+                pipeline.process_batch_scportrait(
+                    imgdir, mask_dir=maskdir, mask_pattern="*_pred_mask.tif"
+                )
+
+        assert any("Ignoring mask_pattern" in r.message for r in caplog.records)
 
     def test_injection_skips_image_with_no_mask(self, tmp_path):
         imgdir = tmp_path / "imgs"

@@ -43,7 +43,7 @@ SCPORTRAIT_MASK_SUBDIRS = ("scportrait", "test", "final_2d")
 # injected run must be pointed at its own output directory or it will overwrite
 # a native run's CSVs (``slurm/gpu_feature_scportrait_injected.sbatch`` passes
 # ``--output-dir <sample>/inference_scportrait_injected/features`` for this
-# reason). ``_warn_on_existing_combined`` flags the collision at run time.
+# reason). ``_warn_on_existing_output`` flags the collision at run time.
 SCPORTRAIT_INJECTED_ROOT_NAME = "inference_scportrait_injected"
 
 # Child names whose presence marks a processed-experiment ("sample") folder,
@@ -941,22 +941,24 @@ class FeatureExtractionPipeline:
         image_dir = Path(image_dir)
         mask_dir = Path(mask_dir) if mask_dir else None
         mask_pat = mask_pattern or "{stem}_pred_mask.tif"
-        if "{stem}" not in mask_pat:
-            # A glob such as "*_pred_mask.tif" survives .format() unchanged and
-            # then matches every mask in the tree, so each lookup raises and the
-            # run finishes empty with exit 0. Fall back rather than fail quietly.
-            self.logger.warning(
-                "Ignoring mask_pattern %r for scPortrait injection: it has no "
-                "'{stem}' placeholder. Using the default template instead.",
-                mask_pat,
-            )
-            mask_pat = "{stem}_pred_mask.tif"
         mode = f"injection (masks from {mask_dir})" if mask_dir else "native"
         self.logger.info(
             f"Processing scPortrait batch [{mode}] from images in {image_dir}"
         )
         if mask_dir is not None:
-            self._warn_on_existing_combined()
+            if "{stem}" not in mask_pat:
+                # A glob such as "*_pred_mask.tif" survives .format() unchanged
+                # and then matches every mask in the tree, so each lookup raises
+                # and the run finishes empty with exit 0. Fall back loudly rather
+                # than fail quietly. This is the single validation point: callers
+                # forward whatever pattern they were configured with.
+                self.logger.warning(
+                    "Ignoring mask_pattern %r for scPortrait injection: it has "
+                    "no '{stem}' placeholder. Using the default template instead.",
+                    mask_pat,
+                )
+                mask_pat = "{stem}_pred_mask.tif"
+            self._warn_on_existing_output()
 
         images = self.find_images(image_dir, image_patterns=image_patterns)
         if not images:
@@ -1024,24 +1026,40 @@ class FeatureExtractionPipeline:
         self.save_combined_features(features_df)
         return features_df
 
-    def _warn_on_existing_combined(self) -> None:
+    def _warn_on_existing_output(self) -> None:
         """Warn when an injected run is about to overwrite existing CSVs.
 
         Only the exported masks are namespaced by ``SCPORTRAIT_INJECTED_ROOT_NAME``;
         the feature CSVs go to ``self.output_dir``. Pointing an injected run at a
-        native run's output directory silently replaces its ``all_features.csv``
-        and per-image CSVs, so say so rather than overwrite quietly.
+        native run's output directory silently replaces its output, so say so
+        rather than overwrite quietly.
+
+        Both output shapes are checked. The shipped config has
+        ``save_combined_file: false`` with ``save_individual_files: true``, so a
+        native run commonly leaves *only* per-image CSVs and no combined file --
+        looking for the combined file alone would miss the usual case. Per-image
+        files may sit in a per-source subdirectory (``create_subdirs``), hence
+        the recursive search.
         """
+        existing = None
         combined = self.output_dir / self.output_config.get(
             "combined_filename", "all_features.csv"
         )
         if combined.exists():
+            existing = combined
+        else:
+            individual = self.output_config.get(
+                "individual_format", "{image_name}_features.csv"
+            ).format(image_name="*")
+            existing = next(iter(sorted(self.output_dir.rglob(individual))), None)
+
+        if existing is not None:
             self.logger.warning(
                 "Injected scPortrait run will overwrite existing feature output "
                 "in %s (e.g. %s). Injected masks are namespaced, feature CSVs are "
                 "NOT -- pass a separate --output-dir to keep a native run's CSVs.",
                 self.output_dir,
-                combined.name,
+                existing.name,
             )
 
     def save_combined_features(self, features_df: pd.DataFrame):
