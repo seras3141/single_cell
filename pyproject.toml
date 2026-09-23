@@ -171,7 +171,6 @@ ignore_missing_imports = true
 module = [
     "cellpose.*",
     "trackpy.*",
-    "radiomics.*",
     "napari.*",
     "tifffile.*",
 ]

@@ -9,7 +9,6 @@ src/feature_extraction/
 ├── feature_extraction_pipeline.py   # Orchestrates batch extraction across datasets
 ├── feature_extractor_incarta.py     # Custom 2D extractor: morphology, intensity, texture
 ├── feature_extractor_regionprops.py # scikit-image regionprops (2D and 3D)
-├── feature_extractor_pyradiomics.py # PyRadiomics via SimpleITK (optional dependency)
 ├── feature_extractor_scportrait.py  # ConvNeXt deep features via scPortrait (optional dependency)
 ├── scportrait_project/              # scPortrait project config and helpers
 │   └── config.yml                   # CytosolOnlySegmentationCellpose + ConvNeXtFeaturizer
@@ -26,10 +25,10 @@ The method is set via `feature_extraction.method` in `config/feature_extraction_
 |---|---|---|
 | `incarta` *(default)* | 25 handcrafted 2D features across four groups (see below) | `scikit-image`, `scipy` |
 | `regionprops` | Standard skimage `regionprops_table` properties for 2D and 3D masks | `scikit-image` |
-| `pyradiomics` | Radiomic texture and shape features | `pyradiomics`, `SimpleITK` *(optional)* |
+| `pyradiomics` | *Not yet available.* The legacy prototype was retired; selecting it raises `NotImplementedError` until the replacement extractor lands | — |
 | `scportrait` | ConvNeXt encoder embeddings per cell via scPortrait's segment→extract→featurize pipeline | `scportrait` *(optional, requires Python ≥ 3.11)* |
 
-`pyradiomics` and `scportrait` are imported with a try/except — the pipeline falls back gracefully if either package is not installed. `scportrait` cannot share the primary environment (it pins `cellpose<4`); install it into a separate Python 3.11 environment from [`requirements-scportrait.txt`](requirements-scportrait.txt) — see [scPortrait method](#scportrait-method) below.
+`scportrait` is imported with a try/except, so the pipeline still imports when it is not installed. `scportrait` cannot share the primary environment (it pins `cellpose<4`); install it into a separate Python 3.11 environment from [`requirements-scportrait.txt`](requirements-scportrait.txt) — see [scPortrait method](#scportrait-method) below.
 
 ## Feature groups (`incarta`, 2D)
 

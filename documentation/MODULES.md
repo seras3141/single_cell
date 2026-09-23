@@ -52,7 +52,7 @@ Extracts per-cell features from 2D and 3D segmented microscopy images. Supports 
 
 **Key features:**
 - 25 morphological, intensity, spatial, and texture features per cell (incarta backend)
-- Multi-backend support: `incarta`, `regionprops`, `pyradiomics` (optional), `scportrait` (planned)
+- Multi-backend support: `incarta`, `regionprops`, `scportrait` (separate Python 3.11 env); `pyradiomics` is reserved but not yet available (legacy prototype retired)
 - Parallel processing via joblib
 
 **Extracted features (incarta / 2D):**

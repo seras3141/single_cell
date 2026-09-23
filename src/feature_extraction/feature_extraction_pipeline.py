@@ -16,12 +16,6 @@ from src.feature_extraction.feature_extractor_incarta import (
 )
 
 try:
-    from src.feature_extraction.feature_extractor_pyradiomics import (
-        get_radiomics_features,
-    )
-except ImportError:
-    get_radiomics_features = None
-try:
     from src.feature_extraction.feature_extractor_scportrait import (
         get_scportrait_features,
     )
@@ -186,6 +180,16 @@ class FeatureExtractionPipeline:
         # Validate method
         if self.method not in ["incarta", "regionprops", "pyradiomics", "scportrait"]:
             raise ValueError(f"Unsupported feature extraction method: {self.method}")
+        # The legacy pyradiomics prototype was retired; the method name is kept
+        # for the in-repo replacement. Fail here, not per file: the per-file
+        # handler in ``extract_features_from_path`` would swallow the error and
+        # the run would "succeed" with no output.
+        if self.method == "pyradiomics":
+            raise NotImplementedError(
+                "The 'pyradiomics' feature-extraction method is not yet available: "
+                "the legacy backend was retired and its replacement has not landed. "
+                "Use 'incarta', 'regionprops' or 'scportrait' instead."
+            )
 
         # Setup output directory first
         self._setup_output(output_dir, self.output_config)
@@ -667,16 +671,6 @@ class FeatureExtractionPipeline:
                     )
                 elif self.method == "regionprops":
                     features_df = get_region_properties(mask, intensity_image=image)
-                elif self.method == "pyradiomics":
-                    # DISCONTINUED: the pyradiomics backend is being reimplemented
-                    # in a future version (separate branch) and is not supported
-                    # here. It is intentionally excluded from file-level
-                    # parallelization until then.
-                    raise NotImplementedError(
-                        "The 'pyradiomics' feature-extraction method is discontinued "
-                        "and will be reimplemented in a future version. Use 'incarta' "
-                        "or 'regionprops' instead."
-                    )
                 else:
                     raise ValueError(
                         f"Unknown feature extraction method: {self.method}"

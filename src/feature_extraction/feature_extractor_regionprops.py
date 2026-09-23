@@ -1,10 +1,11 @@
-# Python script to extract PyRadiomics features from a brightfield image and segmentation image
+# Extract skimage regionprops features from a segmentation mask and an optional intensity image
 
 import logging
 import os
 
 import numpy as np
 import pandas as pd
+import tifffile as tiff
 from skimage.measure import regionprops_table
 
 logger = logging.getLogger(__name__)
@@ -75,9 +76,8 @@ def get_region_properties(segmentation_mask, intensity_image=None):
 
 
 def extract_regionprops_features(brightfield_image_path, segmentation_image_path, output_csv_path=None, visualize=False):
-    from src.feature_visualization.regionprops_plots import visualize_region_properties
     """
-    Extract PyRadiomics features from a brightfield image and segmentation image.
+    Extract regionprops features from a brightfield image and segmentation image.
 
     Parameters:
         brightfield_image_path (str): Path to the brightfield image (.tif file).
@@ -110,6 +110,10 @@ def extract_regionprops_features(brightfield_image_path, segmentation_image_path
     
 
     if visualize:
+        from src.feature_visualization.regionprops_plots import (
+            visualize_region_properties,
+        )
+
         visualize_region_properties(region_props)
 
     return region_props
