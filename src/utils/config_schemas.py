@@ -325,9 +325,6 @@ class FeatureExtractionConfig:
     image_pattern: str = "*_BF.tif"
     mask_pattern: str = "*_pred_mask.tif"
             
-    preprocessing: Dict[str, Any] = field(default_factory=lambda: {
-        "clip_percentiles": [1, 99]
-    })
     output: Dict[str, Any] = field(default_factory=lambda: {
         "save_individual_files": True,
         "save_combined_file": True,

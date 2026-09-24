@@ -30,10 +30,6 @@ feature_extraction:
               # forced to 1 when >1 file worker is used. Ignored for scportrait
               # (kept sequential on one GPU).
   
-  # Image preprocessing (optional)
-  preprocessing:
-    clip_percentiles: null     # [lower, upper] percentiles to clip (e.g., [1, 99])
-
   # File organization
   output:
     # Output options
