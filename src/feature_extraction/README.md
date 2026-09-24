@@ -24,11 +24,18 @@ The method is set via `feature_extraction.method` in `config/feature_extraction_
 | Method | What it computes | Key dependencies |
 |---|---|---|
 | `incarta` *(default)* | 25 handcrafted 2D features across four groups (see below) | `scikit-image`, `scipy` |
-| `regionprops` | Standard skimage `regionprops_table` properties for 2D and 3D masks | `scikit-image` |
+| `regionprops` | Standard skimage `regionprops_table` properties. `get_region_properties` accepts 2D and 3D arrays; the batch pipeline feeds it 2D slices only | `scikit-image` |
 | `pyradiomics` | *Not yet available.* The legacy prototype was retired; selecting it raises `NotImplementedError` until the replacement extractor lands | — |
 | `scportrait` | ConvNeXt encoder embeddings per cell via scPortrait's segment→extract→featurize pipeline | `scportrait` *(optional, requires Python ≥ 3.11)* |
 
 `scportrait` is imported with a try/except, so the pipeline still imports when it is not installed. `scportrait` cannot share the primary environment (it pins `cellpose<4`); install it into a separate Python 3.11 environment from [`requirements-scportrait.txt`](requirements-scportrait.txt) — see [scPortrait method](#scportrait-method) below.
+
+### Inputs, errors and exclusions
+
+- **Loading.** Masks are read with `src.utils.image_utils.load_labels` (TIFF, zarr or HDF5, any label dtype including uint32), and BF images with `load_image`. Both must be 2D and the same shape; anything else is a per-file error.
+- **Any per-file error fails the run.** Errors are logged in the run log (including those from parallel workers), and `feature_extraction_summary.txt` lists every failed file. It is written on every run, whatever `save_combined_file` says. The CLI then exits non-zero. Code defects (`TypeError`, `AttributeError`, `NameError`, `ImportError`, `NotImplementedError`) are re-raised on the first file instead.
+- **Unpaired masks.** A mask with no matching image is an error, unless its slice is listed under `known_missing` in [`config/data_exclusions.yaml`](../../config/data_exclusions.yaml). Images with no mask (e.g. z0 projections) are only counted.
+- **Excluded stacks.** Stacks listed under `excluded_stacks` are still extracted. The `feature_to_mcherry` loaders drop their rows.
 
 ## Feature groups (`incarta`, 2D)
 

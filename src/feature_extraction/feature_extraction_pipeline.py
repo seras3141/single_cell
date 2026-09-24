@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from joblib import Parallel, delayed
-import cv2
 
 from src.feature_extraction.feature_extractor_incarta import (
     extract_all_instance_features,
@@ -22,7 +21,35 @@ try:
 except ImportError:
     get_scportrait_features = None
 from src.feature_extraction.feature_extractor_regionprops import get_region_properties
+from src.utils.config_schemas import (
+    FeatureExtractionConfig,
+    check_feature_method_available,
+)
+from src.utils.data_exclusions import DataExclusions, load_data_exclusions
 from src.utils.file_utils import ConfigurableFileHandler
+from src.utils.image_utils import load_image, load_labels
+
+# Default filename patterns, from the same schema defaults the CLI config uses
+# (MF5V1 layout: ``<stem>_BF.tif`` images, ``<stem>_pred_mask.tif`` masks).
+DEFAULT_IMAGE_PATTERN = FeatureExtractionConfig.image_pattern
+DEFAULT_MASK_PATTERN = FeatureExtractionConfig.mask_pattern
+
+# Exceptions that signal a code defect or missing dependency rather than a bad
+# input file. The per-file handler in ``extract_features_from_path`` re-raises
+# these instead of recording them: they would recur on every file, so fail on
+# the first. TypeError/AttributeError are deliberately NOT here: numeric
+# libraries raise them for bad data too (e.g. skimage on a float label image).
+_PROGRAMMING_ERRORS = (NotImplementedError, NameError, ImportError)
+
+
+class FeatureExtractionError(RuntimeError):
+    """A run finished but one or more input files failed."""
+
+
+def _pattern_has_channel(pattern: str, channel: str) -> bool:
+    """True if an image glob selects ``channel``, e.g. ``"*_BF_3d.tif"`` and ``"BF"``."""
+    return re.search(rf"_{re.escape(channel)}(?:[_.]|$)", pattern) is not None
+
 
 # scPortrait label-mask export layout. The exported mask mirrors the Cellpose
 # tracked-mask tree but lives under a sibling ``inference_scportrait/`` dir:
@@ -159,6 +186,7 @@ class FeatureExtractionPipeline:
         method: str | None = None,
         output_dir: str | None = None,
         log_config: Dict[str, Any] = {},
+        exclusions: DataExclusions | None = None,
     ):
         """Initialize feature extraction pipeline.
 
@@ -167,6 +195,9 @@ class FeatureExtractionPipeline:
             method: Feature extraction method (overrides config if provided)
             output_dir: Output directory (overrides config if provided)
             log_config: Logging configuration dictionary
+            exclusions: Known-missing/excluded-stack registry. ``None`` loads the
+                tracked ``config/data_exclusions.yaml``; pass
+                ``DataExclusions.empty()`` to disable it.
         """
 
         self.feature_config = config
@@ -177,19 +208,12 @@ class FeatureExtractionPipeline:
         self.output_config = self.feature_config.get("output", {})
         self.processing_config = self.feature_config.get("processing", {})
 
-        # Validate method
-        if self.method not in ["incarta", "regionprops", "pyradiomics", "scportrait"]:
-            raise ValueError(f"Unsupported feature extraction method: {self.method}")
-        # The legacy pyradiomics prototype was retired; the method name is kept
-        # for the in-repo replacement. Fail here, not per file: the per-file
-        # handler in ``extract_features_from_path`` would swallow the error and
-        # the run would "succeed" with no output.
-        if self.method == "pyradiomics":
-            raise NotImplementedError(
-                "The 'pyradiomics' feature-extraction method is not yet available: "
-                "the legacy backend was retired and its replacement has not landed. "
-                "Use 'incarta', 'regionprops' or 'scportrait' instead."
-            )
+        # Validate method. Fail here, not per file: an unavailable method would
+        # otherwise fail once per image.
+        check_feature_method_available(self.method)
+        self.exclusions = (
+            exclusions if exclusions is not None else load_data_exclusions()
+        )
 
         # Setup output directory first
         self._setup_output(output_dir, self.output_config)
@@ -202,8 +226,10 @@ class FeatureExtractionPipeline:
 
         # Initialize counters and results
         self.skipped_files = 0
-        self.error_files = []
-        self.all_features = []
+        self.processed_files = 0
+        self.error_files: List[Tuple[str, str]] = []
+        self.expected_unpaired: List[str] = []
+        self.all_features: List[pd.DataFrame] = []
 
     def _setup_output(
         self, output_dir: str | None = None, output_config: Dict[str, Any] | None = None
@@ -212,7 +238,7 @@ class FeatureExtractionPipeline:
         if output_dir:
             self.output_dir = Path(output_dir)
         elif output_config:
-            self.output_dir = output_config.get("output_dir", "output/features")
+            self.output_dir = Path(output_config.get("output_dir", "output/features"))
         else:
             raise NotImplementedError("output_dir or output_config must be set")
 
@@ -250,8 +276,8 @@ class FeatureExtractionPipeline:
         pairs = []
 
         # Get file patterns
-        image_patterns = image_patterns or ["*_BF.tif"]
-        mask_patterns = mask_patterns or ["*_Cells.tif"]
+        image_patterns = image_patterns or [DEFAULT_IMAGE_PATTERN]
+        mask_patterns = mask_patterns or [DEFAULT_MASK_PATTERN]
 
         self.logger.debug(f"Searching for image patterns: {image_patterns}")
         self.logger.debug(f"Searching for mask patterns: {mask_patterns}")
@@ -330,8 +356,8 @@ class FeatureExtractionPipeline:
         Returns:
             Path to the matching image file, or None if not found
         """
-        mask_patterns = mask_patterns or ["*_Cells.tif"]
-        image_patterns = image_patterns or ["*_BF.tif"]
+        mask_patterns = mask_patterns or [DEFAULT_MASK_PATTERN]
+        image_patterns = image_patterns or [DEFAULT_IMAGE_PATTERN]
 
         mask_key = self._first_key(mask_path.name, mask_patterns)
         if mask_key is None:
@@ -371,8 +397,8 @@ class FeatureExtractionPipeline:
         Returns:
             List of matched (image_path, mask_path) tuples
         """
-        mask_patterns = mask_patterns or ["*_Cells.tif"]
-        image_patterns = image_patterns or ["*_BF.tif"]
+        mask_patterns = mask_patterns or [DEFAULT_MASK_PATTERN]
+        image_patterns = image_patterns or [DEFAULT_IMAGE_PATTERN]
 
         # Index images by pairing key; first occurrence wins, warn on collisions.
         image_by_key: Dict[str, Path] = {}
@@ -389,76 +415,83 @@ class FeatureExtractionPipeline:
             image_by_key[key] = image
 
         pairs = []
+        paired_keys = set()
         for mask in mask_files:
             key = self._first_key(mask.name, mask_patterns)
             if key is None:
-                self.logger.warning(f"Mask matches no pattern: {mask.name}")
+                self.logger.error(f"Mask matches no pattern: {mask.name}")
+                self.error_files.append((str(mask), "Mask matches no pattern"))
                 continue
             image = image_by_key.get(key)
             if image is None:
-                self.logger.warning(f"No matching image found for mask: {mask.name}")
+                self._record_unpaired_mask(mask, image_patterns)
                 continue
             pairs.append((image, mask))
+            paired_keys.add(key)
+
+        n_unmasked = len(set(image_by_key) - paired_keys)
+        if n_unmasked:
+            # Expected for z0 projections, which are never segmented.
+            self.logger.info(f"{n_unmasked} images have no mask and were not processed")
 
         return pairs
 
-    # Why use custom function and preprocessing here instead of inside extract_all_instance_features?
-    def load_image_and_mask(
-        self, image_path: Path, mask_path: Path
-    ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-        """Load image and mask files.
+    def _record_unpaired_mask(self, mask: Path, image_patterns: List[str]) -> None:
+        """Record a mask with no image: an error unless registered as known-missing.
 
-        Args:
-            image_path: Path to image file
-            mask_path: Path to mask file
-
-        Returns:
-            Tuple of (image, mask) arrays, or (None, None) if loading fails
+        Known-missing only applies for a channel the image patterns select.
         """
-
-        try:
-            # Load image
-            image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
-            if image is None:
-                self.logger.error(f"Failed to load image: {image_path}")
-                return None, None
-
-            # Load mask
-            mask = cv2.imread(str(mask_path), cv2.IMREAD_UNCHANGED)
-            if mask is None:
-                self.logger.error(f"Failed to load mask: {mask_path}")
-                return None, None
-
-            # Convert to grayscale if needed
-            if len(image.shape) == 3:
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-            if len(mask.shape) == 3:
-                mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-
-            # Validate dimensions match
-            if image.shape != mask.shape:
-                self.logger.error(
-                    f"Image and mask dimensions don't match: {image.shape} vs {mask.shape}"
+        handler = self._get_file_handler()
+        experiment = self.exclusions.experiment_of(mask)
+        sample = handler.extract_sample_id(mask.name)
+        timepoint = handler.extract_time_point(mask.name)
+        z_index = handler.extract_z_index(mask.name)
+        known = (
+            experiment is not None
+            and sample is not None
+            and str(timepoint).isdigit()
+            and z_index is not None
+            and any(
+                _pattern_has_channel(pattern, entry.channel)
+                and self.exclusions.is_known_missing(
+                    experiment, sample, int(timepoint), int(z_index), entry.channel
                 )
-                return None, None
+                for entry in self.exclusions.known_missing
+                for pattern in image_patterns
+            )
+        )
+        if known:
+            self.logger.info(
+                f"No image for mask {mask.name}: registered as known-missing"
+            )
+            self.expected_unpaired.append(str(mask))
+            return
+        self.logger.error(f"No matching image found for mask: {mask.name}")
+        self.error_files.append((str(mask), "No matching image"))
 
-            # Apply preprocessing if configured
-            preprocessing = self.feature_config.get("preprocessing", {})
-            if preprocessing.get("normalize_intensity", False):
-                image = image.astype(np.float32) / 255.0
+    @staticmethod
+    def _load_pair(image_path: Path, mask_path: Path) -> Tuple[np.ndarray, np.ndarray]:
+        """Load a BF image and its label mask; both must be 2D and the same shape.
 
-            clip_percentiles = preprocessing.get("clip_percentiles")
-            if clip_percentiles:
-                lower, upper = clip_percentiles
-                p_low, p_high = np.percentile(image, [lower, upper])  # type: ignore
-                image = np.clip(image, p_low, p_high)
-
-            return image, mask
-
-        except Exception as e:
-            self.logger.error(f"Error loading {image_path} and {mask_path}: {str(e)}")
-            return None, None
+        The mask goes through ``load_labels`` (tif/zarr/h5, any label dtype incl.
+        uint32) and the image through ``load_image``, the reader inference used
+        for the BF that produced the mask. Raises ``ValueError`` otherwise, which
+        the per-file handler records as an error.
+        """
+        image = np.asarray(load_image(image_path))
+        mask = np.asarray(load_labels(mask_path))
+        if not np.issubdtype(mask.dtype, np.integer):
+            raise ValueError(f"Mask must have an integer label dtype, got {mask.dtype}")
+        if image.ndim != 2 or mask.ndim != 2:
+            raise ValueError(
+                f"Expected a 2D image and mask, got image {image.shape} and "
+                f"mask {mask.shape}"
+            )
+        if image.shape != mask.shape:
+            raise ValueError(
+                f"Image and mask shapes differ: {image.shape} vs {mask.shape}"
+            )
+        return image, mask
 
     '''
     def validate_mask(self, mask: np.ndarray, image_path: Path) -> bool:
@@ -601,7 +634,7 @@ class FeatureExtractionPipeline:
         try:
             if self.method == "scportrait":
                 # scPortrait takes file paths (not loaded arrays) and runs its own
-                # segmentation/extraction/featurization, so handle it before cv2.imread.
+                # segmentation/extraction/featurization, so handle it before loading.
                 if get_scportrait_features is None:
                     raise RuntimeError(
                         "scportrait is not installed. Install it with 'pip install scportrait' to use this method."
@@ -647,14 +680,8 @@ class FeatureExtractionPipeline:
                     ),
                 )
             else:
-                # Load image and mask
-                image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
-                mask = cv2.imread(str(mask_path), cv2.IMREAD_UNCHANGED)
-                if image is None or mask is None:
-                    self.logger.error(
-                        f"Failed to load image: {image_path} or mask: {mask_path}"
-                    )
-                    return None
+                assert mask_path is not None  # checked above for non-scportrait
+                image, mask = self._load_pair(image_path, mask_path)
 
                 # Extract features using the main function. ``inner_n_jobs``
                 # controls per-cell parallelism; when the outer file loop is
@@ -669,12 +696,8 @@ class FeatureExtractionPipeline:
                     features_df = extract_all_instance_features(
                         mask, image, n_jobs=n_jobs
                     )
-                elif self.method == "regionprops":
+                else:  # regionprops; the constructor rejected everything else
                     features_df = get_region_properties(mask, intensity_image=image)
-                else:
-                    raise ValueError(
-                        f"Unknown feature extraction method: {self.method}"
-                    )
 
             if features_df.empty:
                 self.logger.warning(f"No features extracted from {image_path.name}")
@@ -711,6 +734,8 @@ class FeatureExtractionPipeline:
 
             return features_df
 
+        except _PROGRAMMING_ERRORS:
+            raise
         except Exception as e:
             self.logger.error(f"Error extracting features from {image_path}: {str(e)}")
             self.error_files.append((str(image_path), str(e)))
@@ -765,6 +790,7 @@ class FeatureExtractionPipeline:
         mask_dir = Path(mask_dir)
 
         self.logger.info(f"Processing dataset: {mask_dir} with images from {image_dir}")
+        errors_before = len(self.error_files)
 
         # Find image-mask pairs
         pairs = self.find_image_mask_pairs(
@@ -775,6 +801,7 @@ class FeatureExtractionPipeline:
         )
         if not pairs:
             self.logger.error(f"No valid image-mask pairs found in {image_dir}")
+            self.error_files.append((str(mask_dir), "No valid image-mask pairs"))
             return pd.DataFrame()
 
         # Process pairs. scPortrait runs its own GPU inference and is kept
@@ -791,6 +818,9 @@ class FeatureExtractionPipeline:
                 pairs, n_workers
             )
 
+        self.processed_files += processed_files
+        self._report_errors(errors_before, len(pairs))
+
         # Combine all features
         if all_features:
             combined_df = pd.concat(all_features, ignore_index=True)
@@ -803,6 +833,17 @@ class FeatureExtractionPipeline:
             self.logger.warning("No features extracted from any files")
 
         return combined_df
+
+    def _report_errors(self, errors_before: int, n_inputs: int) -> None:
+        """Log this batch's error count so it reaches the run log, not only the summary."""
+        batch_errors = self.error_files[errors_before:]
+        if not batch_errors:
+            return
+        preview = "; ".join(f"{path}: {msg}" for path, msg in batch_errors[:5])
+        self.logger.warning(
+            f"{len(batch_errors)} file error(s) across {n_inputs} inputs. "
+            f"First: {preview}"
+        )
 
     def _resolve_file_workers(self) -> int:
         """Resolve the number of concurrent file workers from ``n_jobs``.
@@ -871,6 +912,10 @@ class FeatureExtractionPipeline:
             results, total=len(pairs), desc="Processing files"
         ):
             if new_errors:
+                # Worker processes log to their own stderr, not the run's log
+                # file, so re-log here in the parent.
+                for path, msg in new_errors:
+                    self.logger.error(f"Error in file worker for {path}: {msg}")
                 self.error_files.extend(new_errors)
             if features_df is not None:
                 all_features.append(features_df)
@@ -896,7 +941,7 @@ class FeatureExtractionPipeline:
             Sorted, de-duplicated list of image paths
         """
         image_dir = Path(image_dir)
-        image_patterns = image_patterns or ["*_BF.tif"]
+        image_patterns = image_patterns or [DEFAULT_IMAGE_PATTERN]
         self.logger.debug(f"Searching for image patterns: {image_patterns}")
 
         image_files: List[Path] = []
@@ -959,10 +1004,12 @@ class FeatureExtractionPipeline:
         images = self.find_images(image_dir, image_patterns=image_patterns)
         if not images:
             self.logger.error(f"No images found in {image_dir}")
+            self.error_files.append((str(image_dir), "No images found"))
             return pd.DataFrame()
 
         processed_files = 0
         all_features = []
+        errors_before = len(self.error_files)
         for image_path in tqdm(images, desc="Processing images"):
             inject_mask: Path | None = None
             if mask_dir is not None:
@@ -980,6 +1027,9 @@ class FeatureExtractionPipeline:
                 processed_files += 1
                 if self.output_config.get("save_individual_files", True):
                     self.save_image_features(features_df, image_path)
+
+        self.processed_files += processed_files
+        self._report_errors(errors_before, len(images))
 
         if all_features:
             combined_df = pd.concat(all_features, ignore_index=True)
@@ -1017,6 +1067,7 @@ class FeatureExtractionPipeline:
         if features_df is None or features_df.empty:
             self.logger.warning(f"No features extracted from {image_path.name}")
             return features_df
+        self.processed_files += 1
 
         if self.output_config.get("save_individual_files", True):
             self.save_image_features(features_df, image_path)
@@ -1081,28 +1132,54 @@ class FeatureExtractionPipeline:
         features_df.to_csv(output_file, index=False)
         self.logger.info(f"Saved combined features to {output_file}")
 
-        # Save summary statistics
+    def save_summary(self, features_df: pd.DataFrame) -> Path:
+        """Write the run summary, including every per-file error.
+
+        Written regardless of ``save_combined_file``: it is the durable record
+        of which inputs failed.
+
+        Returns:
+            Path of the summary file.
+        """
         summary_file = self.output_dir / "feature_extraction_summary.txt"
         with open(summary_file, "w") as f:
-            f.write(f"Feature Extraction Summary\n")
-            f.write(f"========================\n\n")
+            f.write("Feature Extraction Summary\n")
+            f.write("========================\n\n")
             f.write(f"Processing completed: {datetime.now()}\n")
-            f.write(f"Total files processed: {len(features_df)}\n")
+            f.write(f"Method: {self.method}\n")
+            f.write(f"Files processed: {self.processed_files}\n")
             f.write(f"Files skipped: {self.skipped_files}\n")
             f.write(f"Files with errors: {len(self.error_files)}\n")
+            f.write(f"Expected unpaired masks: {len(self.expected_unpaired)}\n")
             f.write(f"Total instances: {len(features_df)}\n")
-            f.write(f"Total features per instance: {len(features_df.columns)}\n\n")
+            f.write(f"Total columns per instance: {len(features_df.columns)}\n\n")
 
             if self.error_files:
                 f.write("Error Files:\n")
                 for filepath, error in self.error_files:
                     f.write(f"  {filepath}: {error}\n")
 
-            f.write(f"\nFeature Columns:\n")
+            if self.expected_unpaired:
+                f.write("\nExpected unpaired masks (known-missing input):\n")
+                for filepath in self.expected_unpaired:
+                    f.write(f"  {filepath}\n")
+
+            f.write("\nFeature Columns:\n")
             for col in features_df.columns:
                 f.write(f"  {col}\n")
 
         self.logger.info(f"Saved processing summary to {summary_file}")
+        return summary_file
+
+    def raise_if_errors(self, summary_file: Path | None = None) -> None:
+        """Raise :class:`FeatureExtractionError` if any input file failed."""
+        if not self.error_files:
+            return
+        where = f"; see {summary_file}" if summary_file is not None else ""
+        raise FeatureExtractionError(
+            f"{len(self.error_files)} input file(s) failed during feature "
+            f"extraction{where}"
+        )
 
     def run(
         self, image_dirs: List[Path] = [], mask_dirs: List[Path] = []
@@ -1130,7 +1207,16 @@ class FeatureExtractionPipeline:
         # Process each directory
         for image_dir, mask_dir in zip(image_dirs, mask_dirs):
             self.logger.info(f"Processing directory: {image_dir}")
-            features_df = self.process_batch(image_dir, mask_dir)
+            features_df = self.process_batch(
+                image_dir,
+                mask_dir,
+                image_patterns=[
+                    self.feature_config.get("image_pattern") or DEFAULT_IMAGE_PATTERN
+                ],
+                mask_patterns=[
+                    self.feature_config.get("mask_pattern") or DEFAULT_MASK_PATTERN
+                ],
+            )
 
             if not features_df.empty:
                 all_datasets_features.append(features_df)
@@ -1141,14 +1227,17 @@ class FeatureExtractionPipeline:
         else:
             final_features = pd.DataFrame()
 
-        # Save results
+        # Save results; any per-file error then fails the run.
         self.save_combined_features(final_features)
+        summary_file = self.save_summary(final_features)
 
         # Log completion
         elapsed_time = time.time() - start_time
         self.logger.info(f"Feature extraction completed in {elapsed_time:.2f} seconds")
         self.logger.info(
-            f"Final results: {len(final_features)} instances from xxx images"
+            f"Final results: {len(final_features)} instances from "
+            f"{self.processed_files} images"
         )
+        self.raise_if_errors(summary_file)
 
         return final_features

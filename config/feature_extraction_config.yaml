@@ -32,7 +32,6 @@ feature_extraction:
   
   # Image preprocessing (optional)
   preprocessing:
-    normalize_intensity: false  # Normalize image intensity 
     clip_percentiles: null     # [lower, upper] percentiles to clip (e.g., [1, 99])
 
   # File organization

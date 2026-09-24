@@ -1,9 +1,9 @@
 # Extract skimage regionprops features from a segmentation mask and an optional intensity image
 
 import logging
-import os
+from pathlib import Path
+from typing import Optional, Union
 
-import numpy as np
 import pandas as pd
 import tifffile as tiff
 from skimage.measure import regionprops_table
@@ -34,7 +34,7 @@ def get_region_properties(segmentation_mask, intensity_image=None):
         # with the incarta/scPortrait outputs and the mcherry_metrics contract.
         return pd.DataFrame(properties).rename(columns={'label': 'cell_id'})
 
-    elif segmentation_mask.ndim !=3:
+    elif segmentation_mask.ndim == 3:
 
         # Initialize an empty list to store region properties for all z-stacks
         all_properties = []
@@ -75,7 +75,11 @@ def get_region_properties(segmentation_mask, intensity_image=None):
         raise ValueError("Segmentation mask must be either 2D or 3D.")
 
 
-def extract_regionprops_features(brightfield_image_path, segmentation_image_path, output_csv_path=None, visualize=False):
+def extract_regionprops_features(
+    brightfield_image_path: Union[str, Path],
+    segmentation_image_path: Union[str, Path],
+    output_csv_path: Optional[Union[str, Path]] = None,
+) -> pd.DataFrame:
     """
     Extract regionprops features from a brightfield image and segmentation image.
 
@@ -109,43 +113,4 @@ def extract_regionprops_features(brightfield_image_path, segmentation_image_path
     # print(f"Features extracted and saved to {output_csv_path}")
     
 
-    if visualize:
-        from src.feature_visualization.regionprops_plots import (
-            visualize_region_properties,
-        )
-
-        visualize_region_properties(region_props)
-
     return region_props
-
-
-
-
-def test_feature_extractor():
-    from src.feature_visualization.regionprops_plots import visualize_region_properties
-    data_dir = "/Users/serenasritharan/Projects/single-cell"
-
-    brightfield_image_path = os.path.join(data_dir, "data/BF+IF Experiments_3D_train_test_dataset/train/p2126_J03_BF.tif")
-    segmentation_image_path = os.path.join(data_dir, "data/BF+IF Experiments_3D_train_test_dataset/train/p2126_J03_Cells.tif")
-    prediction_image_path = os.path.join(data_dir, "data/BF+IF Experiments_2D_train_test_dataset/predictions_test/pretrained_cell2d_cyto3_FlowT0.4/3d_view_tracked/p2126_J03_3d_filtered_0.5.tif")
-
-    # Create the output directory for radiomics CSV files if it doesn't exist
-    radiomics_csv_dir = os.path.join(data_dir, "data/BF+IF Experiments_2D_train_test_dataset/predictions_test/pretrained_cell2d_cyto3_FlowT0.4/radiomics_csv")
-    os.makedirs(radiomics_csv_dir, exist_ok=True)
-
-    # Generate the output CSV path
-    output_csv_path = os.path.join(radiomics_csv_dir, os.path.basename(prediction_image_path).replace(".tif", ".csv"))
-
-    gt_props = extract_regionprops_features(brightfield_image_path, segmentation_image_path, visualize=False)
-    gt_props['y'] = ['gt'] * len(gt_props['cell_id'])
-
-    pred_props = extract_regionprops_features(brightfield_image_path, prediction_image_path, output_csv_path, visualize=False)
-    pred_props['y'] = ['pred'] * len(pred_props['cell_id'])
-
-    combined_df = pd.concat([gt_props, pred_props], ignore_index=True)
-
-    visualize_region_properties(combined_df, drop=['cell_id', 'z_stack', 'y'], labels='y')
-
-if __name__ == "__main__":
-    test_feature_extractor()
-
