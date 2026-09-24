@@ -10,8 +10,8 @@ import re
 import numpy as np
 import tifffile as tiff
 from pathlib import Path
-from typing import Optional, Union
-from collections import defaultdict
+from typing import Dict, List, Optional, Tuple, Union
+from collections import Counter, defaultdict
 from tqdm import tqdm
 
 from src.utils.image_utils import LABEL_FORMATS, save_labels, load_labels
@@ -35,6 +35,36 @@ def _match_slice_pattern(pattern: str, stem: str, filename: str) -> Optional[re.
     return re.fullmatch(pattern, filename)
 
 
+def _invalid_z_groups(
+    file_groups: Dict[str, List[Tuple[int, Path]]],
+    z_min: Optional[int],
+    z_max: Optional[int],
+) -> Dict[str, str]:
+    """Return ``{group: reason}`` for groups whose z indices cannot be stacked safely.
+
+    Stacking assigns volume index ``i`` to the i-th retained slice, and downstream
+    code names index ``i`` as ``z{i + 1}`` (``split_3d_to_2d`` and the
+    representative-slice writer). A missing middle slice therefore shifts every later
+    slice's label down by one, pairing each mask with the wrong optical section. A
+    group is invalid if its z indices have a gap or a duplicate, do not start at
+    ``z_min``, or (when ``z_max`` is set) do not reach ``z_max``. Without ``z_max`` a
+    missing trailing slice is allowed: it shortens the stack but keeps labels right.
+    With ``z_min=None`` the range starts at the first observed slice.
+    """
+    invalid = {}
+    for key, files in file_groups.items():
+        counts = Counter(z for z, _ in files)
+        start = z_min if z_min is not None else min(counts)
+        end = z_max if z_max is not None else max(counts)
+        missing = sorted(set(range(start, end + 1)) - set(counts))
+        duplicates = sorted(z for z, n in counts.items() if n > 1)
+        if missing or duplicates:
+            invalid[key] = (
+                f"missing z {missing or '-'}, duplicate z {duplicates or '-'}"
+            )
+    return invalid
+
+
 def combine_2d_to_3d(
     input_dir: Union[str, Path],
     output_dir: Union[str, Path],
@@ -45,7 +75,7 @@ def combine_2d_to_3d(
     output_format: str = "tif",
     input_format: Optional[str] = None,
     overwrite: bool = False,
-):
+) -> Dict[str, str]:
     """
     Combine saved 2D label slices into 3D volumetric files.
 
@@ -62,6 +92,12 @@ def combine_2d_to_3d(
         input_format: Format of the input 2D label slices. Defaults to
             ``output_format``. Cross-format conversion is not supported.
         overwrite: If False (default), skip groups whose 3D output file already exists.
+
+    Returns:
+        The groups that were skipped because their z indices have a gap or a
+        duplicate, do not start at ``z_min``, or (when ``z_max`` is set) do not reach
+        ``z_max``, mapped to the reason. Each is also logged at ERROR level; the other
+        groups are still combined.
 
     Example:
         Converts files like "sample_z1_BF.tif", "sample_z2_BF.tif", ...
@@ -94,7 +130,7 @@ def combine_2d_to_3d(
     file_names = sorted(input_dir.rglob(glob_pattern) if recursive else input_dir.glob(glob_pattern))
     if not file_names:
         print(f"No {input_format} files found in {input_dir}. Please check the directory and file pattern.")
-        return
+        return {}
 
     for file_name in tqdm(file_names, desc="Finding 2D files"):
         fname_only = file_name.name
@@ -114,22 +150,17 @@ def combine_2d_to_3d(
                 key = f"{base_name}_{suffix.strip('_')}"
             file_groups[key].append((z_index, file_name))
 
-    if z_min is not None and z_max is not None:
-        expected_slices = z_max - z_min + 1
-        bad_groups = {
-            key: len(files)
-            for key, files in file_groups.items()
-            if len(files) != expected_slices
-        }
-        if bad_groups:
-            lines = "\n".join(
-                f"  {k}: {v} slices (expected {expected_slices})"
-                for k, v in bad_groups.items()
-            )
-            raise ValueError(
-                f"z-slice count mismatch for {len(bad_groups)} group(s) "
-                f"(expected {expected_slices} slices each, z_min={z_min}, z_max={z_max}):\n{lines}"
-            )
+    invalid = _invalid_z_groups(file_groups, z_min, z_max)
+    for key, reason in sorted(invalid.items()):
+        existing = output_dir / f"{key}_3d{output_ext}"
+        note = ""
+        if existing.exists():
+            note = " An existing output from an earlier run is left untouched."
+        logging.error(
+            f"Skipping {key}: {reason} (z_min={z_min}, z_max={z_max}); "
+            f"stacking it would mislabel slices.{note}"
+        )
+        del file_groups[key]
 
     print(f"Found {len(file_groups)} groups of 2D images to combine into 3D volumes.")
     print("Example groups:")
@@ -165,6 +196,7 @@ def combine_2d_to_3d(
         save_labels(volume, output_path)
 
     print(f"Successfully combined {len(file_groups)} 2D image sets into 3D volumes in {output_dir}")
+    return invalid
 
 
 def split_3d_to_2d(

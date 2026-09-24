@@ -229,6 +229,113 @@ class TestCombine2DTo3D:
         # Every distinct label from every slice survives.
         assert set(np.unique(volume)) == {0, 100, 200, 300, 500, 900}
 
+    @staticmethod
+    def _write_slices(input_dir, stem, z_values):
+        for z in z_values:
+            tiff.imwrite(
+                str(input_dir / f"{stem}_z{z}_BF.tif"),
+                np.full((8, 8), z, dtype=np.uint8),
+            )
+
+    def _stacked(self, temp_dir, stem):
+        path = temp_dir["output"] / f"{stem}_BF_3d.tif"
+        if not path.exists():
+            return None
+        volume = tiff.imread(str(path))
+        return [int(volume[i, 0, 0]) for i in range(volume.shape[0])]
+
+    def test_missing_middle_slice_is_skipped(self, temp_dir, caplog):
+        """Regression: a missing middle z must not be stacked into a shorter volume,
+        which would shift every later slice's z label down by one (a raw BF dropout
+        did exactly this to one HD1883 stack).
+        """
+        self._write_slices(temp_dir["input"], "gap", [1, 2, 3, 5, 6])
+
+        with caplog.at_level("ERROR"):
+            skipped = combine_2d_to_3d(temp_dir["input"], temp_dir["output"])
+
+        assert skipped == {"gap_BF": "missing z [4], duplicate z -"}
+        assert self._stacked(temp_dir, "gap") is None
+        assert "Skipping gap_BF: missing z [4]" in caplog.text
+
+    def test_bad_group_does_not_block_good_groups(self, temp_dir):
+        self._write_slices(temp_dir["input"], "good", [1, 2, 3])
+        self._write_slices(temp_dir["input"], "bad_a", [1, 3])
+        self._write_slices(temp_dir["input"], "bad_b", [1, 2, 4])
+
+        skipped = combine_2d_to_3d(temp_dir["input"], temp_dir["output"])
+
+        assert set(skipped) == {"bad_a_BF", "bad_b_BF"}
+        assert self._stacked(temp_dir, "good") == [1, 2, 3]
+        assert self._stacked(temp_dir, "bad_a") is None
+        assert self._stacked(temp_dir, "bad_b") is None
+
+    def test_missing_first_slice_is_skipped(self, temp_dir):
+        """A group that does not start at z_min would be labelled from z1."""
+        self._write_slices(temp_dir["input"], "late", [2, 3, 4])
+
+        skipped = combine_2d_to_3d(temp_dir["input"], temp_dir["output"])
+
+        assert skipped == {"late_BF": "missing z [1], duplicate z -"}
+
+    def test_duplicate_slice_is_skipped(self, temp_dir):
+        """The same z found twice (e.g. in two subdirectories) is ambiguous."""
+        subdir = temp_dir["input"] / "copy"
+        subdir.mkdir()
+        self._write_slices(temp_dir["input"], "dup", [1, 2, 3])
+        self._write_slices(subdir, "dup", [2])
+
+        skipped = combine_2d_to_3d(
+            temp_dir["input"], temp_dir["output"], recursive=True
+        )
+
+        assert skipped == {"dup_BF": "missing z -, duplicate z [2]"}
+
+    def test_missing_trailing_slice_without_z_max_is_allowed(self, temp_dir):
+        """A missing last slice only shortens the stack; labels z1..zN stay correct."""
+        self._write_slices(temp_dir["input"], "short", [1, 2, 3])
+
+        assert combine_2d_to_3d(temp_dir["input"], temp_dir["output"]) == {}
+        assert self._stacked(temp_dir, "short") == [1, 2, 3]
+
+    def test_missing_trailing_slice_with_z_max_is_skipped(self, temp_dir):
+        self._write_slices(temp_dir["input"], "short", [1, 2, 3])
+        self._write_slices(temp_dir["input"], "full", [1, 2, 3, 4])
+
+        skipped = combine_2d_to_3d(temp_dir["input"], temp_dir["output"], z_max=4)
+
+        assert skipped == {"short_BF": "missing z [4], duplicate z -"}
+        assert self._stacked(temp_dir, "full") == [1, 2, 3, 4]
+
+    def test_existing_output_of_skipped_group_is_left_and_flagged(
+        self, temp_dir, caplog
+    ):
+        self._write_slices(temp_dir["input"], "gap", [1, 3])
+        stale = temp_dir["output"] / "gap_BF_3d.tif"
+        tiff.imwrite(str(stale), np.zeros((2, 8, 8), dtype=np.uint8))
+
+        with caplog.at_level("ERROR"):
+            combine_2d_to_3d(temp_dir["input"], temp_dir["output"], overwrite=True)
+
+        assert tiff.imread(str(stale)).shape == (2, 8, 8)
+        assert "existing output from an earlier run is left untouched" in caplog.text
+
+    def test_z_min_none_checks_contiguity_from_first_slice(self, temp_dir):
+        self._write_slices(temp_dir["input"], "from_zero", [0, 1, 2])
+        self._write_slices(temp_dir["input"], "zero_gap", [0, 2])
+
+        skipped = combine_2d_to_3d(temp_dir["input"], temp_dir["output"], z_min=None)
+
+        assert skipped == {"zero_gap_BF": "missing z [1], duplicate z -"}
+        assert self._stacked(temp_dir, "from_zero") == [0, 1, 2]
+
+    def test_projection_below_z_min_is_ignored(self, temp_dir):
+        """z0 (the projection) is filtered by z_min=1 before the contiguity check."""
+        self._write_slices(temp_dir["input"], "proj", [0, 1, 2, 3])
+
+        assert combine_2d_to_3d(temp_dir["input"], temp_dir["output"]) == {}
+        assert self._stacked(temp_dir, "proj") == [1, 2, 3]
+
 
 class TestSplit3DTo2D:
     """Test cases for split_3d_to_2d function."""
