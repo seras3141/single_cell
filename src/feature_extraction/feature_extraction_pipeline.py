@@ -791,6 +791,7 @@ class FeatureExtractionPipeline:
 
         self.logger.info(f"Processing dataset: {mask_dir} with images from {image_dir}")
         errors_before = len(self.error_files)
+        expected_before = len(self.expected_unpaired)
 
         # Find image-mask pairs
         pairs = self.find_image_mask_pairs(
@@ -800,6 +801,17 @@ class FeatureExtractionPipeline:
             mask_patterns=mask_patterns,
         )
         if not pairs:
+            only_known_missing = (
+                len(self.expected_unpaired) > expected_before
+                and len(self.error_files) == errors_before
+            )
+            if only_known_missing:
+                # Every mask in the batch is a registered known-missing input.
+                self.logger.info(
+                    f"No image-mask pairs in {image_dir}: every unpaired mask is "
+                    "registered as known-missing"
+                )
+                return pd.DataFrame()
             self.logger.error(f"No valid image-mask pairs found in {image_dir}")
             self.error_files.append((str(mask_dir), "No valid image-mask pairs"))
             return pd.DataFrame()
@@ -1205,21 +1217,27 @@ class FeatureExtractionPipeline:
             return pd.DataFrame()
 
         # Process each directory
-        for image_dir, mask_dir in zip(image_dirs, mask_dirs):
-            self.logger.info(f"Processing directory: {image_dir}")
-            features_df = self.process_batch(
-                image_dir,
-                mask_dir,
-                image_patterns=[
-                    self.feature_config.get("image_pattern") or DEFAULT_IMAGE_PATTERN
-                ],
-                mask_patterns=[
-                    self.feature_config.get("mask_pattern") or DEFAULT_MASK_PATTERN
-                ],
-            )
+        try:
+            for image_dir, mask_dir in zip(image_dirs, mask_dirs):
+                self.logger.info(f"Processing directory: {image_dir}")
+                features_df = self.process_batch(
+                    image_dir,
+                    mask_dir,
+                    image_patterns=[
+                        self.feature_config.get("image_pattern")
+                        or DEFAULT_IMAGE_PATTERN
+                    ],
+                    mask_patterns=[
+                        self.feature_config.get("mask_pattern") or DEFAULT_MASK_PATTERN
+                    ],
+                )
 
-            if not features_df.empty:
-                all_datasets_features.append(features_df)
+                if not features_df.empty:
+                    all_datasets_features.append(features_df)
+        except BaseException:
+            # A code defect re-raised mid-run: still leave a summary of what was done.
+            self.save_summary(pd.DataFrame())
+            raise
 
         # Combine all datasets
         if all_datasets_features:

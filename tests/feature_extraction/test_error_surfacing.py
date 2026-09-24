@@ -341,3 +341,29 @@ def test_scportrait_no_images_is_an_error(tmp_path):
     )
     assert pipeline.process_batch_scportrait(empty).empty
     assert pipeline.error_files == [(str(empty), "No images found")]
+
+
+def test_batch_of_only_known_missing_masks_is_not_an_error(tmp_path):
+    root = tmp_path / EXP
+    img_dir, msk_dir = _dataset(root, [])
+    save_labels(_mask(), msk_dir / "pMF5V1_H09_t201_z4_pred_mask.tif")
+    registry = DataExclusions(
+        known_missing=(KnownMissing(EXP, "H09", 201, 4, "BF", "absent"),)
+    )
+    pipeline = _pipeline(tmp_path, exclusions=registry)
+    assert _run(pipeline, img_dir, msk_dir).empty
+    assert not pipeline.error_files
+    assert len(pipeline.expected_unpaired) == 1
+
+
+def test_run_writes_summary_when_code_defect_propagates(tmp_path, monkeypatch):
+    img_dir, msk_dir = _dataset(tmp_path, ["a"])
+
+    def broken(mask, intensity_image=None):
+        raise NameError("backend bug")
+
+    monkeypatch.setattr(fep, "get_region_properties", broken)
+    pipeline = _pipeline(tmp_path)
+    with pytest.raises(NameError):
+        pipeline.run([img_dir], [msk_dir])
+    assert (pipeline.output_dir / "feature_extraction_summary.txt").exists()

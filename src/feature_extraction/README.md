@@ -33,7 +33,7 @@ The method is set via `feature_extraction.method` in `config/feature_extraction_
 ### Inputs, errors and exclusions
 
 - **Loading.** Masks are read with `src.utils.image_utils.load_labels` (TIFF, zarr or HDF5, any label dtype including uint32), and BF images with `load_image`. Both must be 2D and the same shape; anything else is a per-file error.
-- **Any per-file error fails the run.** Errors are logged in the run log (including those from parallel workers), and `feature_extraction_summary.txt` lists every failed file. It is written on every run, whatever `save_combined_file` says. The CLI then exits non-zero. Code defects (`TypeError`, `AttributeError`, `NameError`, `ImportError`, `NotImplementedError`) are re-raised on the first file instead.
+- **Any per-file error fails the run.** Errors are logged in the run log (including those from parallel workers), and `feature_extraction_summary.txt` lists every failed file. It is written on every run, whatever `save_combined_file` says. The CLI then exits non-zero. Code defects and missing dependencies (`NameError`, `ImportError`, `NotImplementedError`) are re-raised on the first file instead, after the summary is written. `TypeError` and `AttributeError` are recorded per file, because numeric libraries also raise them for bad input data (e.g. a float label image).
 - **Unpaired masks.** A mask with no matching image is an error, unless its slice is listed under `known_missing` in [`config/data_exclusions.yaml`](../../config/data_exclusions.yaml). Images with no mask (e.g. z0 projections) are only counted.
 - **Excluded stacks.** Stacks listed under `excluded_stacks` are still extracted. The `feature_to_mcherry` loaders drop their rows.
 
