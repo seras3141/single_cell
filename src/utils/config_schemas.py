@@ -239,13 +239,53 @@ class RepresentativeSliceConfig:
 # Feature Extraction Configuration
 # =============================================================================
 
+#: PyRadiomics feature classes the ``pyradiomics`` backend can enable (2D, original
+#: image only). The default enables all of them: 102 features.
+PYRADIOMICS_FEATURE_CLASSES: Tuple[str, ...] = (
+    "shape2D",
+    "firstorder",
+    "glcm",
+    "glrlm",
+    "glszm",
+    "gldm",
+    "ngtdm",
+)
+
+
 @dataclass
-class RadiomicsConfig:
-    """Radiomics feature extraction configuration."""
-    binWidth: int = 25
-    interpolator: str = "sitkLinear"
-    resampledPixelSpacing: Optional[List[float]] = None
-    padDistance: int = 10
+class PyradiomicsConfig:
+    """Settings for the ``pyradiomics`` backend (``feature_extraction.pyradiomics``).
+
+    Extractor defaults match the external GPU radiomics delivery (binWidth 25, 2D,
+    PyRadiomics z-score normalisation x100). ``min_pixels`` is provisional until the
+    occupied-grey-level screen sets an evidence-based floor.
+    """
+    bin_width: float = 25
+    force_2d: bool = True
+    normalize: bool = True
+    normalize_scale: float = 100
+    min_pixels: int = 20  # labels with fewer pixels are skipped, not extracted
+    feature_classes: List[str] = field(
+        default_factory=lambda: list(PYRADIOMICS_FEATURE_CLASSES)
+    )
+    include_diagnostics: bool = False  # keep PyRadiomics' diagnostics_* columns
+    require_cuda: bool = False  # fail unless the pyradiomics-cuda package is installed
+
+
+def validate_pyradiomics_config(cfg: PyradiomicsConfig) -> None:
+    """Raise ``ValueError`` if ``cfg`` holds an invalid ``pyradiomics`` setting."""
+    if cfg.bin_width <= 0:
+        raise ValueError("feature_extraction.pyradiomics.bin_width must be > 0")
+    if cfg.normalize_scale <= 0:
+        raise ValueError("feature_extraction.pyradiomics.normalize_scale must be > 0")
+    if cfg.min_pixels < 1:
+        raise ValueError("feature_extraction.pyradiomics.min_pixels must be >= 1")
+    unknown = sorted(set(cfg.feature_classes) - set(PYRADIOMICS_FEATURE_CLASSES))
+    if not cfg.feature_classes or unknown:
+        raise ValueError(
+            "feature_extraction.pyradiomics.feature_classes must be a non-empty subset "
+            f"of {list(PYRADIOMICS_FEATURE_CLASSES)}; unknown: {unknown}"
+        )
 
 
 @dataclass
@@ -289,12 +329,7 @@ FEATURE_METHODS: Tuple[str, ...] = (
 
 #: Recognised but not usable yet, mapped to the reason given to the user. The
 #: name stays reserved so configs, the CLI and the schema keep accepting it.
-UNAVAILABLE_FEATURE_METHODS: Dict[str, str] = {
-    "pyradiomics": (
-        "the legacy backend was retired and its replacement has not landed. "
-        "Use 'incarta', 'regionprops' or 'scportrait' instead."
-    ),
-}
+UNAVAILABLE_FEATURE_METHODS: Dict[str, str] = {}
 
 
 def check_feature_method_available(method: str) -> None:
@@ -335,6 +370,7 @@ class FeatureExtractionConfig:
     })
 
     scportrait: ScportraitConfig = field(default_factory=ScportraitConfig)
+    pyradiomics: PyradiomicsConfig = field(default_factory=PyradiomicsConfig)
 
 
 # =============================================================================
@@ -636,3 +672,4 @@ def validate_pipeline_config(config: PipelineConfig) -> None:
     valid_methods = list(FEATURE_METHODS)
     if config.feature_extraction.method not in valid_methods:
         raise ValueError(f"Feature extraction method must be one of {valid_methods}, got '{config.feature_extraction.method}'")
+    validate_pyradiomics_config(config.feature_extraction.pyradiomics)
