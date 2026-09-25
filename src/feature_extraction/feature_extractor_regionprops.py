@@ -91,26 +91,9 @@ def extract_regionprops_features(
 
     segmentation_image = tiff.imread(segmentation_image_path)
     brightfield_image = tiff.imread(brightfield_image_path)
-
-    # plate = os.path.basename(brightfield_image_path).split('_')[0]
-
-    # with open("data/BF+IF Experiments Labeled/meta.csv") as f:
-    #     meta = pd.read_csv(f)
-    #     time_point = int(meta.loc[meta['plate'] == plate, 'time'].values[0])
-
-    region_props = get_region_properties(segmentation_image, intensity_image=brightfield_image)
-    # region_props['time'] = time_point
-
+    region_props = get_region_properties(
+        segmentation_image, intensity_image=brightfield_image
+    )
     if output_csv_path is not None:
         region_props.to_csv(output_csv_path, index=False)
-
-    # # Save features to a CSV file
-    # with open(output_csv_path, 'w') as csv_file:
-    #     csv_file.write("Feature,Value\n")
-    #     for feature_name, feature_value in features.items():
-    #         csv_file.write(f"{feature_name},{feature_value}\n")
-
-    # print(f"Features extracted and saved to {output_csv_path}")
-    
-
     return region_props

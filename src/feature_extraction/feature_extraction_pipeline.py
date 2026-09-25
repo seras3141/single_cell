@@ -225,11 +225,9 @@ class FeatureExtractionPipeline:
         self.logger = logging.getLogger(__name__)
 
         # Initialize counters and results
-        self.skipped_files = 0
         self.processed_files = 0
         self.error_files: List[Tuple[str, str]] = []
         self.expected_unpaired: List[str] = []
-        self.all_features: List[pd.DataFrame] = []
 
     def _setup_output(
         self, output_dir: str | None = None, output_config: Dict[str, Any] | None = None
@@ -336,42 +334,6 @@ class FeatureExtractionPipeline:
             key = cls._pair_key(name, pattern)
             if key is not None:
                 return key
-        return None
-
-    def find_image_given_mask(
-        self,
-        mask_path: Path,
-        image_files: List[Path],
-        mask_patterns: List[str] | None = None,
-        image_patterns: List[str] | None = None,
-    ) -> Optional[Path]:
-        """Find the image whose pairing key equals this mask's pairing key.
-
-        Args:
-            mask_path: Path to the mask file
-            image_files: List of available image files
-            mask_patterns: Glob patterns for masks (default ``[DEFAULT_MASK_PATTERN]``)
-            image_patterns: Glob patterns for images (default ``['*_BF.tif']``)
-
-        Returns:
-            Path to the matching image file, or None if not found
-        """
-        mask_patterns = mask_patterns or [DEFAULT_MASK_PATTERN]
-        image_patterns = image_patterns or [DEFAULT_IMAGE_PATTERN]
-
-        mask_key = self._first_key(mask_path.name, mask_patterns)
-        if mask_key is None:
-            self.logger.warning(f"Mask matches no pattern: {mask_path.name}")
-            return None
-
-        for image in image_files:
-            if self._first_key(image.name, image_patterns) == mask_key:
-                self.logger.debug(
-                    f"Matched {image.name} with {mask_path.name} on key {mask_key}"
-                )
-                return image
-
-        self.logger.warning(f"No matching image found for mask: {mask_path.name}")
         return None
 
     def match_files(
@@ -1160,7 +1122,6 @@ class FeatureExtractionPipeline:
             f.write(f"Processing completed: {datetime.now()}\n")
             f.write(f"Method: {self.method}\n")
             f.write(f"Files processed: {self.processed_files}\n")
-            f.write(f"Files skipped: {self.skipped_files}\n")
             f.write(f"Files with errors: {len(self.error_files)}\n")
             f.write(f"Expected unpaired masks: {len(self.expected_unpaired)}\n")
             f.write(f"Total instances: {len(features_df)}\n")
