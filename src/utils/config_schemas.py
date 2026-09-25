@@ -225,9 +225,9 @@ class RepresentativeSliceConfig:
 
     # I/O
     mask_pattern: str = "*_pred_mask_3d.zarr"
-    # tif so downstream extraction can read it: incarta uses cv2.imread and
-    # mcherry_metrics uses tifffile.imread — neither reads .zarr (matches the tracked
-    # branch's final_2d/, which is also .tif).
+    # tif because mcherry_metrics reads masks with tifffile.imread (tif only); feature
+    # extraction reads tif/zarr/hdf5 via load_labels. Matches the tracked branch's
+    # final_2d/, which is also .tif.
     output_label_format: str = "tif"
 
     # Execution
