@@ -87,7 +87,7 @@ class TestMatchFiles:
         pipeline = _pipeline(tmp_path)
         pairs = pipeline.match_files(
             [Path("well_A_BF.tif")],
-            [Path("well_A_Cells.tif")],
+            [Path("well_A_pred_mask.tif")],
         )
         assert len(pairs) == 1
         assert pairs[0][0].name == "well_A_BF.tif"

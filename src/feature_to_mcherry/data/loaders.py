@@ -8,6 +8,7 @@ from typing import List, Optional
 
 import pandas as pd
 
+from src.utils.data_exclusions import DataExclusions, load_data_exclusions
 from src.utils.file_utils import ConfigurableFileHandler
 
 from .contract import CELL_KEY, TARGET_COLUMNS
@@ -23,8 +24,47 @@ _PROVENANCE_COLUMNS = {
 }
 
 
+def drop_excluded_stacks(
+    df: pd.DataFrame, csv_path: Path, exclusions: Optional[DataExclusions] = None
+) -> pd.DataFrame:
+    """Drop rows of stacks registered in ``config/data_exclusions.yaml``.
+
+    The experiment is identified from ``csv_path`` (a path component equal to a
+    registered experiment directory name). ``exclusions=None`` uses the tracked
+    registry; ``DataExclusions.empty()`` disables the drop.
+    """
+    registry = exclusions if exclusions is not None else load_data_exclusions()
+    experiment = registry.experiment_of(csv_path)
+    if experiment is None or df.empty:
+        return df
+    excluded = registry.excluded_stacks_for(experiment)
+    if not excluded:
+        return df
+    # Numeric compare: a blank timepoint anywhere makes pandas read the column
+    # as float ("201.0"), and some layouts carry a "t" prefix.
+    timepoints = pd.to_numeric(
+        df["timepoint"].astype(str).str.lstrip("t"), errors="coerce"
+    )
+    samples = df["sample_id"].astype(str)
+    mask = pd.Series(False, index=df.index)
+    for sample, timepoint in excluded:
+        mask |= (samples == sample) & (timepoints == timepoint)
+    n_dropped = int(mask.sum())
+    if n_dropped:
+        logger.warning(
+            "Dropped %d rows of excluded stacks %s (%s) from %s",
+            n_dropped,
+            sorted(excluded),
+            experiment,
+            csv_path,
+        )
+    return df.loc[~mask].reset_index(drop=True)
+
+
 def load_targets(
-    csv_path: Path, target_columns: Optional[List[str]] = None
+    csv_path: Path,
+    target_columns: Optional[List[str]] = None,
+    exclusions: Optional[DataExclusions] = None,
 ) -> pd.DataFrame:
     """Load the mcherry_metrics instance-metrics CSV, keeping only cell_key + targets.
 
@@ -35,11 +75,14 @@ def load_targets(
     target_columns : list[str], optional
         Percentile columns to keep as regression targets. Defaults to
         ``TARGET_COLUMNS`` (``percentile_75``, ``percentile_90``, ``percentile_95``).
+    exclusions : DataExclusions, optional
+        Registry of excluded stacks (see :func:`drop_excluded_stacks`).
 
     Returns
     -------
     pd.DataFrame
-        Columns: ``CELL_KEY + target_columns``. Rows with a NaN target are dropped.
+        Columns: ``CELL_KEY + target_columns``. Rows with a NaN target, and rows
+        of excluded stacks, are dropped.
     """
     target_columns = list(target_columns) if target_columns else list(TARGET_COLUMNS)
     df = pd.read_csv(csv_path)
@@ -53,6 +96,7 @@ def load_targets(
         )
 
     df = df[CELL_KEY + target_columns].copy()
+    df = drop_excluded_stacks(df, csv_path, exclusions)
 
     n_before = len(df)
     df = df.dropna(subset=target_columns)
@@ -72,6 +116,7 @@ def load_targets_from_directory(
     directory: Path,
     target_columns: Optional[List[str]] = None,
     pattern: str = "*.csv",
+    exclusions: Optional[DataExclusions] = None,
 ) -> pd.DataFrame:
     """Load and concatenate a directory of per-(well, timepoint, z) target CSVs.
 
@@ -107,8 +152,11 @@ def load_targets_from_directory(
             f"No files matching pattern {pattern!r} found in directory {directory}"
         )
 
+    if exclusions is None:
+        exclusions = load_data_exclusions()  # once, not per file
     frames = [
-        load_targets(csv_path, target_columns=target_columns) for csv_path in csv_paths
+        load_targets(csv_path, target_columns=target_columns, exclusions=exclusions)
+        for csv_path in csv_paths
     ]
     combined = pd.concat(frames, ignore_index=True)
 
@@ -131,6 +179,7 @@ def load_features(
     z_index_column: Optional[str] = None,
     image_filename_column: str = "image_filename",
     file_handler: Optional[ConfigurableFileHandler] = None,
+    exclusions: Optional[DataExclusions] = None,
 ) -> pd.DataFrame:
     """Load a per-cell feature CSV, normalized to CELL_KEY + feature columns.
 
@@ -161,6 +210,9 @@ def load_features(
     file_handler : ConfigurableFileHandler, optional
         Handler used for filename parsing. Defaults to a plain
         ``ConfigurableFileHandler()``.
+    exclusions : DataExclusions, optional
+        Registry of excluded stacks (see :func:`drop_excluded_stacks`); their
+        rows are dropped.
 
     Returns
     -------
@@ -270,7 +322,8 @@ def load_features(
         csv_path,
     )
 
-    return df[CELL_KEY + feature_columns].copy()
+    features = df[CELL_KEY + feature_columns].copy()
+    return drop_excluded_stacks(features, csv_path, exclusions)
 
 
 def load_features_from_directory(
@@ -282,6 +335,7 @@ def load_features_from_directory(
     image_filename_column: str = "image_filename",
     pattern: str = "*.csv",
     file_handler: Optional[ConfigurableFileHandler] = None,
+    exclusions: Optional[DataExclusions] = None,
 ) -> pd.DataFrame:
     """Load and concatenate a directory of per-(well, timepoint, z) feature CSVs.
 
@@ -325,6 +379,8 @@ def load_features_from_directory(
             f"No files matching pattern {pattern!r} found in directory {directory}"
         )
 
+    if exclusions is None:
+        exclusions = load_data_exclusions()  # once, not per file
     frames = [
         load_features(
             csv_path,
@@ -334,6 +390,7 @@ def load_features_from_directory(
             z_index_column=z_index_column,
             image_filename_column=image_filename_column,
             file_handler=file_handler,
+            exclusions=exclusions,
         )
         for csv_path in csv_paths
     ]

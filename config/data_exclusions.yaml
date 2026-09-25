@@ -1,0 +1,15 @@
+# Known-missing inputs and excluded stacks, keyed by processed-experiment directory name
+# (the pMF5V1 plate prefix is shared by every culture). Loaded by
+# src/utils/data_exclusions.py.
+#
+# known_missing:   an input slice absent from the raw data. Feature extraction logs the
+#                  resulting unpaired mask as expected instead of failing the run.
+# excluded_stacks: a (sample, timepoint) stack that is present but unusable. It is still
+#                  extracted; the feature_to_mcherry loaders drop its rows.
+
+known_missing: []
+
+# HD1883 H09_t201 was excluded on 2026-09-24 (masks z-shifted while BF z4 was missing) and
+# removed the same day, after BF z4 was restored and every derived H09_t201 file was
+# regenerated and verified (per-cell incarta == mCherry in both mask trees).
+excluded_stacks: []

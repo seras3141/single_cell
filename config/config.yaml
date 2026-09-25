@@ -29,7 +29,7 @@ preprocessing:
   # Z-range for 2D-to-3D combination
   # z0 is the 2D projection and is skipped by default (z_min: 1)
   z_min: 1       # first z-slice to include (inclusive)
-  z_max: 20      # last z-slice to include (inclusive); combine_2d_to_3d raises an error if any group has the wrong slice count
+  z_max: 20      # last z-slice to include (inclusive); combine_2d_to_3d skips (and logs) any group missing a slice in z_min..z_max
   
 # Image quality assessment
 quality:

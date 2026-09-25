@@ -235,10 +235,11 @@ examples/
 *.csv
 *.zip
 
-# venv and uv.lock
+# venv; the root uv.lock is tracked (it pins the environment, incl. the cuDNN
+# override), but installable sub-packages' locks are not
 venv/
-uv.lock
-*/uv.lock
+**/uv.lock
+!/uv.lock
 # dedicated scportrait environment (cellpose<4)
 .venv-scportrait/
 

@@ -31,12 +31,13 @@ import argparse
 import logging
 import os
 import sys
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 import pandas as pd
 
 from src.feature_extraction.feature_extraction_pipeline import FeatureExtractionPipeline
 from src.utils.logging_utils import setup_logging, add_file_handler
 from src.utils.config import ConfigManager
+from src.utils.config_schemas import FEATURE_METHODS, check_feature_method_available
 from src.dataset_analysis.run_manifest import create_or_load_manifest
 
 
@@ -97,9 +98,9 @@ def get_args():
         "--method",
         type=str,
         default=None,
-        choices=["incarta", "regionprops", "pyradiomics", "scportrait"],
+        choices=list(FEATURE_METHODS),
         help="Feature extraction method (overrides config). "
-        "Options: incarta, regionprops, pyradiomics, scportrait",
+        f"Options: {', '.join(FEATURE_METHODS)}",
     )
     parser.add_argument(
         "--log-level",
@@ -213,7 +214,16 @@ def run_feature_extraction_from_config(config: Dict[str, Any]) -> pd.DataFrame:
 
     Returns:
         Combined features DataFrame
+
+    Raises:
+        FeatureExtractionError: one or more input files failed. Outputs and the
+            summary (which lists the failures) are written first.
     """
+    # Availability before input checks, so an unavailable method is reported as
+    # such rather than as a missing --mask-dir.
+    check_feature_method_available(
+        config.get("feature_extraction", {}).get("method", "incarta")
+    )
     validate_inputs(config)
 
     pipeline = FeatureExtractionPipeline.from_config(config)
@@ -228,6 +238,29 @@ def run_feature_extraction_from_config(config: Dict[str, Any]) -> pd.DataFrame:
     image_pattern = feature_config.get("image_pattern")
     mask_pattern = feature_config.get("mask_pattern")
 
+    try:
+        features_df = _extract(
+            pipeline, paths_config, method, image_pattern, mask_pattern
+        )
+    except BaseException:
+        # A code defect re-raised mid-batch: still leave a summary of what was done.
+        pipeline.save_summary(pd.DataFrame())
+        raise
+
+    # Any per-file error fails the run, after the outputs and the summary that
+    # lists the failures are on disk.
+    pipeline.raise_if_errors(pipeline.save_summary(features_df))
+    return features_df
+
+
+def _extract(
+    pipeline: FeatureExtractionPipeline,
+    paths_config: Dict[str, Any],
+    method: str,
+    image_pattern: Optional[str],
+    mask_pattern: Optional[str],
+) -> pd.DataFrame:
+    """Dispatch to single-image, scPortrait batch or mask-paired batch mode."""
     image_file = paths_config.get("image_file")
     if image_file:
         # Single-image mode (saves individual + combined CSV internally)

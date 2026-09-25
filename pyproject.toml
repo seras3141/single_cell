@@ -41,7 +41,6 @@ dependencies = [
     "imageio>=2.9.0",
     "opencv-python>=4.5.0",
     "trackpy>=0.5.0",
-    "SimpleITK>=2.1.0",
     "tqdm>=4.62.0",
     "PyYAML>=5.4.0",
     "omegaconf>=2.3.0",
@@ -105,6 +104,16 @@ informativeness = [
 
 [project.scripts]
 single-cell-pipeline = "scripts.run_pipeline:main"
+
+[tool.uv]
+# torch 2.12.1+cu130 pins nvidia-cudnn-cu13==9.20.0.48, which lacks
+# libcudnn_engines_tensor_ir. The cluster GPU nodes now ship a system cuDNN 9.25 in
+# /usr/lib64, so the loader mixes the two and every convolution fails with
+# CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH. 9.25.1.1 ships all of its sub-libraries.
+# Re-check (and drop if possible) when upgrading torch.
+override-dependencies = [
+    "nvidia-cudnn-cu13==9.25.1.1; sys_platform == 'linux'",
+]
 
 [tool.uv.sources]
 cell-activity-labeler = { path = "src/cell_activity_labeler" }
@@ -171,7 +180,6 @@ ignore_missing_imports = true
 module = [
     "cellpose.*",
     "trackpy.*",
-    "radiomics.*",
     "napari.*",
     "tifffile.*",
 ]

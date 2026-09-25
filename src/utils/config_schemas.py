@@ -279,6 +279,43 @@ class IncartaConfig:
     })
 
 
+#: Every feature-extraction method name the pipeline, schema and CLI recognise.
+FEATURE_METHODS: Tuple[str, ...] = (
+    "incarta",
+    "regionprops",
+    "pyradiomics",
+    "scportrait",
+)
+
+#: Recognised but not usable yet, mapped to the reason given to the user. The
+#: name stays reserved so configs, the CLI and the schema keep accepting it.
+UNAVAILABLE_FEATURE_METHODS: Dict[str, str] = {
+    "pyradiomics": (
+        "the legacy backend was retired and its replacement has not landed. "
+        "Use 'incarta', 'regionprops' or 'scportrait' instead."
+    ),
+}
+
+
+def check_feature_method_available(method: str) -> None:
+    """Raise unless ``method`` is a recognised, currently usable method.
+
+    Raises:
+        ValueError: ``method`` is not in :data:`FEATURE_METHODS`.
+        NotImplementedError: ``method`` is reserved but not yet available.
+    """
+    if method not in FEATURE_METHODS:
+        raise ValueError(
+            f"Unsupported feature extraction method: {method!r}; "
+            f"expected one of {list(FEATURE_METHODS)}"
+        )
+    if method in UNAVAILABLE_FEATURE_METHODS:
+        raise NotImplementedError(
+            f"The {method!r} feature-extraction method is not yet available: "
+            + UNAVAILABLE_FEATURE_METHODS[method]
+        )
+
+
 @dataclass
 class FeatureExtractionConfig:
     """Feature extraction configuration."""
@@ -288,10 +325,6 @@ class FeatureExtractionConfig:
     image_pattern: str = "*_BF.tif"
     mask_pattern: str = "*_pred_mask.tif"
             
-    preprocessing: Dict[str, Any] = field(default_factory=lambda: {
-        "normalize_intensity": True,
-        "clip_percentiles": [1, 99]
-    })
     output: Dict[str, Any] = field(default_factory=lambda: {
         "save_individual_files": True,
         "save_combined_file": True,
@@ -598,6 +631,8 @@ def validate_pipeline_config(config: PipelineConfig) -> None:
         )
 
     # Feature extraction validation
-    valid_methods = ['incarta', 'regionprops', 'pyradiomics', 'scportrait']
+    # Reserved-but-unavailable names are accepted here; availability is checked
+    # where a run starts (pipeline constructor, CLI), see FEATURE_METHODS.
+    valid_methods = list(FEATURE_METHODS)
     if config.feature_extraction.method not in valid_methods:
         raise ValueError(f"Feature extraction method must be one of {valid_methods}, got '{config.feature_extraction.method}'")
