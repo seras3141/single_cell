@@ -1,0 +1,38 @@
+# PyRadiomics feature extraction on MF5V1 2D masks: one Parquet file per well.
+# Run with .venv-pyradiomics/bin/python (pyradiomics-cuda, SimpleITK, pyarrow), not
+# `uv run`. Pass --image-dir / --mask-dir / --output-dir on the command line.
+
+paths:
+  image_dir: ""
+  mask_dir: ""
+  output_dir: ""
+
+feature_extraction:
+  method: "pyradiomics"
+  image_pattern: "*_BF.tif"
+  mask_pattern: "*_pred_mask.tif"
+
+  # File-level workers. They share one GPU; the GPU probe sets the right value.
+  n_jobs: 4
+
+  output:
+    format: "parquet"
+    granularity: "well"       # <well>.parquet + <well>_coverage.parquet
+    save_individual_files: false
+    save_combined_file: false
+    include_metadata: true
+    create_subdirs: false
+
+  pyradiomics:
+    bin_width: 25
+    force_2d: true
+    normalize: true
+    normalize_scale: 100
+    min_pixels: 20
+    feature_classes: ["shape2D", "firstorder", "glcm", "glrlm", "glszm", "gldm", "ngtdm"]
+    include_diagnostics: false
+    require_cuda: true
+
+logging:
+  level: "INFO"
+  filename: "feature_extraction.log"

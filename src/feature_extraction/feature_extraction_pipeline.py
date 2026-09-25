@@ -1,4 +1,6 @@
 from typing import List, Tuple, Dict, Any, Optional
+import copy
+import importlib.util
 import logging
 import os
 import re
@@ -20,10 +22,15 @@ try:
     )
 except ImportError:
     get_scportrait_features = None
+from src.feature_extraction.feature_extractor_pyradiomics import (
+    get_radiomics_features,
+)
 from src.feature_extraction.feature_extractor_regionprops import get_region_properties
 from src.utils.config_schemas import (
     FeatureExtractionConfig,
+    PyradiomicsConfig,
     check_feature_method_available,
+    validate_pyradiomics_config,
 )
 from src.utils.data_exclusions import DataExclusions, load_data_exclusions
 from src.utils.file_utils import ConfigurableFileHandler
@@ -157,24 +164,27 @@ def _extract_one_pair(
     image_path: Path,
     mask_path: Path | None,
     save_individual: bool,
-) -> Tuple[Optional[pd.DataFrame], List[Tuple[str, str]]]:
+) -> Tuple[Optional[pd.DataFrame], List[Tuple[str, str]], List[Dict[str, Any]]]:
     """Module-level worker for parallel file processing.
 
     Must live at module scope (not a closure/bound method) so it is picklable by
     the joblib ``loky`` backend. Runs one image/mask through ``pipeline`` with
-    inner per-cell parallelism disabled, optionally saves the per-image CSV, and
-    returns ``(features_df, new_error_records)`` — the error records are returned
-    (rather than left on ``pipeline.error_files``) because worker mutations of
-    the pickled ``pipeline`` copy do not propagate back to the parent process.
+    inner per-cell parallelism disabled, optionally saves the per-image file, and
+    returns ``(features_df, new_error_records, new_coverage_records)`` — the
+    records are returned (rather than left on the pipeline) because worker
+    mutations of the pickled ``pipeline`` copy do not propagate back to the
+    parent process.
     """
     err_before = len(pipeline.error_files)
+    cov_before = len(pipeline.coverage_records)
     features_df = pipeline.extract_features_from_path(
         image_path, mask_path, inner_n_jobs=1
     )
     new_errors = list(pipeline.error_files[err_before:])
+    new_coverage = list(pipeline.coverage_records[cov_before:])
     if features_df is not None and save_individual:
         pipeline.save_image_features(features_df, Path(image_path))
-    return features_df, new_errors
+    return features_df, new_errors, new_coverage
 
 
 class FeatureExtractionPipeline:
@@ -214,6 +224,12 @@ class FeatureExtractionPipeline:
         self.exclusions = (
             exclusions if exclusions is not None else load_data_exclusions()
         )
+        self._radiomics_cfg = self._build_radiomics_config(
+            self.feature_config.get("pyradiomics") or {}
+        )
+        self.output_format = self.output_config.get("format", "csv")
+        self.output_granularity = self.output_config.get("granularity", "image")
+        self._validate_output_options()
 
         # Setup output directory first
         self._setup_output(output_dir, self.output_config)
@@ -228,6 +244,54 @@ class FeatureExtractionPipeline:
         self.processed_files = 0
         self.error_files: List[Tuple[str, str]] = []
         self.expected_unpaired: List[str] = []
+        # One record per attempted image (status ok/empty/error): the coverage
+        # authority that tells a genuinely empty image from one never processed.
+        self.coverage_records: List[Dict[str, Any]] = []
+        # (n_skipped_small, n_label_errors) of the image being extracted.
+        self._last_label_counts: Tuple[int, int] = (0, 0)
+        self._written_wells: set = set()
+
+    @staticmethod
+    def _build_radiomics_config(raw: Any) -> PyradiomicsConfig:
+        """Build and validate the ``pyradiomics`` settings once, at construction."""
+        if isinstance(raw, PyradiomicsConfig):
+            cfg = raw
+        else:
+            try:
+                cfg = PyradiomicsConfig(**dict(raw))
+            except TypeError as exc:
+                raise ValueError(
+                    f"Invalid feature_extraction.pyradiomics settings: {exc}"
+                ) from exc
+        validate_pyradiomics_config(cfg)
+        return cfg
+
+    def _validate_output_options(self) -> None:
+        """Check ``output.format`` / ``output.granularity`` before any work."""
+        if self.output_format not in ("csv", "parquet"):
+            raise ValueError(
+                f"output.format must be 'csv' or 'parquet', got {self.output_format!r}"
+            )
+        if self.output_granularity not in ("image", "well"):
+            raise ValueError(
+                "output.granularity must be 'image' or 'well', "
+                f"got {self.output_granularity!r}"
+            )
+        if self.output_granularity == "well" and self.output_format != "parquet":
+            raise ValueError(
+                "output.granularity 'well' requires output.format 'parquet'"
+            )
+        if (
+            self.output_format == "parquet"
+            and importlib.util.find_spec("pyarrow") is None
+        ):
+            raise ImportError("output.format 'parquet' requires pyarrow")
+
+    def _save_individual(self) -> bool:
+        """Per-image files are written unless outputs are grouped per well."""
+        return self.output_granularity == "image" and bool(
+            self.output_config.get("save_individual_files", True)
+        )
 
     def _setup_output(
         self, output_dir: str | None = None, output_config: Dict[str, Any] | None = None
@@ -427,9 +491,11 @@ class FeatureExtractionPipeline:
                 f"No image for mask {mask.name}: registered as known-missing"
             )
             self.expected_unpaired.append(str(mask))
+            self._append_coverage("", mask.name, mask.name, status="known_missing")
             return
         self.logger.error(f"No matching image found for mask: {mask.name}")
         self.error_files.append((str(mask), "No matching image"))
+        self._append_coverage("", mask.name, mask.name, status="unpaired")
 
     @staticmethod
     def _load_pair(image_path: Path, mask_path: Path) -> Tuple[np.ndarray, np.ndarray]:
@@ -532,6 +598,49 @@ class FeatureExtractionPipeline:
             stem = stem[: -len("_BF")]
         return export_root.joinpath(*SCPORTRAIT_MASK_SUBDIRS, f"{stem}_pred_mask.tif")
 
+    def _key_columns(self, filename: str) -> Tuple[str, str, int]:
+        """``(sample_id, timepoint, z_index)`` parsed from a filename.
+
+        The one place these are derived, so the feature rows and the coverage
+        records (which per-well output joins on) always agree. Missing values
+        become ``""`` / ``""`` / ``-1``.
+        """
+        handler = self._get_file_handler()
+        sample_id = handler.extract_sample_id(filename)
+        timepoint = handler.extract_time_point(filename)
+        z_index = handler.extract_z_index(filename)
+        return (
+            sample_id if sample_id is not None else "",
+            "" if timepoint == "unknown" else str(timepoint),
+            -1 if z_index is None else int(z_index),
+        )
+
+    def _append_coverage(
+        self,
+        image_filename: str,
+        mask_filename: str,
+        key_source: str,
+        status: str,
+        n_cells: int = 0,
+        seconds: float = 0.0,
+        label_counts: Tuple[int, int] = (0, 0),
+    ) -> None:
+        sample_id, timepoint, z_index = self._key_columns(key_source)
+        self.coverage_records.append(
+            {
+                "image_filename": image_filename,
+                "mask_filename": mask_filename,
+                "sample_id": sample_id,
+                "timepoint": timepoint,
+                "z_index": z_index,
+                "status": status,
+                "n_cells": n_cells,
+                "n_skipped_small": label_counts[0],
+                "n_label_errors": label_counts[1],
+                "seconds": seconds,
+            }
+        )
+
     def _get_file_handler(self) -> ConfigurableFileHandler:
         """Return a cached filename handler for per-cell metadata extraction.
 
@@ -568,8 +677,54 @@ class FeatureExtractionPipeline:
 
         Returns:
             DataFrame with extracted features, or None if extraction fails
-        """
 
+        Every call also appends one record to ``coverage_records`` (status
+        ``ok`` / ``empty`` / ``error``), unless a code defect propagates.
+        """
+        start = time.perf_counter()
+        errors_before = len(self.error_files)
+        self._last_label_counts = (0, 0)
+        features_df = self._extract_features(image_path, mask_path, inner_n_jobs)
+        self._record_coverage(
+            Path(image_path),
+            Path(mask_path) if mask_path is not None else None,
+            features_df,
+            failed=len(self.error_files) > errors_before,
+            seconds=time.perf_counter() - start,
+        )
+        return features_df
+
+    def _record_coverage(
+        self,
+        image_path: Path,
+        mask_path: Optional[Path],
+        features_df: Optional[pd.DataFrame],
+        failed: bool,
+        seconds: float,
+    ) -> None:
+        if failed:
+            status = "error"
+        elif features_df is None:
+            status = "empty"
+        else:
+            status = "ok"
+        self._append_coverage(
+            image_path.name,
+            mask_path.name if mask_path is not None else "",
+            key_source=image_path.name,
+            status=status,
+            n_cells=0 if features_df is None else len(features_df),
+            seconds=seconds,
+            label_counts=self._last_label_counts,
+        )
+
+    def _extract_features(
+        self,
+        image_path: Path | str,
+        mask_path: Path | str | None,
+        inner_n_jobs: int | None,
+    ) -> Optional[pd.DataFrame]:
+        """Body of :meth:`extract_features_from_path` (without coverage)."""
         image_path = Path(image_path)
         mask_path = Path(mask_path) if mask_path is not None else None
 
@@ -658,6 +813,14 @@ class FeatureExtractionPipeline:
                     features_df = extract_all_instance_features(
                         mask, image, n_jobs=n_jobs
                     )
+                elif self.method == "pyradiomics":
+                    features_df = get_radiomics_features(
+                        mask, image, self._radiomics_cfg
+                    )
+                    self._last_label_counts = (
+                        int(features_df.attrs.get("n_skipped_small", 0)),
+                        int(features_df.attrs.get("n_label_errors", 0)),
+                    )
                 else:  # regionprops; the constructor rejected everything else
                     features_df = get_region_properties(mask, intensity_image=image)
 
@@ -672,14 +835,10 @@ class FeatureExtractionPipeline:
             # ``(sample_id, timepoint, z_index, cell_id)``, so they are data, not
             # the optional ``include_metadata`` provenance below. Mirrors
             # ``mcherry_metrics.io.loaders.extract_image_metadata``.
-            handler = self._get_file_handler()
-            name = image_path.name
-            sample_id = handler.extract_sample_id(name)
-            z_index = handler.extract_z_index(name)
-            timepoint = handler.extract_time_point(name)
-            features_df["sample_id"] = sample_id if sample_id is not None else ""
-            features_df["timepoint"] = "" if timepoint == "unknown" else str(timepoint)
-            features_df["z_index"] = -1 if z_index is None else int(z_index)
+            sample_id, timepoint, z_index = self._key_columns(image_path.name)
+            features_df["sample_id"] = sample_id
+            features_df["timepoint"] = timepoint
+            features_df["z_index"] = z_index
 
             # Optional provenance columns (filenames, dataset), gated by config.
             if self.output_config.get("include_metadata", True):
@@ -704,7 +863,7 @@ class FeatureExtractionPipeline:
             return None
 
     def save_image_features(self, features_df: pd.DataFrame, image_path: Path):
-        """Save features for individual image to CSV file.
+        """Save features for one image (CSV, or Parquet with ``output.format``).
 
         Args:
             features_df: Features DataFrame
@@ -716,6 +875,8 @@ class FeatureExtractionPipeline:
             "individual_format", "{image_name}_features.csv"
         )
         output_name = output_format.format(image_name=image_path.stem)
+        if self.output_format == "parquet":
+            output_name = str(Path(output_name).with_suffix(".parquet"))
 
         # Create subdirectory if configured
         output_path = self.output_dir
@@ -726,7 +887,10 @@ class FeatureExtractionPipeline:
 
         # Save file
         output_file = output_path / output_name
-        features_df.to_csv(output_file, index=False)
+        if self.output_format == "parquet":
+            features_df.to_parquet(output_file, index=False)
+        else:
+            features_df.to_csv(output_file, index=False)
         self.logger.debug(f"Saved individual features to {output_file}")
 
     def process_batch(
@@ -754,6 +918,7 @@ class FeatureExtractionPipeline:
         self.logger.info(f"Processing dataset: {mask_dir} with images from {image_dir}")
         errors_before = len(self.error_files)
         expected_before = len(self.expected_unpaired)
+        coverage_before = len(self.coverage_records)
 
         # Find image-mask pairs
         pairs = self.find_image_mask_pairs(
@@ -806,7 +971,53 @@ class FeatureExtractionPipeline:
             combined_df = pd.DataFrame()
             self.logger.warning("No features extracted from any files")
 
+        if self.output_granularity == "well":
+            self.save_per_well(combined_df, self.coverage_records[coverage_before:])
         return combined_df
+
+    def save_per_well(
+        self, features_df: pd.DataFrame, coverage: List[Dict[str, Any]]
+    ) -> None:
+        """Write ``<well>.parquet`` and ``<well>_coverage.parquet`` per well.
+
+        Wells come from the coverage records, so a well whose images all came
+        back empty still gets its coverage file, and any ``<well>.parquet`` left
+        by an earlier run is removed rather than kept next to it.
+
+        Raises:
+            ValueError: two inputs of one well share an image filename (e.g. two
+                experiments under one image dir), or the well was already
+                written by this pipeline (``run`` over several dirs). Either
+                would silently merge or overwrite cells.
+        """
+        coverage_df = pd.DataFrame(coverage)
+        if coverage_df.empty:
+            return
+        for well, well_coverage in coverage_df.groupby("sample_id", sort=True):
+            name = well or "unknown_well"
+            images = well_coverage["image_filename"]
+            duplicated = images[(images != "") & images.duplicated()]
+            if not duplicated.empty or name in self._written_wells:
+                raise ValueError(
+                    f"Per-well output for {name!r} would merge or overwrite inputs "
+                    f"(e.g. {list(duplicated[:3]) or 'written earlier in this run'}); "
+                    "run one experiment per output directory"
+                )
+            self._written_wells.add(name)
+            well_coverage.to_parquet(
+                self.output_dir / f"{name}_coverage.parquet", index=False
+            )
+            features_file = self.output_dir / f"{name}.parquet"
+            rows = (
+                features_df[features_df["sample_id"] == well]
+                if not features_df.empty and "sample_id" in features_df
+                else features_df.iloc[0:0]
+            )
+            if rows.empty:
+                features_file.unlink(missing_ok=True)
+            else:
+                rows.to_parquet(features_file, index=False)
+            self.logger.info(f"Saved per-well outputs for {name}")
 
     def _report_errors(self, errors_before: int, n_inputs: int) -> None:
         """Log this batch's error count so it reaches the run log, not only the summary."""
@@ -840,7 +1051,7 @@ class FeatureExtractionPipeline:
         """Process (image, mask) pairs one at a time (original behavior)."""
         processed_files = 0
         all_features: List[pd.DataFrame] = []
-        save_individual = self.output_config.get("save_individual_files", True)
+        save_individual = self._save_individual()
 
         for image_path, mask_path in tqdm(pairs, desc="Processing files"):
             features_df = self.extract_features_from_path(image_path, mask_path)
@@ -864,27 +1075,37 @@ class FeatureExtractionPipeline:
 
         Uses a joblib ``loky`` process pool. Each worker runs one image with
         inner (per-cell) parallelism disabled (``inner_n_jobs=1``) to avoid
-        N*cores oversubscription, saves its own per-image CSV, and returns
-        ``(features_df, error_records)``. Results are yielded in submission
-        order, so the combined table is identical to the sequential path. Error
-        records are aggregated back into ``self.error_files`` here, since worker
-        mutations of ``self`` do not cross process boundaries.
+        N*cores oversubscription, saves its own per-image file, and returns
+        ``(features_df, error_records, coverage_records)``. Results are yielded
+        in submission order, so the combined table is identical to the
+        sequential path. Error and coverage records are aggregated back into
+        ``self`` here, since worker mutations of ``self`` do not cross process
+        boundaries.
 
         Note: for near-linear speedup, set ``OMP_NUM_THREADS=1`` in the launch
         environment (see ``slurm/feature_extraction.sbatch``) so BLAS/OpenMP
         threads in each worker do not oversubscribe the cores.
         """
-        save_individual = self.output_config.get("save_individual_files", True)
+        save_individual = self._save_individual()
         processed_files = 0
         all_features: List[pd.DataFrame] = []
 
+        # Each task pickles the pipeline it is given. Send a copy without the
+        # accumulated record lists, or pickling cost grows with every image done.
+        worker = copy.copy(self)
+        worker.error_files, worker.coverage_records, worker.expected_unpaired = (
+            [],
+            [],
+            [],
+        )
         results = Parallel(n_jobs=n_workers, backend="loky", return_as="generator")(
-            delayed(_extract_one_pair)(self, image_path, mask_path, save_individual)
+            delayed(_extract_one_pair)(worker, image_path, mask_path, save_individual)
             for image_path, mask_path in pairs
         )
-        for features_df, new_errors in tqdm(
+        for features_df, new_errors, new_coverage in tqdm(
             results, total=len(pairs), desc="Processing files"
         ):
+            self.coverage_records.extend(new_coverage)
             if new_errors:
                 # Worker processes log to their own stderr, not the run's log
                 # file, so re-log here in the parent.
@@ -984,6 +1205,7 @@ class FeatureExtractionPipeline:
         processed_files = 0
         all_features = []
         errors_before = len(self.error_files)
+        coverage_before = len(self.coverage_records)
         for image_path in tqdm(images, desc="Processing images"):
             inject_mask: Path | None = None
             if mask_dir is not None:
@@ -992,6 +1214,9 @@ class FeatureExtractionPipeline:
                 except FileNotFoundError as exc:
                     self.logger.warning("Skipping %s: %s", image_path.name, exc)
                     self.error_files.append((str(image_path), str(exc)))
+                    self._append_coverage(
+                        image_path.name, "", image_path.name, status="error"
+                    )
                     continue
             features_df = self.extract_features_from_path(
                 image_path, mask_path=inject_mask
@@ -999,7 +1224,7 @@ class FeatureExtractionPipeline:
             if features_df is not None:
                 all_features.append(features_df)
                 processed_files += 1
-                if self.output_config.get("save_individual_files", True):
+                if self._save_individual():
                     self.save_image_features(features_df, image_path)
 
         self.processed_files += processed_files
@@ -1014,6 +1239,8 @@ class FeatureExtractionPipeline:
             combined_df = pd.DataFrame()
             self.logger.warning("No features extracted from any images")
 
+        if self.output_granularity == "well":
+            self.save_per_well(combined_df, self.coverage_records[coverage_before:])
         return combined_df
 
     def process_single_image(
@@ -1037,13 +1264,19 @@ class FeatureExtractionPipeline:
         image_path = Path(image_path)
         self.logger.info(f"Processing single image: {image_path}")
 
+        coverage_before = len(self.coverage_records)
         features_df = self.extract_features_from_path(image_path, mask_path)
+        if self.output_granularity == "well":
+            self.save_per_well(
+                features_df if features_df is not None else pd.DataFrame(),
+                self.coverage_records[coverage_before:],
+            )
         if features_df is None or features_df.empty:
             self.logger.warning(f"No features extracted from {image_path.name}")
             return features_df
         self.processed_files += 1
 
-        if self.output_config.get("save_individual_files", True):
+        if self._save_individual():
             self.save_image_features(features_df, image_path)
         self.save_combined_features(features_df)
         return features_df
@@ -1085,7 +1318,7 @@ class FeatureExtractionPipeline:
             )
 
     def save_combined_features(self, features_df: pd.DataFrame):
-        """Save combined features to CSV file.
+        """Save combined features (CSV, or Parquet with ``output.format``).
 
         Args:
             features_df: Combined features DataFrame
@@ -1102,8 +1335,11 @@ class FeatureExtractionPipeline:
             "combined_filename", "all_features.csv"
         )
         output_file = self.output_dir / combined_filename
-
-        features_df.to_csv(output_file, index=False)
+        if self.output_format == "parquet":
+            output_file = output_file.with_suffix(".parquet")
+            features_df.to_parquet(output_file, index=False)
+        else:
+            features_df.to_csv(output_file, index=False)
         self.logger.info(f"Saved combined features to {output_file}")
 
     def save_summary(self, features_df: pd.DataFrame) -> Path:
@@ -1124,6 +1360,14 @@ class FeatureExtractionPipeline:
             f.write(f"Files processed: {self.processed_files}\n")
             f.write(f"Files with errors: {len(self.error_files)}\n")
             f.write(f"Expected unpaired masks: {len(self.expected_unpaired)}\n")
+            statuses = pd.Series(
+                [r["status"] for r in self.coverage_records], dtype=object
+            ).value_counts()
+            f.write(
+                "Coverage (images): "
+                + ", ".join(f"{k}={int(v)}" for k, v in sorted(statuses.items()))
+                + "\n"
+            )
             f.write(f"Total instances: {len(features_df)}\n")
             f.write(f"Total columns per instance: {len(features_df.columns)}\n\n")
 

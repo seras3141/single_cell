@@ -9,6 +9,7 @@ src/feature_extraction/
 ├── feature_extraction_pipeline.py   # Orchestrates batch extraction across datasets
 ├── feature_extractor_incarta.py     # Custom 2D extractor: morphology, intensity, texture
 ├── feature_extractor_regionprops.py # scikit-image regionprops (2D and 3D)
+├── feature_extractor_pyradiomics.py # PyRadiomics per-cell features (separate env)
 ├── feature_extractor_scportrait.py  # ConvNeXt deep features via scPortrait (optional dependency)
 ├── scportrait_project/              # scPortrait project config and helpers
 │   └── config.yml                   # CytosolOnlySegmentationCellpose + ConvNeXtFeaturizer
@@ -25,10 +26,23 @@ The method is set via `feature_extraction.method` in `config/feature_extraction_
 |---|---|---|
 | `incarta` *(default)* | 25 handcrafted 2D features across four groups (see below) | `scikit-image`, `scipy` |
 | `regionprops` | Standard skimage `regionprops_table` properties. `get_region_properties` accepts 2D and 3D arrays; the batch pipeline feeds it 2D slices only | `scikit-image` |
-| `pyradiomics` | *Not yet available.* The legacy prototype was retired; selecting it raises `NotImplementedError` until the replacement extractor lands | — |
+| `pyradiomics` | 102 PyRadiomics features per cell (`shape2D`, `firstorder`, `glcm`, `glrlm`, `glszm`, `gldm`, `ngtdm`; original image only), plus `n_pixels`, `touches_border` and `extraction_seconds`. Settings live under `feature_extraction.pyradiomics` | `pyradiomics-cuda`, `SimpleITK` *(separate `.venv-pyradiomics`)* |
 | `scportrait` | ConvNeXt encoder embeddings per cell via scPortrait's segment→extract→featurize pipeline | `scportrait` *(optional, requires Python ≥ 3.11)* |
 
 `scportrait` is imported with a try/except, so the pipeline still imports when it is not installed. `scportrait` cannot share the primary environment (it pins `cellpose<4`); install it into a separate Python 3.11 environment from [`requirements-scportrait.txt`](requirements-scportrait.txt) — see [scPortrait method](#scportrait-method) below.
+
+`pyradiomics` imports PyRadiomics and SimpleITK only when it extracts, so the module loads anywhere. It is meant to run in a separate `.venv-pyradiomics`, where `pyradiomics-cuda` provides the `radiomics` package; it can't share `.venv` with stock PyRadiomics. That environment and its SLURM launcher are not in the repo yet. Without the backend, it fails on the first file with an `ImportError`. Labels below `min_pixels` (default 20) are skipped and counted.
+
+### Outputs
+
+- **Format and grouping.** `output.format` is `csv` (default) or `parquet`; `parquet` needs `pyarrow`.
+  `output.granularity` is `image` (default: one file per image) or `well`. With `well`, the run writes
+  `<well>.parquet` (all cells of that well) and `<well>_coverage.parquet` per well; `well` requires
+  `parquet`. [`config/feature_extraction_pyradiomics_config.yaml`](../../config/feature_extraction_pyradiomics_config.yaml)
+  uses per-well Parquet.
+- **Coverage.** Every attempted image gets one coverage record: filename, key columns, `status`
+  (`ok`/`empty`/`error`), `n_cells`, `n_skipped_small` and `seconds`. That's what tells a genuinely empty
+  image from one that was never processed. The summary reports the status counts.
 
 ### Inputs, errors and exclusions
 
