@@ -141,8 +141,8 @@ class TestPipelineDispatch:
         # save_plots False -> plots_dir disabled.
         assert kwargs["plots_dir"] is None
 
-    def test_pipeline_missing_scportrait_records_error(self, tmp_path):
-        """When the hook is None, dispatch records an error and returns None."""
+    def test_pipeline_missing_scportrait_raises(self, tmp_path):
+        """A missing scPortrait install fails on the first file (ImportError)."""
         image_path = tmp_path / "bf.tif"
         mask_path = tmp_path / "mask.tif"
         image_path.write_bytes(b"fake")
@@ -155,11 +155,9 @@ class TestPipelineDispatch:
             "src.feature_extraction.feature_extraction_pipeline.get_scportrait_features",
             None,
         ):
-            result = pipeline.extract_features_from_path(image_path, mask_path)
-
-        assert result is None
-        assert pipeline.error_files
-        assert "scportrait" in pipeline.error_files[-1][1]
+            with pytest.raises(ImportError, match="scportrait"):
+                pipeline.extract_features_from_path(image_path, mask_path)
+        assert not pipeline.error_files
 
 
 @pytest.mark.unit

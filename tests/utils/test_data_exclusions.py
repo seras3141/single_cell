@@ -56,6 +56,8 @@ def _stack(fields: str) -> str:
         (_stack("sample: H09, timepoint: t201, reason: r"), "timepoint must be int"),
         (_stack("sample: H09, timepoint: yes, reason: r"), "timepoint must be int"),
         ("stacks: []\n", "unknown sections"),
+        ("known_missing: 1\n", "known_missing must be a list"),
+        ("excluded_stacks: {a: 1}\n", "excluded_stacks must be a list"),
         ("- a\n", "must be a mapping"),
     ],
 )

@@ -172,6 +172,14 @@ def load_data_exclusions(
             f"in {registry_path}"
         )
 
+    for section in ("known_missing", "excluded_stacks"):
+        value = raw.get(section)
+        if value is not None and not isinstance(value, list):
+            raise ValueError(
+                f"data exclusions: {section} must be a list, got {value!r} "
+                f"in {registry_path}"
+            )
+
     known_missing = tuple(
         KnownMissing(**_parse_entry(entry, _KNOWN_MISSING_FIELDS, "known_missing", i))
         for i, entry in enumerate(raw.get("known_missing") or [])

@@ -367,3 +367,11 @@ def test_run_writes_summary_when_code_defect_propagates(tmp_path, monkeypatch):
     with pytest.raises(NameError):
         pipeline.run([img_dir], [msk_dir])
     assert (pipeline.output_dir / "feature_extraction_summary.txt").exists()
+
+
+@pytest.mark.parametrize("image_dirs, mask_dirs", [([], []), (["a", "b"], ["a"])])
+def test_run_bad_directory_lists_fail_with_summary(tmp_path, image_dirs, mask_dirs):
+    pipeline = _pipeline(tmp_path)
+    with pytest.raises(FeatureExtractionError):
+        pipeline.run(image_dirs, mask_dirs)
+    assert (pipeline.output_dir / "feature_extraction_summary.txt").exists()

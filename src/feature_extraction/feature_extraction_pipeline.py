@@ -350,7 +350,7 @@ class FeatureExtractionPipeline:
         Args:
             mask_path: Path to the mask file
             image_files: List of available image files
-            mask_patterns: Glob patterns for masks (default ``['*_Cells.tif']``)
+            mask_patterns: Glob patterns for masks (default ``[DEFAULT_MASK_PATTERN]``)
             image_patterns: Glob patterns for images (default ``['*_BF.tif']``)
 
         Returns:
@@ -391,7 +391,7 @@ class FeatureExtractionPipeline:
         Args:
             image_files: List of image file paths
             mask_files: List of mask file paths
-            mask_patterns: Glob patterns for masks (default ``['*_Cells.tif']``)
+            mask_patterns: Glob patterns for masks (default ``[DEFAULT_MASK_PATTERN]``)
             image_patterns: Glob patterns for images (default ``['*_BF.tif']``)
 
         Returns:
@@ -636,7 +636,7 @@ class FeatureExtractionPipeline:
                 # scPortrait takes file paths (not loaded arrays) and runs its own
                 # segmentation/extraction/featurization, so handle it before loading.
                 if get_scportrait_features is None:
-                    raise RuntimeError(
+                    raise ImportError(
                         "scportrait is not installed. Install it with 'pip install scportrait' to use this method."
                     )
                 sc_cfg = self.feature_config.get("scportrait", {})
@@ -1210,11 +1210,13 @@ class FeatureExtractionPipeline:
 
         all_datasets_features = []
 
-        if image_dirs and mask_dirs and len(image_dirs) != len(mask_dirs):
-            self.logger.error(
-                "Number of image directories must match number of mask directories"
-            )
-            return pd.DataFrame()
+        if not image_dirs or len(image_dirs) != len(mask_dirs):
+            # Recorded, not returned early, so the summary is still written and
+            # the run fails through raise_if_errors like any other error.
+            message = "image_dirs and mask_dirs must be non-empty and of equal length"
+            self.logger.error(message)
+            self.error_files.append(("run", message))
+            image_dirs, mask_dirs = [], []
 
         # Process each directory
         try:
