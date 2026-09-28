@@ -184,6 +184,22 @@ def test_empty_and_all_small_masks(fake_backend):
 
 
 @pytest.mark.skipif(
+    importlib.util.find_spec("radiomics") is None, reason="radiomics not installed"
+)
+def test_real_backend_gives_102_features():
+    pyr._resolve_backend.cache_clear()
+    rng = np.random.default_rng(0)
+    image = rng.integers(500, 5000, (64, 64)).astype(np.uint16)
+    mask = np.zeros((64, 64), np.uint16)
+    mask[5:25, 5:30] = 1
+    mask[35:60, 30:60] = 2
+    df = pyr.get_radiomics_features(mask, image, PyradiomicsConfig())
+    features = [c for c in df.columns if c.startswith("original_")]
+    assert len(df) == 2 and len(features) == 102
+    assert df[features].notna().all().all()
+
+
+@pytest.mark.skipif(
     importlib.util.find_spec("radiomics") is not None, reason="radiomics is installed"
 )
 def test_missing_radiomics_raises_import_error():
