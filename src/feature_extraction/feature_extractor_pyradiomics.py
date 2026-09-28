@@ -1,11 +1,4 @@
-"""Per-cell PyRadiomics features for 2D label masks (the ``pyradiomics`` backend).
-
-Adapted from the external GPU radiomics delivery. PyRadiomics and SimpleITK are
-imported lazily through :func:`_resolve_backend`, so this module imports cleanly in
-environments without them (the primary ``.venv``); extraction itself runs in the
-separate ``.venv-pyradiomics`` env, where ``pyradiomics-cuda`` provides the
-``radiomics`` import path. :func:`_resolve_backend` is also the one seam tests replace.
-"""
+"""Per-cell PyRadiomics features for 2D label masks."""
 
 from __future__ import annotations
 
@@ -22,7 +15,6 @@ from src.utils.config_schemas import PyradiomicsConfig
 
 logger = logging.getLogger(__name__)
 
-#: Per-process cache of configured extractors, keyed on the extractor settings.
 _EXTRACTOR_CACHE: Dict[Tuple[Any, ...], Any] = {}
 
 _DIAGNOSTICS_PREFIX = "diagnostics_"
@@ -31,14 +23,7 @@ _FEATURE_PREFIX = "original_"
 
 @functools.lru_cache(maxsize=2)
 def _resolve_backend(require_cuda: bool) -> Tuple[Any, Any]:
-    """Import and return ``(radiomics.featureextractor, SimpleITK)``, once per process.
-
-    Raises:
-        ImportError: PyRadiomics or SimpleITK is missing, or ``require_cuda`` is set
-            and the ``pyradiomics-cuda`` distribution is not installed. The pipeline
-            re-raises ``ImportError`` on the first file instead of recording it per
-            file.
-    """
+    # Lazy: .venv lacks radiomics; tests patch this.
     if require_cuda:
         try:
             metadata.distribution("pyradiomics-cuda")
@@ -55,13 +40,12 @@ def _resolve_backend(require_cuda: bool) -> Tuple[Any, Any]:
             "The pyradiomics backend needs PyRadiomics (pyradiomics-cuda) and "
             "SimpleITK; run it in the .venv-pyradiomics environment"
         ) from exc
-    # PyRadiomics logs every ROI at INFO; keep only errors, on its own logger.
+    # PyRadiomics logs every ROI at INFO.
     logging.getLogger("radiomics").setLevel(logging.ERROR)
     return featureextractor, sitk
 
 
 def _extractor_key(cfg: PyradiomicsConfig) -> Tuple[Any, ...]:
-    """Cache key: only the settings that change the configured extractor."""
     return (
         float(cfg.bin_width),
         bool(cfg.force_2d),
@@ -72,7 +56,6 @@ def _extractor_key(cfg: PyradiomicsConfig) -> Tuple[Any, ...]:
 
 
 def build_extractor(cfg: PyradiomicsConfig, featureextractor: Any) -> Any:
-    """Create a ``RadiomicsFeatureExtractor`` with only ``cfg.feature_classes`` on."""
     extractor = featureextractor.RadiomicsFeatureExtractor(
         binWidth=cfg.bin_width,
         force2D=cfg.force_2d,
@@ -95,17 +78,12 @@ def _get_extractor(cfg: PyradiomicsConfig, featureextractor: Any) -> Any:
 
 
 def _border_labels(mask: np.ndarray) -> Set[int]:
-    """Labels present in the outer 1-pixel ring of ``mask``."""
     ring = np.concatenate([mask[0, :], mask[-1, :], mask[:, 0], mask[:, -1]])
     return {int(label) for label in np.unique(ring) if label != 0}
 
 
 def _to_feature(value: Any) -> float:
-    """A feature value as float; NaN if PyRadiomics returned anything non-scalar.
-
-    Keeps every ``original_*`` column float, so one odd value cannot turn a
-    column into mixed types (which Parquet rejects at write time).
-    """
+    # Mixed-type columns fail the Parquet write.
     try:
         return float(np.asarray(value, dtype=np.float64).item())
     except (TypeError, ValueError):
@@ -113,35 +91,19 @@ def _to_feature(value: Any) -> float:
 
 
 def _to_value(value: Any) -> Any:
-    """PyRadiomics returns 0-d numpy arrays; unwrap them, stringify non-scalars."""
     if isinstance(value, np.ndarray) and value.ndim == 0:
         return value.item()
     if isinstance(value, np.generic):
         return value.item()
     if isinstance(value, (bool, int, float, str)):
         return value
-    return str(value)  # tuples/dicts from diagnostics_*, so Parquet can store them
+    return str(value)
 
 
 def get_radiomics_features(
     mask: np.ndarray, image: np.ndarray, cfg: PyradiomicsConfig
 ) -> pd.DataFrame:
-    """Extract PyRadiomics features for every label of a 2D mask.
-
-    Args:
-        mask: 2D integer label mask (0 = background).
-        image: 2D intensity image, same shape as ``mask``.
-        cfg: Backend settings.
-
-    Returns:
-        One row per extracted label: ``cell_id``, ``touches_border``, then the
-        ``original_*`` features (plus ``diagnostics_*`` when
-        ``cfg.include_diagnostics``). Labels with fewer than ``cfg.min_pixels``
-        pixels are skipped, and labels PyRadiomics rejects (its own ROI checks
-        raise ``ValueError``, e.g. a 1-pixel-wide fragment) are skipped too, so
-        one bad label does not discard the image. Both counts are in
-        ``df.attrs`` (``n_skipped_small``, ``n_label_errors``).
-    """
+    """One row per label; skip counts go in ``df.attrs``."""
     labels = np.unique(mask)
     labels = labels[labels != 0]
     empty = pd.DataFrame(columns=["cell_id"])
@@ -160,7 +122,7 @@ def get_radiomics_features(
 
     featureextractor, sitk = _resolve_backend(cfg.require_cuda)
     extractor = _get_extractor(cfg, featureextractor)
-    # One conversion per image. uint32 keeps label ids above 65,535 intact.
+    # uint16 would wrap labels above 65,535.
     image_itk = sitk.GetImageFromArray(np.asarray(image, dtype=np.float32))
     mask_itk = sitk.GetImageFromArray(np.asarray(mask, dtype=np.uint32))
     border = _border_labels(mask)
@@ -170,7 +132,7 @@ def get_radiomics_features(
     for label in keep:
         try:
             result = extractor.execute(image_itk, mask_itk, label=label)
-        except ValueError as exc:
+        except ValueError as exc:  # PyRadiomics ROI checks reject thin fragments
             n_label_errors += 1
             logger.warning("PyRadiomics rejected label %d: %s", label, exc)
             continue

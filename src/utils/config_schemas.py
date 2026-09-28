@@ -239,8 +239,6 @@ class RepresentativeSliceConfig:
 # Feature Extraction Configuration
 # =============================================================================
 
-#: PyRadiomics feature classes the ``pyradiomics`` backend can enable (2D, original
-#: image only). The default enables all of them: 102 features.
 PYRADIOMICS_FEATURE_CLASSES: Tuple[str, ...] = (
     "shape2D",
     "firstorder",
@@ -254,26 +252,20 @@ PYRADIOMICS_FEATURE_CLASSES: Tuple[str, ...] = (
 
 @dataclass
 class PyradiomicsConfig:
-    """Settings for the ``pyradiomics`` backend (``feature_extraction.pyradiomics``).
-
-    Extractor defaults match the external GPU radiomics delivery (binWidth 25, 2D,
-    PyRadiomics z-score normalisation x100). ``min_pixels`` is provisional until the
-    occupied-grey-level screen sets an evidence-based floor.
-    """
+    """Defaults match the external GPU radiomics delivery."""
     bin_width: float = 25
     force_2d: bool = True
     normalize: bool = True
     normalize_scale: float = 100
-    min_pixels: int = 20  # labels with fewer pixels are skipped, not extracted
+    min_pixels: int = 20  # provisional until the grey-level screen
     feature_classes: List[str] = field(
         default_factory=lambda: list(PYRADIOMICS_FEATURE_CLASSES)
     )
-    include_diagnostics: bool = False  # keep PyRadiomics' diagnostics_* columns
-    require_cuda: bool = False  # fail unless the pyradiomics-cuda package is installed
+    include_diagnostics: bool = False
+    require_cuda: bool = False
 
 
 def validate_pyradiomics_config(cfg: PyradiomicsConfig) -> None:
-    """Raise ``ValueError`` if ``cfg`` holds an invalid ``pyradiomics`` setting."""
     if cfg.bin_width <= 0:
         raise ValueError("feature_extraction.pyradiomics.bin_width must be > 0")
     if cfg.normalize_scale <= 0:

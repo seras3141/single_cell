@@ -21,9 +21,7 @@ _PROVENANCE_COLUMNS = {
     "processing_timestamp",
     "feature_extraction_version",
     "dataset_name",
-    # Per-cell flag from the pyradiomics backend (cell touches the frame edge):
-    # an audit column, never a feature.
-    "touches_border",
+    "touches_border",  # audit flag, not a feature
 }
 
 

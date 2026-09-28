@@ -244,16 +244,13 @@ class FeatureExtractionPipeline:
         self.processed_files = 0
         self.error_files: List[Tuple[str, str]] = []
         self.expected_unpaired: List[str] = []
-        # One record per attempted image (status ok/empty/error): the coverage
-        # authority that tells a genuinely empty image from one never processed.
+        # Distinguishes empty images from never-processed ones.
         self.coverage_records: List[Dict[str, Any]] = []
-        # (n_skipped_small, n_label_errors) of the image being extracted.
         self._last_label_counts: Tuple[int, int] = (0, 0)
         self._written_wells: set = set()
 
     @staticmethod
     def _build_radiomics_config(raw: Any) -> PyradiomicsConfig:
-        """Build and validate the ``pyradiomics`` settings once, at construction."""
         if isinstance(raw, PyradiomicsConfig):
             cfg = raw
         else:
@@ -267,7 +264,6 @@ class FeatureExtractionPipeline:
         return cfg
 
     def _validate_output_options(self) -> None:
-        """Check ``output.format`` / ``output.granularity`` before any work."""
         if self.output_format not in ("csv", "parquet"):
             raise ValueError(
                 f"output.format must be 'csv' or 'parquet', got {self.output_format!r}"
@@ -288,7 +284,6 @@ class FeatureExtractionPipeline:
             raise ImportError("output.format 'parquet' requires pyarrow")
 
     def _save_individual(self) -> bool:
-        """Per-image files are written unless outputs are grouped per well."""
         return self.output_granularity == "image" and bool(
             self.output_config.get("save_individual_files", True)
         )
@@ -599,12 +594,7 @@ class FeatureExtractionPipeline:
         return export_root.joinpath(*SCPORTRAIT_MASK_SUBDIRS, f"{stem}_pred_mask.tif")
 
     def _key_columns(self, filename: str) -> Tuple[str, str, int]:
-        """``(sample_id, timepoint, z_index)`` parsed from a filename.
-
-        The one place these are derived, so the feature rows and the coverage
-        records (which per-well output joins on) always agree. Missing values
-        become ``""`` / ``""`` / ``-1``.
-        """
+        # Single source: per-well output joins on these.
         handler = self._get_file_handler()
         sample_id = handler.extract_sample_id(filename)
         timepoint = handler.extract_time_point(filename)
@@ -677,9 +667,6 @@ class FeatureExtractionPipeline:
 
         Returns:
             DataFrame with extracted features, or None if extraction fails
-
-        Every call also appends one record to ``coverage_records`` (status
-        ``ok`` / ``empty`` / ``error``), unless a code defect propagates.
         """
         start = time.perf_counter()
         errors_before = len(self.error_files)
@@ -724,7 +711,6 @@ class FeatureExtractionPipeline:
         mask_path: Path | str | None,
         inner_n_jobs: int | None,
     ) -> Optional[pd.DataFrame]:
-        """Body of :meth:`extract_features_from_path` (without coverage)."""
         image_path = Path(image_path)
         mask_path = Path(mask_path) if mask_path is not None else None
 
@@ -978,18 +964,7 @@ class FeatureExtractionPipeline:
     def save_per_well(
         self, features_df: pd.DataFrame, coverage: List[Dict[str, Any]]
     ) -> None:
-        """Write ``<well>.parquet`` and ``<well>_coverage.parquet`` per well.
-
-        Wells come from the coverage records, so a well whose images all came
-        back empty still gets its coverage file, and any ``<well>.parquet`` left
-        by an earlier run is removed rather than kept next to it.
-
-        Raises:
-            ValueError: two inputs of one well share an image filename (e.g. two
-                experiments under one image dir), or the well was already
-                written by this pipeline (``run`` over several dirs). Either
-                would silently merge or overwrite cells.
-        """
+        """Write ``<well>.parquet`` and ``<well>_coverage.parquet``; refuse merges."""
         coverage_df = pd.DataFrame(coverage)
         if coverage_df.empty:
             return
@@ -1090,8 +1065,7 @@ class FeatureExtractionPipeline:
         processed_files = 0
         all_features: List[pd.DataFrame] = []
 
-        # Each task pickles the pipeline it is given. Send a copy without the
-        # accumulated record lists, or pickling cost grows with every image done.
+        # Pickling growing record lists is quadratic.
         worker = copy.copy(self)
         worker.error_files, worker.coverage_records, worker.expected_unpaired = (
             [],

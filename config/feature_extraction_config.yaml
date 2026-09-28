@@ -44,10 +44,8 @@ feature_extraction:
     # Directory structure
     create_subdirs: true  # Create subdirectories for different datasets
 
-    # File format and grouping. granularity "well" writes <well>.parquet plus
-    # <well>_coverage.parquet (one row per image) and requires format "parquet".
-    format: "csv"          # csv | parquet (parquet needs pyarrow)
-    granularity: "image"   # image | well
+    format: "csv"          # csv | parquet (needs pyarrow)
+    granularity: "image"   # image | well (needs parquet)
 
   # scPortrait deep-learning featurization (used only when method: "scportrait")
   scportrait:
@@ -58,17 +56,16 @@ feature_extraction:
     debug: false
     save_plots: true
 
-  # PyRadiomics per-cell features (used only when method: "pyradiomics"). Runs in
-  # .venv-pyradiomics (pyradiomics-cuda + SimpleITK); defaults match the GPU delivery.
+  # Used only when method: "pyradiomics".
   pyradiomics:
     bin_width: 25
     force_2d: true
     normalize: true
     normalize_scale: 100
-    min_pixels: 20              # provisional until the occupied-grey-level screen
+    min_pixels: 20              # provisional until the grey-level screen
     feature_classes: ["shape2D", "firstorder", "glcm", "glrlm", "glszm", "gldm", "ngtdm"]
-    include_diagnostics: false  # keep PyRadiomics diagnostics_* columns
-    require_cuda: false         # fail unless pyradiomics-cuda is installed
+    include_diagnostics: false
+    require_cuda: false
 
 
 # Logging and monitoring

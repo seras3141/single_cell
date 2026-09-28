@@ -1,10 +1,4 @@
-"""Tests for the ``pyradiomics`` backend (no GPU, PyRadiomics or SimpleITK needed).
-
-A fake backend is patched in at ``_resolve_backend``: a fake
-``RadiomicsFeatureExtractor`` that records its settings and returns
-``original_*``/``diagnostics_*`` values computed from the arrays it is given, and
-a fake ``SimpleITK`` whose images just wrap the numpy array.
-"""
+"""Tests for the ``pyradiomics`` backend, using a fake PyRadiomics/SimpleITK."""
 
 import importlib.util
 from dataclasses import replace
@@ -45,7 +39,7 @@ class FakeExtractor:
     def enableFeatureClassByName(self, name):
         self.enabled.append(name)
 
-    reject_labels: set = set()  # labels whose execute() raises, like a bad ROI
+    reject_labels: set = set()  # execute() raises, like a rejected ROI
 
     def execute(self, image, mask, label=None):
         self.labels_seen.append(label)
@@ -92,17 +86,13 @@ def _image() -> np.ndarray:
     return (np.arange(32 * 32).reshape(32, 32) % 97).astype(np.uint16)
 
 
-# --- extractor -------------------------------------------------------------------
-
-
 def test_rows_columns_and_min_pixels(fake_backend):
     df = pyr.get_radiomics_features(_mask(), _image(), PyradiomicsConfig())
     assert list(df["cell_id"]) == [1, 2]  # label 3 is below min_pixels, 0 excluded
     assert list(df["touches_border"]) == [True, False]
     assert df["original_shape2D_PixelSurface"].tolist() == [36.0, 100.0]
     assert df.attrs["n_skipped_small"] == 1 and df.attrs["n_label_errors"] == 0
-    # Only features and the border flag: no timing/bookkeeping columns that a
-    # numeric-column consumer would mistake for features.
+    # Extra numeric columns would be read as features.
     assert set(df.columns) == {
         "cell_id",
         "touches_border",
@@ -212,9 +202,6 @@ def test_require_cuda_without_distribution_raises(monkeypatch):
         pyr._resolve_backend(require_cuda=True)
 
 
-# --- pipeline --------------------------------------------------------------------
-
-
 def _dataset(root: Path, masks):
     img_dir, msk_dir = root / "imgs", root / "msks"
     img_dir.mkdir(parents=True)
@@ -302,7 +289,7 @@ def test_pipeline_fails_fast_without_backend(tmp_path):
 
 
 def test_parallel_workers_return_coverage(tmp_path):
-    # A monkeypatched backend does not reach loky workers, so use regionprops.
+    # Monkeypatches don't reach loky workers.
     img_dir, msk_dir = _dataset(tmp_path, {f"s{i}": _mask() for i in range(3)})
     pipeline = _pipeline(tmp_path, method="regionprops", n_jobs=2)
     _run(pipeline, img_dir, msk_dir)
@@ -322,9 +309,6 @@ def test_bad_pyradiomics_settings_fail_at_construction(tmp_path):
             output_dir=str(tmp_path / "out"),
             exclusions=DataExclusions.empty(),
         )
-
-
-# --- output options --------------------------------------------------------------
 
 
 @pytest.fixture
@@ -444,9 +428,6 @@ def test_parquet_round_trip(tmp_path, fake_backend):
     _run(pipeline, img_dir, msk_dir)
     df = pd.read_parquet(tmp_path / "out" / "E07.parquet")
     assert list(df["cell_id"]) == [1, 2]
-
-
-# --- config ----------------------------------------------------------------------
 
 
 def _write_config(tmp_path, block: str) -> Path:

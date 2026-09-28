@@ -1,10 +1,4 @@
-"""Tests for the feature-method registry (``FEATURE_METHODS`` and friends).
-
-The pipeline, the schema validator and the CLI all read one registry. A method in
-``UNAVAILABLE_FEATURE_METHODS`` is recognised but must fail loudly at
-construction, not once per file. No method is unavailable today, so the mechanism
-is exercised with a temporary entry.
-"""
+"""Tests for the feature-method registry shared by pipeline, schema and CLI."""
 
 import sys
 from unittest.mock import patch
@@ -26,7 +20,7 @@ def _pipeline(tmp_path, **config):
 
 
 @pytest.fixture
-def incarta_unavailable(monkeypatch):
+def incarta_unavailable(monkeypatch):  # no method is unavailable today
     monkeypatch.setitem(schemas.UNAVAILABLE_FEATURE_METHODS, "incarta", "test reason")
 
 
