@@ -262,7 +262,6 @@ class PyradiomicsConfig:
         default_factory=lambda: list(PYRADIOMICS_FEATURE_CLASSES)
     )
     include_diagnostics: bool = False
-    require_cuda: bool = False
 
 
 def validate_pyradiomics_config(cfg: PyradiomicsConfig) -> None:

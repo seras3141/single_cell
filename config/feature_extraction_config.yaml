@@ -18,7 +18,7 @@ paths:
 # Feature extraction parameters
 feature_extraction:
   # Feature extraction method
-  method: "incarta"  # Options: "incarta", "regionprops", "pyradiomics" (needs .venv-pyradiomics), "scportrait"
+  method: "incarta"  # Options: "incarta", "regionprops", "pyradiomics", "scportrait"
 
   # File matching patterns
   image_pattern: "*_BF.tif"
@@ -65,7 +65,6 @@ feature_extraction:
     min_pixels: 20              # provisional until the grey-level screen
     feature_classes: ["shape2D", "firstorder", "glcm", "glrlm", "glszm", "gldm", "ngtdm"]
     include_diagnostics: false
-    require_cuda: false
 
 
 # Logging and monitoring

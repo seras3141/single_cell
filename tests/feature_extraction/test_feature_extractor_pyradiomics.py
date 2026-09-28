@@ -67,9 +67,7 @@ class FakeSitk:
 def fake_backend(monkeypatch):
     sitk = FakeSitk()
     featureextractor = SimpleNamespace(RadiomicsFeatureExtractor=FakeExtractor)
-    monkeypatch.setattr(
-        pyr, "_resolve_backend", lambda require_cuda: (featureextractor, sitk)
-    )
+    monkeypatch.setattr(pyr, "_resolve_backend", lambda: (featureextractor, sitk))
     monkeypatch.setattr(pyr, "_EXTRACTOR_CACHE", {})
     return sitk
 
@@ -189,17 +187,8 @@ def test_empty_and_all_small_masks(fake_backend):
     importlib.util.find_spec("radiomics") is not None, reason="radiomics is installed"
 )
 def test_missing_radiomics_raises_import_error():
-    with pytest.raises(ImportError, match=".venv-pyradiomics"):
-        pyr._resolve_backend(require_cuda=False)
-
-
-def test_require_cuda_without_distribution_raises(monkeypatch):
-    def missing(name):
-        raise pyr.metadata.PackageNotFoundError(name)
-
-    monkeypatch.setattr(pyr.metadata, "distribution", missing)
     with pytest.raises(ImportError, match="pyradiomics-cuda"):
-        pyr._resolve_backend(require_cuda=True)
+        pyr._resolve_backend()
 
 
 def _dataset(root: Path, masks):
@@ -465,4 +454,3 @@ def test_shipped_pyradiomics_config_loads():
     ).to_dict()["feature_extraction"]
     assert fe["method"] == "pyradiomics"
     assert fe["output"]["granularity"] == "well"
-    assert fe["pyradiomics"]["require_cuda"] is True

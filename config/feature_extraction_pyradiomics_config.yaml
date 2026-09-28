@@ -1,5 +1,3 @@
-# Run with .venv-pyradiomics/bin/python; `uv run` re-syncs away pyradiomics-cuda.
-
 paths:
   image_dir: ""
   mask_dir: ""
@@ -10,7 +8,7 @@ feature_extraction:
   image_pattern: "*_BF.tif"
   mask_pattern: "*_pred_mask.tif"
 
-  n_jobs: 4  # workers share one GPU; probe tunes this
+  n_jobs: 8  # CPU file workers; the probe tunes this
 
   output:
     format: "parquet"
@@ -28,7 +26,6 @@ feature_extraction:
     min_pixels: 20
     feature_classes: ["shape2D", "firstorder", "glcm", "glrlm", "glszm", "gldm", "ngtdm"]
     include_diagnostics: false
-    require_cuda: true
 
 logging:
   level: "INFO"

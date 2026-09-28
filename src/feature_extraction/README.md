@@ -9,7 +9,7 @@ src/feature_extraction/
 ├── feature_extraction_pipeline.py   # Orchestrates batch extraction across datasets
 ├── feature_extractor_incarta.py     # Custom 2D extractor: morphology, intensity, texture
 ├── feature_extractor_regionprops.py # scikit-image regionprops (2D and 3D)
-├── feature_extractor_pyradiomics.py # PyRadiomics per-cell features (separate env)
+├── feature_extractor_pyradiomics.py # PyRadiomics per-cell features
 ├── feature_extractor_scportrait.py  # ConvNeXt deep features via scPortrait (optional dependency)
 ├── scportrait_project/              # scPortrait project config and helpers
 │   └── config.yml                   # CytosolOnlySegmentationCellpose + ConvNeXtFeaturizer
@@ -26,12 +26,12 @@ The method is set via `feature_extraction.method` in `config/feature_extraction_
 |---|---|---|
 | `incarta` *(default)* | 25 handcrafted 2D features across four groups (see below) | `scikit-image`, `scipy` |
 | `regionprops` | Standard skimage `regionprops_table` properties. `get_region_properties` accepts 2D and 3D arrays; the batch pipeline feeds it 2D slices only | `scikit-image` |
-| `pyradiomics` | 102 PyRadiomics features per cell (`shape2D`, `firstorder`, `glcm`, `glrlm`, `glszm`, `gldm`, `ngtdm`; original image only), plus `n_pixels`, `touches_border` and `extraction_seconds`. Settings live under `feature_extraction.pyradiomics` | `pyradiomics-cuda`, `SimpleITK` *(separate `.venv-pyradiomics`)* |
+| `pyradiomics` | 102 PyRadiomics features per cell (`shape2D`, `firstorder`, `glcm`, `glrlm`, `glszm`, `gldm`, `ngtdm`; original image only), plus `touches_border`. Settings live under `feature_extraction.pyradiomics` | `pyradiomics-cuda` (CPU build), `SimpleITK` |
 | `scportrait` | ConvNeXt encoder embeddings per cell via scPortrait's segment→extract→featurize pipeline | `scportrait` *(optional, requires Python ≥ 3.11)* |
 
 `scportrait` is imported with a try/except, so the pipeline still imports when it is not installed. `scportrait` cannot share the primary environment (it pins `cellpose<4`); install it into a separate Python 3.11 environment from [`requirements-scportrait.txt`](requirements-scportrait.txt) — see [scPortrait method](#scportrait-method) below.
 
-`pyradiomics` imports PyRadiomics and SimpleITK only when it extracts, so the module loads anywhere. It is meant to run in a separate `.venv-pyradiomics`, where `pyradiomics-cuda` provides the `radiomics` package; it can't share `.venv` with stock PyRadiomics. That environment and its SLURM launcher are not in the repo yet. Without the backend, it fails on the first file with an `ImportError`. Labels below `min_pixels` (default 20) are skipped and counted.
+`pyradiomics` imports PyRadiomics and SimpleITK only when it extracts, so the module loads without them; a missing backend fails on the first file with an `ImportError`. It uses the `pyradiomics-cuda` fork (numpy 2, Python 3.9–3.13) built CPU-only: its only CUDA code is the 3D `shape` class, which this 2D backend does not enable, so it runs on CPU nodes. Labels below `min_pixels` (default 20) are skipped and counted.
 
 ### Outputs
 

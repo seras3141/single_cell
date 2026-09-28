@@ -5,7 +5,6 @@ from __future__ import annotations
 import functools
 import importlib
 import logging
-from importlib import metadata
 from typing import Any, Dict, Set, Tuple
 
 import numpy as np
@@ -21,24 +20,16 @@ _DIAGNOSTICS_PREFIX = "diagnostics_"
 _FEATURE_PREFIX = "original_"
 
 
-@functools.lru_cache(maxsize=2)
-def _resolve_backend(require_cuda: bool) -> Tuple[Any, Any]:
-    # Lazy: .venv lacks radiomics; tests patch this.
-    if require_cuda:
-        try:
-            metadata.distribution("pyradiomics-cuda")
-        except metadata.PackageNotFoundError as exc:
-            raise ImportError(
-                "feature_extraction.pyradiomics.require_cuda is set but the "
-                "pyradiomics-cuda package is not installed in this environment"
-            ) from exc
+@functools.lru_cache(maxsize=1)
+def _resolve_backend() -> Tuple[Any, Any]:
+    # Lazy: optional C build; tests patch this.
     try:
         featureextractor = importlib.import_module("radiomics.featureextractor")
         sitk = importlib.import_module("SimpleITK")
     except ImportError as exc:
         raise ImportError(
-            "The pyradiomics backend needs PyRadiomics (pyradiomics-cuda) and "
-            "SimpleITK; run it in the .venv-pyradiomics environment"
+            "The pyradiomics backend needs the pyradiomics-cuda package (radiomics) "
+            "and SimpleITK; install the project dependencies (uv pip install -e .)"
         ) from exc
     # PyRadiomics logs every ROI at INFO.
     logging.getLogger("radiomics").setLevel(logging.ERROR)
@@ -120,7 +111,7 @@ def get_radiomics_features(
         empty.attrs["n_skipped_small"] = n_skipped
         return empty
 
-    featureextractor, sitk = _resolve_backend(cfg.require_cuda)
+    featureextractor, sitk = _resolve_backend()
     extractor = _get_extractor(cfg, featureextractor)
     # uint16 would wrap labels above 65,535.
     image_itk = sitk.GetImageFromArray(np.asarray(image, dtype=np.float32))
