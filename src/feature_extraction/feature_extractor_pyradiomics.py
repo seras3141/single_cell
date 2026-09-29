@@ -24,7 +24,7 @@ _CROP_PAD = 2
 
 @functools.lru_cache(maxsize=1)
 def _resolve_backend() -> Tuple[Any, Any, Any]:
-    # Lazy: optional C build; tests patch this.
+    # Lazy: sdist C build may be absent; tests patch this.
     try:
         featureextractor = importlib.import_module("radiomics.featureextractor")
         imageoperations = importlib.import_module("radiomics.imageoperations")
@@ -32,7 +32,7 @@ def _resolve_backend() -> Tuple[Any, Any, Any]:
     except ImportError as exc:
         raise ImportError(
             "The pyradiomics backend needs the pyradiomics-cuda package (radiomics) "
-            "and SimpleITK; install the project dependencies (uv pip install -e .)"
+            "and SimpleITK; it builds from source, so run uv sync with a C compiler"
         ) from exc
     # PyRadiomics logs every ROI at INFO.
     logging.getLogger("radiomics").setLevel(logging.ERROR)
@@ -44,6 +44,7 @@ def _extractor_key(cfg: PyradiomicsConfig) -> Tuple[Any, ...]:
         float(cfg.bin_width),
         bool(cfg.force_2d),
         tuple(cfg.feature_classes),
+        bool(cfg.include_diagnostics),
     )
 
 
@@ -52,6 +53,7 @@ def build_extractor(cfg: PyradiomicsConfig, featureextractor: Any) -> Any:
         binWidth=cfg.bin_width,
         force2D=cfg.force_2d,
         normalize=False,  # done once per image in get_radiomics_features
+        additionalInfo=cfg.include_diagnostics,
     )
     extractor.disableAllFeatures()
     for feature_class in cfg.feature_classes:
@@ -115,12 +117,12 @@ def get_radiomics_features(
     extractor = _get_extractor(cfg, featureextractor)
     pixels = np.asarray(image, dtype=np.float32)
     if cfg.normalize:
-        # Whole-image statistics, as PyRadiomics would compute per label.
+        # Same statistics PyRadiomics computes per label.
         pixels = sitk.GetArrayFromImage(
             imageoperations.normalizeImage(
                 sitk.GetImageFromArray(pixels), normalizeScale=cfg.normalize_scale
             )
-        ).astype(np.float32)
+        )
     labels_u32 = np.asarray(mask, dtype=np.uint32)  # uint16 wraps labels > 65,535
     boxes = ndimage.find_objects(labels_u32)
     border = _border_labels(mask)

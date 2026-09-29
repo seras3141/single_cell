@@ -117,7 +117,7 @@ override-dependencies = [
     "nvidia-cudnn-cu13==9.25.1.1; sys_platform == 'linux'",
 ]
 
-# Its only CUDA code is the 3D shape class; build CPU-only on any node.
+# CUDA only accelerates 3D shape; unused here.
 [tool.uv.extra-build-variables]
 pyradiomics-cuda = { SKBUILD_CMAKE_DEFINE = "FORCE_DISABLE_CUDA=ON" }
 
