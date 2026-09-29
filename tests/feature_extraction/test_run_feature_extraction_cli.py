@@ -142,3 +142,24 @@ def test_manifest_records_the_image_dir_as_input(tmp_path):
             ):
                 module.main()
     assert create.call_args.args[:2] == (str(run_dir), "/imgs")
+
+
+@pytest.mark.unit
+def test_manifest_records_the_image_folder_in_single_file_mode(tmp_path):
+    module = _load_script_module()
+    run_dir = tmp_path / "run"
+    argv = [
+        "run_feature_extraction.py",
+        "--image-file", "/imgs/a_BF.tif",
+        "--mask-file", "/masks/a_pred_mask.tif",
+        "--output-dir", str(tmp_path / "out"),
+        "--run-dir", str(run_dir),
+    ]  # fmt: skip
+    extracted = pd.DataFrame({"cell_id": [1]})
+    with patch.object(sys, "argv", argv), patch.object(module, "setup_logging"):
+        with patch.object(module, "create_or_load_manifest") as create:
+            with patch.object(
+                module, "run_feature_extraction_from_config", return_value=extracted
+            ):
+                module.main()
+    assert create.call_args.args[:2] == (str(run_dir), "/imgs")
