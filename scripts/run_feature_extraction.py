@@ -328,9 +328,10 @@ def main():
 
     manifest = None
     if args.run_dir is not None:
-        output_dir = config.get("paths", {}).get("output_dir", "")
+        paths = config.get("paths", {})
+        input_dir = paths.get("image_dir") or paths.get("image_file") or ""
         os.makedirs(args.run_dir, exist_ok=True)
-        manifest = create_or_load_manifest(args.run_dir, output_dir, config)
+        manifest = create_or_load_manifest(args.run_dir, input_dir, config)
         snapshot = _get_extract_snapshot(config)
         manifest.start_stage("extract", config=snapshot)
 
