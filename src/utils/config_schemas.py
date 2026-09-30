@@ -257,6 +257,9 @@ class ScportraitConfig:
     overwrite: bool = True
     debug: bool = False
     save_plots: bool = True
+    # None: derive <sample>/inference_scportrait[_injected]/ from the image path.
+    mask_export_root: Optional[str] = None
+    injected_mask_export_root: Optional[str] = None
 
 
 @dataclass

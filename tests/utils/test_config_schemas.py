@@ -176,3 +176,16 @@ def test_valid_feature_extraction_methods(method):
     cfg = PipelineConfig()
     cfg.feature_extraction.method = method
     validate_pipeline_config(cfg)  # Must not raise
+
+
+def test_scportrait_mask_export_roots_are_schema_keys():
+    from omegaconf import OmegaConf
+
+    roots = {"mask_export_root": "/m", "injected_mask_export_root": "/i"}
+    merged = OmegaConf.merge(
+        OmegaConf.structured(PipelineConfig),
+        {"feature_extraction": {"scportrait": roots}},
+    )
+    assert merged.feature_extraction.scportrait.mask_export_root == "/m"
+    assert merged.feature_extraction.scportrait.injected_mask_export_root == "/i"
+    assert PipelineConfig().feature_extraction.scportrait.mask_export_root is None
