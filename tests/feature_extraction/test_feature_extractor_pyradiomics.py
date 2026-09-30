@@ -32,6 +32,7 @@ class FakeExtractor:
         self.enabled = []
         self.disabled_all = False
         self.labels_seen = []
+        self.shapes_seen = []
 
     def disableAllFeatures(self):
         self.disabled_all = True
@@ -43,6 +44,7 @@ class FakeExtractor:
 
     def execute(self, image, mask, label=None):
         self.labels_seen.append(label)
+        self.shapes_seen.append(mask.array.shape)
         if label in self.reject_labels:
             raise ValueError("mask has too few dimensions")
         region = mask.array == label
@@ -62,12 +64,29 @@ class FakeSitk:
         self.dtypes.append(array.dtype)
         return FakeImage(array)
 
+    def GetArrayFromImage(self, image):
+        return image.array
+
+
+class FakeImageOperations:
+    def __init__(self):
+        self.scales = []
+
+    def normalizeImage(self, image, normalizeScale=1):
+        self.scales.append(normalizeScale)
+        return image  # identity keeps expected values simple
+
 
 @pytest.fixture
 def fake_backend(monkeypatch):
     sitk = FakeSitk()
+    sitk.imageoperations = FakeImageOperations()
     featureextractor = SimpleNamespace(RadiomicsFeatureExtractor=FakeExtractor)
-    monkeypatch.setattr(pyr, "_resolve_backend", lambda: (featureextractor, sitk))
+    monkeypatch.setattr(
+        pyr,
+        "_resolve_backend",
+        lambda: (featureextractor, sitk.imageoperations, sitk),
+    )
     monkeypatch.setattr(pyr, "_EXTRACTOR_CACHE", {})
     return sitk
 
@@ -143,8 +162,8 @@ def test_extractor_settings_and_classes(fake_backend):
     assert extractor.settings == {
         "binWidth": 10,
         "force2D": True,
-        "normalize": True,
-        "normalizeScale": 100,
+        "normalize": False,
+        "additionalInfo": False,
     }
     assert extractor.disabled_all and extractor.enabled == ["firstorder", "glcm"]
     assert extractor.labels_seen == [1, 2]
@@ -152,15 +171,14 @@ def test_extractor_settings_and_classes(fake_backend):
 
 def test_cache_keyed_on_extractor_settings_only(fake_backend):
     base = PyradiomicsConfig()
-    for cfg in (
-        base,
-        replace(base, min_pixels=5),
-        replace(base, include_diagnostics=True),
-    ):
+    for cfg in (base, replace(base, min_pixels=5)):
         pyr.get_radiomics_features(_mask(), _image(), cfg)
     assert len(pyr._EXTRACTOR_CACHE) == 1
     pyr.get_radiomics_features(_mask(), _image(), replace(base, bin_width=5))
-    assert len(pyr._EXTRACTOR_CACHE) == 2
+    pyr.get_radiomics_features(
+        _mask(), _image(), replace(base, include_diagnostics=True)
+    )
+    assert len(pyr._EXTRACTOR_CACHE) == 3
 
 
 def test_dtypes_and_large_label_ids(fake_backend):
@@ -168,7 +186,25 @@ def test_dtypes_and_large_label_ids(fake_backend):
     mask[mask == 2] = 70_000  # above uint16
     df = pyr.get_radiomics_features(mask, _image(), PyradiomicsConfig())
     assert sorted(df["cell_id"]) == [1, 70_000]
-    assert fake_backend.dtypes == [np.dtype(np.float32), np.dtype(np.uint32)]
+    # First call converts the image for normalisation, then (image, mask) per label.
+    per_label = fake_backend.dtypes[1:]
+    assert len(per_label) == 4
+    assert all(np.issubdtype(d, np.floating) for d in per_label[0::2])
+    assert per_label[1::2] == [np.dtype(np.uint32)] * 2
+
+
+def test_each_label_runs_on_its_padded_bounding_box(fake_backend):
+    pyr.get_radiomics_features(_mask(), _image(), PyradiomicsConfig())
+    (extractor,) = pyr._EXTRACTOR_CACHE.values()
+    # bounding box + 2 px, clipped at the edge
+    assert extractor.shapes_seen == [(8, 8), (14, 14)]
+
+
+def test_image_normalised_once_unless_disabled(fake_backend):
+    pyr.get_radiomics_features(_mask(), _image(), PyradiomicsConfig())
+    assert fake_backend.imageoperations.scales == [100]
+    pyr.get_radiomics_features(_mask(), _image(), PyradiomicsConfig(normalize=False))
+    assert fake_backend.imageoperations.scales == [100]
 
 
 def test_empty_and_all_small_masks(fake_backend):
@@ -181,6 +217,44 @@ def test_empty_and_all_small_masks(fake_backend):
     small = pyr.get_radiomics_features(tiny, np.ones((8, 8)), PyradiomicsConfig())
     assert small.empty and small.attrs["n_skipped_small"] == 1
     assert fake_backend.dtypes == []  # no backend work when nothing is extracted
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("radiomics") is None, reason="radiomics not installed"
+)
+def test_real_backend_gives_102_features():
+    pyr._resolve_backend.cache_clear()
+    rng = np.random.default_rng(0)
+    image = rng.integers(500, 5000, (64, 64)).astype(np.uint16)
+    mask = np.zeros((64, 64), np.uint16)
+    mask[5:25, 5:30] = 1
+    mask[35:60, 30:60] = 2
+    df = pyr.get_radiomics_features(mask, image, PyradiomicsConfig())
+    features = [c for c in df.columns if c.startswith("original_")]
+    assert len(df) == 2 and len(features) == 102
+    assert df[features].notna().all().all()
+
+    import SimpleITK as sitk
+    from radiomics import featureextractor
+
+    cfg = PyradiomicsConfig()
+    reference = featureextractor.RadiomicsFeatureExtractor(
+        binWidth=cfg.bin_width,
+        force2D=cfg.force_2d,
+        normalize=cfg.normalize,
+        normalizeScale=cfg.normalize_scale,
+    )
+    reference.disableAllFeatures()
+    for name in cfg.feature_classes:
+        reference.enableFeatureClassByName(name)
+    image_itk = sitk.GetImageFromArray(image.astype(np.float32))
+    mask_itk = sitk.GetImageFromArray(mask.astype(np.uint32))
+    for label in (1, 2):
+        expected = reference.execute(image_itk, mask_itk, label=label)
+        row = df[df["cell_id"] == label].iloc[0]
+        for name in features:
+            want = float(expected[name])
+            assert row[name] == pytest.approx(want, rel=1e-4, abs=1e-6), name
 
 
 @pytest.mark.skipif(

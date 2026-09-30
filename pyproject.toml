@@ -44,6 +44,8 @@ dependencies = [
     "tqdm>=4.62.0",
     "PyYAML>=5.4.0",
     "omegaconf>=2.3.0",
+    "pyarrow>=17.0",
+    "pyradiomics-cuda==1.0.4",  # sdist-only PyRadiomics fork; numpy 2 support
 ]
 
 [project.optional-dependencies]
@@ -114,6 +116,10 @@ single-cell-pipeline = "scripts.run_pipeline:main"
 override-dependencies = [
     "nvidia-cudnn-cu13==9.25.1.1; sys_platform == 'linux'",
 ]
+
+# CUDA only accelerates 3D shape; unused here.
+[tool.uv.extra-build-variables]
+pyradiomics-cuda = { SKBUILD_CMAKE_DEFINE = "FORCE_DISABLE_CUDA=ON" }
 
 [tool.uv.sources]
 cell-activity-labeler = { path = "src/cell_activity_labeler" }

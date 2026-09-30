@@ -64,7 +64,7 @@ feature_extraction:
     normalize_scale: 100
     min_pixels: 20              # provisional until the grey-level screen
     feature_classes: ["shape2D", "firstorder", "glcm", "glrlm", "glszm", "gldm", "ngtdm"]
-    include_diagnostics: false
+    include_diagnostics: false  # describe the per-cell crop, not the image
 
 
 # Logging and monitoring
