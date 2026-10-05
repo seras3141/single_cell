@@ -252,7 +252,7 @@ PYRADIOMICS_FEATURE_CLASSES: Tuple[str, ...] = (
 
 @dataclass
 class PyradiomicsConfig:
-    """Defaults match the external GPU radiomics delivery."""
+    """Defaults match the external radiomics delivery."""
     bin_width: float = 25
     force_2d: bool = True
     normalize: bool = True
