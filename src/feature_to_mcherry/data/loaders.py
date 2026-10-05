@@ -21,6 +21,7 @@ _PROVENANCE_COLUMNS = {
     "processing_timestamp",
     "feature_extraction_version",
     "dataset_name",
+    "touches_border",  # audit flag, not a feature
 }
 
 

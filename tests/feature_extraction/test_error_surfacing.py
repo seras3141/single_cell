@@ -235,12 +235,73 @@ class TestUnpairedMasks:
         _run(pipeline, img_dir, msk_dir)
         assert len(pipeline.error_files) == 1
 
-    def test_images_without_mask_are_not_errors(self, tmp_path):
-        img_dir, msk_dir = _dataset(tmp_path, ["a"])
-        tifffile.imwrite(img_dir / "z0only_BF.tif", _image())
+    def _statuses(self, pipeline):
+        return {r["image_filename"]: r["status"] for r in pipeline.coverage_records}
+
+    def test_z0_image_without_mask_is_unsegmented(self, tmp_path):
+        img_dir, msk_dir = _dataset(tmp_path, ["pMF5V1_E07_t1_z1"])
+        tifffile.imwrite(img_dir / "pMF5V1_E07_t1_z0_BF.tif", _image())
         pipeline = _pipeline(tmp_path)
         _run(pipeline, img_dir, msk_dir)
         assert not pipeline.error_files
+        assert self._statuses(pipeline)["pMF5V1_E07_t1_z0_BF.tif"] == "unsegmented"
+
+    def test_z0_image_without_mask_is_error_when_z0_is_segmented(self, tmp_path):
+        img_dir, msk_dir = _dataset(tmp_path, ["pMF5V1_E07_t1_z0"])
+        tifffile.imwrite(img_dir / "pMF5V1_E07_t2_z0_BF.tif", _image())
+        pipeline = _pipeline(tmp_path)
+        _run(pipeline, img_dir, msk_dir)
+        assert pipeline.error_files == [
+            (str(img_dir / "pMF5V1_E07_t2_z0_BF.tif"), "No matching mask")
+        ]
+
+    def test_image_with_a_duplicate_key_is_error(self, tmp_path):
+        img_dir, msk_dir = _dataset(tmp_path, ["pMF5V1_E07_t1_z1"])
+        (img_dir / "copy").mkdir()
+        tifffile.imwrite(img_dir / "copy" / "pMF5V1_E07_t1_z1_BF.tif", _image())
+        pipeline = _pipeline(tmp_path)
+        assert _run(pipeline, img_dir, msk_dir).empty
+        assert [msg for _, msg in pipeline.error_files] == [
+            "Duplicate pairing key 'pMF5V1_E07_t1_z1'"
+        ] * 3 + ["No valid image-mask pairs"]
+
+    def test_mask_with_a_duplicate_key_is_error(self, tmp_path):
+        img_dir, msk_dir = _dataset(tmp_path, ["pMF5V1_E07_t1_z1"])
+        (msk_dir / "copy").mkdir()
+        save_labels(_mask(), msk_dir / "copy" / "pMF5V1_E07_t1_z1_pred_mask.tif")
+        pipeline = _pipeline(tmp_path)
+        assert _run(pipeline, img_dir, msk_dir).empty
+        assert [msg for _, msg in pipeline.error_files] == [
+            "Duplicate pairing key 'pMF5V1_E07_t1_z1'"
+        ] * 3 + ["No valid image-mask pairs"]
+
+    def test_duplicate_key_across_experiments_is_never_paired(self, tmp_path):
+        for exp in ("expA", "expB"):
+            _dataset(tmp_path / "root" / exp, ["pMF5V1_E07_t1_z1"])
+        root = tmp_path / "root"
+        pipeline = _pipeline(tmp_path)
+        assert _run(pipeline, root, root).empty
+        assert len(pipeline.error_files) == 5
+        assert {r["status"] for r in pipeline.coverage_records} == {"duplicate"}
+
+    def test_image_the_pattern_cannot_key_is_error(self, tmp_path):
+        img_dir, msk_dir = _dataset(tmp_path, ["pMF5V1_E07_t1_z1"])
+        pipeline = _pipeline(tmp_path)
+        pipeline.process_batch(img_dir, msk_dir, image_patterns=["*_z?_BF.tif"])
+        assert (
+            str(img_dir / "pMF5V1_E07_t1_z1_BF.tif"),
+            "Image matches no pattern",
+        ) in pipeline.error_files
+
+    def test_other_image_without_mask_is_error(self, tmp_path):
+        img_dir, msk_dir = _dataset(tmp_path, ["pMF5V1_E07_t1_z1"])
+        tifffile.imwrite(img_dir / "pMF5V1_E07_t1_z2_BF.tif", _image())
+        pipeline = _pipeline(tmp_path)
+        _run(pipeline, img_dir, msk_dir)
+        assert pipeline.error_files == [
+            (str(img_dir / "pMF5V1_E07_t1_z2_BF.tif"), "No matching mask")
+        ]
+        assert self._statuses(pipeline)["pMF5V1_E07_t1_z2_BF.tif"] == "no_mask"
 
 
 def test_output_dir_from_config_only(tmp_path):
@@ -312,7 +373,10 @@ def test_no_pairs_is_an_error(tmp_path):
     img_dir, msk_dir = _dataset(tmp_path, ["a"], mask_suffix="_Cells.tif")
     pipeline = _pipeline(tmp_path)
     assert pipeline.process_batch(img_dir, msk_dir).empty
-    assert pipeline.error_files == [(str(msk_dir), "No valid image-mask pairs")]
+    assert pipeline.error_files == [
+        (str(img_dir / "a_BF.tif"), "No matching mask"),
+        (str(msk_dir), "No valid image-mask pairs"),
+    ]
 
 
 def test_run_treats_null_patterns_as_defaults(tmp_path):
