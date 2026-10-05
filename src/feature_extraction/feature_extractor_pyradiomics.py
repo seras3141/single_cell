@@ -5,7 +5,7 @@ from __future__ import annotations
 import functools
 import importlib
 import logging
-from typing import Any, Dict, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -110,6 +110,20 @@ def _label_counts(mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     return labels[foreground], counts[foreground]
 
 
+def _bounding_boxes(
+    mask: np.ndarray, labels: List[int]
+) -> Dict[int, Tuple[slice, ...]]:
+    """Bounding box per label; find_objects scales with the largest label."""
+    if max(labels) <= mask.size:
+        boxes = ndimage.find_objects(mask, max_label=max(labels))
+        return {label: boxes[label - 1] for label in labels}
+    values = np.unique(mask)
+    values = values[values != 0]
+    dense = np.where(mask != 0, np.searchsorted(values, mask) + 1, 0)
+    boxes = ndimage.find_objects(dense)
+    return {label: boxes[int(np.searchsorted(values, label))] for label in labels}
+
+
 def get_radiomics_features(
     mask: np.ndarray, image: np.ndarray, cfg: PyradiomicsConfig
 ) -> pd.DataFrame:
@@ -141,7 +155,7 @@ def get_radiomics_features(
             )
         )
     labels_u32 = np.asarray(mask, dtype=np.uint32)  # uint16 wraps labels > 65,535
-    boxes = ndimage.find_objects(labels_u32)
+    boxes = _bounding_boxes(labels_u32, keep)
     border = _border_labels(mask)
 
     rows = []
@@ -149,7 +163,7 @@ def get_radiomics_features(
     for label in keep:
         crop = tuple(
             slice(max(axis.start - _CROP_PAD, 0), min(axis.stop + _CROP_PAD, size))
-            for axis, size in zip(boxes[label - 1], mask.shape)
+            for axis, size in zip(boxes[label], mask.shape)
         )
         try:
             result = extractor.execute(

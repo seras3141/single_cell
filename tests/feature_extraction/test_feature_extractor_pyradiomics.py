@@ -212,6 +212,7 @@ def test_sparse_label_ids_do_not_size_the_counts(fake_backend):
     mask[mask == 2] = 4_000_000_000
     df = pyr.get_radiomics_features(mask, _image(), PyradiomicsConfig())
     assert sorted(df["cell_id"]) == [1, 4_000_000_000]
+    assert df["original_shape2D_PixelSurface"].tolist() == [36.0, 100.0]
     assert df.attrs["n_skipped_small"] == 1
 
 
