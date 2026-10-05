@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Any, Optional, Sequence
 import copy
 import importlib.util
 import logging
@@ -187,6 +187,19 @@ def _extract_one_pair(
     return features_df, new_errors, new_coverage
 
 
+_ATTEMPTED = ("ok", "empty", "error")
+
+
+def _records_owning_a_well(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Records with a mask, or an image extraction was attempted on."""
+    return [r for r in records if r["mask_filename"] or r["status"] in _ATTEMPTED]
+
+
+def _keyed_record(record: Dict[str, Any]) -> Tuple[Tuple[str, str, int], str]:
+    key = (record["sample_id"], record["timepoint"], record["z_index"])
+    return key, record["image_filename"] or record["mask_filename"]
+
+
 def _write_new_parquet(df: pd.DataFrame, path: Path) -> None:
     # "xb": refuse files created since the check.
     with open(path, "xb") as handle:
@@ -358,6 +371,7 @@ class FeatureExtractionPipeline:
         self.logger.info(
             f"Found {len(image_files)} potential image files and {len(mask_files)} mask files"
         )
+        self._require_one_folder_per_well_batch(image_files, mask_files)
 
         # Match files based on configuration
         pairs = self.match_files(
@@ -426,42 +440,82 @@ class FeatureExtractionPipeline:
         """
         mask_patterns = mask_patterns or [DEFAULT_MASK_PATTERN]
         image_patterns = image_patterns or [DEFAULT_IMAGE_PATTERN]
+        image_files = list(dict.fromkeys(image_files))
+        mask_files = list(dict.fromkeys(mask_files))
 
-        # Index images by pairing key; first occurrence wins, warn on collisions.
-        image_by_key: Dict[str, Path] = {}
+        images_by_key: Dict[str, List[Path]] = {}
         for image in image_files:
             key = self._first_key(image.name, image_patterns)
             if key is None:
+                self.logger.error(f"Image matches no pattern: {image.name}")
+                self.error_files.append((str(image), "Image matches no pattern"))
                 continue
-            if key in image_by_key:
-                self.logger.warning(
-                    f"Multiple images share pairing key '{key}': keeping "
-                    f"{image_by_key[key].name}, ignoring {image.name}"
-                )
-                continue
-            image_by_key[key] = image
-
-        pairs = []
-        paired_keys = set()
+            images_by_key.setdefault(key, []).append(image)
+        masks_by_key: Dict[str, List[Path]] = {}
         for mask in mask_files:
             key = self._first_key(mask.name, mask_patterns)
             if key is None:
                 self.logger.error(f"Mask matches no pattern: {mask.name}")
                 self.error_files.append((str(mask), "Mask matches no pattern"))
                 continue
-            image = image_by_key.get(key)
-            if image is None:
-                self._record_unpaired_mask(mask, image_patterns)
-                continue
-            pairs.append((image, mask))
-            paired_keys.add(key)
+            masks_by_key.setdefault(key, []).append(mask)
 
-        n_unmasked = len(set(image_by_key) - paired_keys)
-        if n_unmasked:
-            # Expected for z0 projections, which are never segmented.
-            self.logger.info(f"{n_unmasked} images have no mask and were not processed")
+        duplicated = {
+            key
+            for by_key in (images_by_key, masks_by_key)
+            for key, paths in by_key.items()
+            if len(paths) > 1
+        }
+        for key in sorted(duplicated):
+            self._record_duplicate_key(
+                key, images_by_key.get(key, []), masks_by_key.get(key, [])
+            )
+
+        pairs = []
+        for key, masks in masks_by_key.items():
+            if key in duplicated:
+                continue
+            images = images_by_key.get(key)
+            if images is None:
+                self._record_unpaired_mask(masks[0], image_patterns)
+                continue
+            pairs.append((images[0], masks[0]))
+
+        segments_z0: Optional[bool] = None
+        n_unsegmented = 0
+        for key in sorted(set(images_by_key) - set(masks_by_key) - duplicated):
+            image = images_by_key[key][0]
+            is_z0 = self._key_columns(image.name)[2] == 0
+            if is_z0 and segments_z0 is None:
+                segments_z0 = any(self._key_columns(m.name)[2] == 0 for m in mask_files)
+            if is_z0 and not segments_z0:
+                self._append_coverage(image.name, "", image.name, status="unsegmented")
+                n_unsegmented += 1
+                continue
+            self.logger.error(f"No matching mask found for image: {image.name}")
+            self.error_files.append((str(image), "No matching mask"))
+            self._append_coverage(image.name, "", image.name, status="no_mask")
+        if n_unsegmented:
+            self.logger.info(
+                f"{n_unsegmented} z0 images have no mask (never segmented)"
+            )
 
         return pairs
+
+    def _record_duplicate_key(
+        self, key: str, images: List[Path], masks: List[Path]
+    ) -> None:
+        """Pair none of them: which image belongs to which mask is unknown."""
+        self.logger.error(
+            f"{len(images)} image(s) and {len(masks)} mask(s) share pairing key "
+            f"'{key}'; none paired"
+        )
+        for image in images:
+            self.error_files.append((str(image), f"Duplicate pairing key '{key}'"))
+            self._append_coverage(image.name, "", image.name, status="duplicate")
+        for mask in masks:
+            self.error_files.append((str(mask), f"Duplicate pairing key '{key}'"))
+            self._append_coverage("", mask.name, mask.name, status="duplicate")
 
     def _record_unpaired_mask(self, mask: Path, image_patterns: List[str]) -> None:
         """Record a mask with no image: an error unless registered as known-missing.
@@ -990,8 +1044,8 @@ class FeatureExtractionPipeline:
             key = (sample_id, timepoint.lstrip("0") or "0", z_index)
             if key in seen:
                 return (
-                    f"{seen[key]} and {name} share well/timepoint/z {key}; "
-                    "run one experiment per output directory"
+                    f"{seen[key]} and {name} share well/timepoint/z {key}; check "
+                    "for a second experiment or overlapping file patterns"
                 )
             seen[key] = name
         for well in sorted({sample_id for (sample_id, _, _), _ in keyed if sample_id}):
@@ -1011,6 +1065,21 @@ class FeatureExtractionPipeline:
             self.output_dir / f"{well}_coverage.parquet",
         )
 
+    def _require_one_folder_per_well_batch(
+        self, image_files: Sequence[Path], mask_files: Sequence[Path]
+    ) -> None:
+        """Per-well batches hold one experiment: one image and one mask folder."""
+        if self.output_granularity != "well":
+            return
+        for kind, paths in (("image", image_files), ("mask", mask_files)):
+            folders = sorted({str(path.parent) for path in paths})
+            if len(folders) > 1:
+                raise ValueError(
+                    f"Per-well output refused: inputs come from more than one {kind} "
+                    f"directory ({folders[0]}, {folders[1]}, ...); run one experiment "
+                    "per batch from a flat directory"
+                )
+
     def _check_per_well_batch(
         self, image_paths: List[Path], coverage_before: int
     ) -> None:
@@ -1019,8 +1088,8 @@ class FeatureExtractionPipeline:
             return
         keyed = [(self._key_columns(path.name), path.name) for path in image_paths]
         keyed += [
-            ((r["sample_id"], r["timepoint"], r["z_index"]), r["mask_filename"])
-            for r in self.coverage_records[coverage_before:]
+            _keyed_record(r)
+            for r in _records_owning_a_well(self.coverage_records[coverage_before:])
         ]
         conflict = self._per_well_conflict(keyed)
         if conflict:
@@ -1039,14 +1108,12 @@ class FeatureExtractionPipeline:
         coverage_df = pd.DataFrame(coverage)
         if coverage_df.empty:
             return
-        coverage_df = coverage_df[coverage_df["sample_id"] != ""]
-        names = coverage_df["image_filename"].where(
-            coverage_df["image_filename"] != "", coverage_df["mask_filename"]
-        )
-        keys = zip(
-            coverage_df["sample_id"], coverage_df["timepoint"], coverage_df["z_index"]
-        )
-        conflict = self._per_well_conflict(list(zip(keys, names)))
+        owning = _records_owning_a_well(coverage)
+        coverage_df = coverage_df[
+            coverage_df["sample_id"].isin({r["sample_id"] for r in owning})
+            & (coverage_df["sample_id"] != "")
+        ]
+        conflict = self._per_well_conflict([_keyed_record(r) for r in owning])
         if conflict:
             raise ValueError(f"Per-well output refused: {conflict}")
         for name, well_coverage in coverage_df.groupby("sample_id", sort=True):
@@ -1245,6 +1312,7 @@ class FeatureExtractionPipeline:
         all_features = []
         errors_before = len(self.error_files)
         coverage_before = len(self.coverage_records)
+        self._require_one_folder_per_well_batch(images, [])
         self._check_per_well_batch(images, coverage_before)
         for image_path in tqdm(images, desc="Processing images"):
             inject_mask: Path | None = None
