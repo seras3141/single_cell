@@ -42,10 +42,17 @@ The method is set via `feature_extraction.method` in `config/feature_extraction_
   uses per-well Parquet.
 - **Per-well safety.** Before extracting anything, a per-well batch refuses to start if one of its wells
   already has output files (delete them to re-run that well), was written earlier in the run, or has
-  two inputs with the same well, timepoint and z. A file whose name lacks any of the three is a
-  per-file error. Each batch can cover any set of wells, so one-well-per-task arrays work.
-- **Coverage.** Every attempted image, and every mask without an image, gets one coverage record:
-  filename, key columns, `status` (`ok`/`empty`/`error`/`unpaired`/`known_missing`), `n_cells`,
+  two inputs with a mask (or an attempted image) for the same well, timepoint and z. Its images must all sit in one directory, and its
+  masks in one (scPortrait checks its images only), so each batch holds a single experiment. Only wells with a mask (or an attempted
+  image) are written: an image pattern broader than the mask pattern still fails the run (its
+  extra images have no mask), but it doesn't create or block other wells' files. In per-well mode,
+  masks sharing a pairing key also refuse the batch. A file whose name lacks a
+  well, timepoint or z is a per-file error. Each batch can cover any set of wells, so one-well-per-task arrays work.
+- **Coverage.** Every image, and every mask without an image, gets one coverage record (per-well files
+  keep only the wells the batch has a mask for; inputs with no parseable well, and files their pattern
+  can't key, appear only in the summary; coverage is per file, so a slice can have an `ok` row and a
+  `no_mask` row from an extra image):
+  filename, key columns, `status` (`ok`/`empty`/`error`/`unpaired`/`known_missing`/`no_mask`/`unsegmented`/`duplicate`), `n_cells`,
   `n_skipped_small`, `n_label_errors` and `seconds`. That's what tells a genuinely empty image from one
   that was never processed. The summary reports the status counts.
 
@@ -53,7 +60,7 @@ The method is set via `feature_extraction.method` in `config/feature_extraction_
 
 - **Loading.** Masks are read with `src.utils.image_utils.load_labels` (TIFF, zarr or HDF5, any label dtype including uint32), and BF images with `load_image`. Both must be 2D and the same shape; anything else is a per-file error.
 - **Any per-file error fails the run.** Errors are logged in the run log (including those from parallel workers), and `feature_extraction_summary.txt` lists every failed file. It is written on every run, whatever `save_combined_file` says. The CLI then exits non-zero. Code defects and missing dependencies (`NameError`, `ImportError`, `NotImplementedError`) are re-raised on the first file instead, after the summary is written. `TypeError` and `AttributeError` are recorded per file, because numeric libraries also raise them for bad input data (e.g. a float label image).
-- **Unpaired masks.** A mask with no matching image is an error, unless its slice is listed under `known_missing` in [`config/data_exclusions.yaml`](../../config/data_exclusions.yaml). Images with no mask (e.g. z0 projections) are only counted.
+- **Unpaired masks.** A mask with no matching image is an error, unless its slice is listed under `known_missing` in [`config/data_exclusions.yaml`](../../config/data_exclusions.yaml). An image with no mask is an error too, and so are all files sharing a pairing key, none of which are paired. The exception is z0 in a batch with no z0 mask at all (per-slice trees never segment the z0 projection): those images are recorded as `unsegmented`.
 - **Excluded stacks.** Stacks listed under `excluded_stacks` are still extracted. The `feature_to_mcherry` loaders drop their rows.
 
 ## Feature groups (`incarta`, 2D)

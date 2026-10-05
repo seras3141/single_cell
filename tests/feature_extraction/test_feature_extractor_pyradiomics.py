@@ -446,9 +446,80 @@ def test_per_well_refuses_to_merge_two_experiments(
     for exp in ("expA", "expB"):  # same well + filenames in two experiments
         _dataset(root / exp, {"pMF5V1_E07_t1_z1": _mask()})
     pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
-    with pytest.raises(ValueError, match="share well/timepoint/z"):
+    with pytest.raises(ValueError, match="more than one image directory"):
         pipeline.process_batch(root, root)
     assert fake_backend.dtypes == []  # refused before any extraction
+
+
+def test_per_well_refuses_two_experiments_at_different_timepoints(
+    tmp_path, fake_backend, pyarrow_present
+):
+    root = tmp_path / "root"
+    _dataset(root / "expA", {"pMF5V1_E07_t1_z1": _mask()})
+    _dataset(root / "expB", {"pMF5V1_E07_t2_z1": _mask()})
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    with pytest.raises(ValueError, match="more than one image directory"):
+        pipeline.process_batch(root, root)
+    assert fake_backend.dtypes == []
+
+
+def test_per_well_refuses_a_second_directory_without_pairs(
+    tmp_path, fake_backend, pyarrow_present
+):
+    root = tmp_path / "root"
+    _dataset(root / "expA", {"pMF5V1_E07_t1_z1": _mask()})
+    (root / "expB" / "imgs").mkdir(parents=True)
+    tifffile.imwrite(root / "expB" / "imgs" / "pMF5V1_E07_t2_z0_BF.tif", _image())
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    with pytest.raises(ValueError, match="more than one image directory"):
+        pipeline.process_batch(root, root)
+
+
+def test_per_well_writes_only_wells_with_masks(tmp_path, fake_backend, pyarrow_present):
+    img_dir, msk_dir = _dataset(tmp_path, {"pMF5V1_E07_t1_z1": _mask()})
+    tifffile.imwrite(img_dir / "pMF5V1_F08_t1_z1_BF.tif", _image())
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    (pipeline.output_dir / "F08_coverage.parquet").write_text("another task's well")
+    _run(pipeline, img_dir, msk_dir)
+    assert sorted(pyarrow_present) == ["E07.parquet", "E07_coverage.parquet"]
+    assert [msg for _, msg in pipeline.error_files] == ["No matching mask"]
+
+
+def test_per_well_extra_image_without_mask_fails_only_itself(
+    tmp_path, fake_backend, pyarrow_present
+):
+    img_dir, msk_dir = _dataset(tmp_path, {"pMF5V1_E07_t1_z1": _mask()})
+    tifffile.imwrite(img_dir / "pMF5V1_E07_t1_z1_old_BF.tif", _image())
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    _run(pipeline, img_dir, msk_dir)
+    assert sorted(pyarrow_present) == ["E07.parquet", "E07_coverage.parquet"]
+    assert [msg for _, msg in pipeline.error_files] == ["No matching mask"]
+
+
+def test_per_well_duplicate_images_without_mask_own_no_well(
+    tmp_path, fake_backend, pyarrow_present
+):
+    img_dir, msk_dir = _dataset(tmp_path, {"pMF5V1_E07_t1_z1": _mask()})
+    tifffile.imwrite(img_dir / "pMF5V1_F08_t1_z1_BF.tif", _image())
+    tifffile.imwrite(img_dir / "pMF5V1_F08_t1_z1.tif", _image())
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    (pipeline.output_dir / "F08_coverage.parquet").write_text("another task's well")
+    pipeline.process_batch(img_dir, msk_dir, image_patterns=["*_BF.tif", "*.tif"])
+    assert sorted(pyarrow_present) == ["E07.parquet", "E07_coverage.parquet"]
+    assert [msg for _, msg in pipeline.error_files] == [
+        "Duplicate pairing key 'pMF5V1_F08_t1_z1'"
+    ] * 2
+
+
+def test_per_well_coverage_lists_unsegmented_z0(
+    tmp_path, fake_backend, pyarrow_present
+):
+    img_dir, msk_dir = _dataset(tmp_path, {"pMF5V1_E07_t1_z1": _mask()})
+    tifffile.imwrite(img_dir / "pMF5V1_E07_t1_z0_BF.tif", _image())
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    _run(pipeline, img_dir, msk_dir)
+    coverage = pyarrow_present["E07_coverage.parquet"]
+    assert sorted(coverage["status"]) == ["ok", "unsegmented"]
 
 
 def test_per_well_refuses_to_overwrite_within_a_run(
@@ -516,7 +587,7 @@ def test_per_well_refuses_duplicate_unpaired_masks(
         (root / exp / "msks").mkdir(parents=True, exist_ok=True)
         save_labels(_mask(), root / exp / "msks" / "pMF5V1_E07_t1_z2_pred_mask.tif")
     pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
-    with pytest.raises(ValueError, match="share well/timepoint/z"):
+    with pytest.raises(ValueError, match="more than one mask directory"):
         pipeline.process_batch(root, root)
     assert fake_backend.dtypes == []  # refused before any extraction
 
