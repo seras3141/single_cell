@@ -85,9 +85,10 @@ def get_args():
     parser.add_argument(
         "--n-jobs",
         type=int,
-        default=-1,
+        default=None,
         help="Number of images processed concurrently (file-level "
-        "workers). -1 = all cores, 1 = sequential. Inner "
+        "workers); defaults to the config's n_jobs (-1 without a config). "
+        "-1 = all cores, 0 or 1 = sequential. Inner "
         "per-cell parallelism is forced to 1 when >1 file "
         "worker is used. Ignored for scportrait (kept "
         "sequential on one GPU).",
@@ -161,7 +162,7 @@ def load_config(args) -> Dict[str, Any]:
         config["paths"]["mask_file"] = args.mask_file
     if args.output_dir:
         config["paths"]["output_dir"] = args.output_dir
-    if args.n_jobs:
+    if args.n_jobs is not None:
         config["feature_extraction"]["n_jobs"] = args.n_jobs
     if args.method:
         config["feature_extraction"]["method"] = args.method
@@ -171,6 +172,8 @@ def load_config(args) -> Dict[str, Any]:
         config["feature_extraction"]["mask_pattern"] = args.mask_pattern
 
     config["logging"]["level"] = args.log_level
+
+    config["feature_extraction"].setdefault("n_jobs", -1)
 
     return config
 

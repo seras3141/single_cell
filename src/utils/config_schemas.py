@@ -322,7 +322,7 @@ def check_feature_method_available(method: str) -> None:
 @dataclass
 class FeatureExtractionConfig:
     """Feature extraction configuration."""
-    n_jobs: int = -1  # Use all available cores (or set to 0)
+    n_jobs: int = -1  # -1: all cores; 0 or 1: sequential
 
     method: str = "incarta"
     image_pattern: str = "*_BF.tif"

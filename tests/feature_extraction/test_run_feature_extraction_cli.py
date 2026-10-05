@@ -163,3 +163,23 @@ def test_manifest_records_the_image_folder_in_single_file_mode(tmp_path):
             ):
                 module.main()
     assert create.call_args.args[:2] == (str(run_dir), "/imgs")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("cli, expected", [([], 8), (["--n-jobs", "2"], 2)])
+def test_n_jobs_overrides_the_config_only_when_given(tmp_path, cli, expected):
+    module = _load_script_module()
+    config_file = tmp_path / "feature_extraction.yaml"
+    config_file.write_text("feature_extraction:\n  n_jobs: 8\n")
+    argv = ["run_feature_extraction.py", "--config", str(config_file), *cli]
+    with patch.object(sys, "argv", argv):
+        args = module.get_args()
+    assert module.load_config(args)["feature_extraction"]["n_jobs"] == expected
+
+
+@pytest.mark.unit
+def test_cli_only_run_records_the_default_n_jobs():
+    module = _load_script_module()
+    with patch.object(sys, "argv", ["run_feature_extraction.py", "--image-dir", "x"]):
+        args = module.get_args()
+    assert module.load_config(args)["feature_extraction"]["n_jobs"] == -1

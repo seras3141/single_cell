@@ -204,6 +204,12 @@ class FeatureExtractionPipeline:
 
         # Extract configuration sections
         # self.paths_config = feature_config.get('paths', {})
+        n_jobs = self.feature_config.get("n_jobs")
+        if n_jobs is not None and n_jobs < -1:
+            raise ValueError(
+                f"feature_extraction.n_jobs={n_jobs}: use -1 (all cores), 0 or 1 "
+                "(sequential), or a positive count"
+            )
         self.method = method or self.feature_config.get("method", "incarta")
         self.output_config = self.feature_config.get("output", {})
         self.processing_config = self.feature_config.get("processing", {})
@@ -649,9 +655,7 @@ class FeatureExtractionPipeline:
                 # controls per-cell parallelism; when the outer file loop is
                 # parallel the caller passes 1 (see ``process_batch``).
                 n_jobs = (
-                    inner_n_jobs
-                    if inner_n_jobs is not None
-                    else self.feature_config.get("n_jobs", -1)
+                    inner_n_jobs if inner_n_jobs is not None else self._inner_n_jobs()
                 )
 
                 if self.method == "incarta":
@@ -818,6 +822,10 @@ class FeatureExtractionPipeline:
             f"{len(batch_errors)} file error(s) across {n_inputs} inputs. "
             f"First: {preview}"
         )
+
+    def _inner_n_jobs(self) -> int:
+        raw = self.feature_config.get("n_jobs", -1)
+        return 1 if raw in (None, 0) else int(raw)
 
     def _resolve_file_workers(self) -> int:
         """Resolve the number of concurrent file workers from ``n_jobs``.
