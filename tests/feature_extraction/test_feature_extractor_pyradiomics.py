@@ -74,7 +74,7 @@ class FakeImageOperations:
 
     def normalizeImage(self, image, normalizeScale=1):
         self.scales.append(normalizeScale)
-        return image  # identity keeps expected values simple
+        return FakeImage(image.array.astype(np.float64))  # dtype as PyRadiomics
 
 
 @pytest.fixture
@@ -189,7 +189,7 @@ def test_dtypes_and_large_label_ids(fake_backend):
     # First call converts the image for normalisation, then (image, mask) per label.
     per_label = fake_backend.dtypes[1:]
     assert len(per_label) == 4
-    assert all(np.issubdtype(d, np.floating) for d in per_label[0::2])
+    assert per_label[0::2] == [np.dtype(np.float64)] * 2
     assert per_label[1::2] == [np.dtype(np.uint32)] * 2
 
 

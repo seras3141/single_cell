@@ -27,9 +27,11 @@ conda activate cellpose-env
 # 3. Install PyTorch (adjust cuda version as needed)
 conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
 
-# 4. Install dependencies
+# 4. Install dependencies. Prefer `uv sync` (see AGENTS.md). With pip, force the CPU
+#    build of the source-only pyradiomics-cuda and skip cached wheels; the variable
+#    reaches every package pip builds with scikit-build-core.
 pip install -e ./github/cellpose
-pip install -e .
+SKBUILD_CMAKE_DEFINE="FORCE_DISABLE_CUDA=ON" pip install --no-cache-dir -e .
 ```
 
 ---
