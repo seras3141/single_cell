@@ -5,10 +5,11 @@ from __future__ import annotations
 import functools
 import importlib
 import logging
-from typing import Any, Dict, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 import numpy as np
 import pandas as pd
+from scipy import ndimage
 
 from src.utils.config_schemas import PyradiomicsConfig
 
@@ -18,31 +19,32 @@ _EXTRACTOR_CACHE: Dict[Tuple[Any, ...], Any] = {}
 
 _DIAGNOSTICS_PREFIX = "diagnostics_"
 _FEATURE_PREFIX = "original_"
+_CROP_PAD = 2
 
 
 @functools.lru_cache(maxsize=1)
-def _resolve_backend() -> Tuple[Any, Any]:
-    # Lazy: optional C build; tests patch this.
+def _resolve_backend() -> Tuple[Any, Any, Any]:
+    # Lazy: sdist C build may be absent; tests patch this.
     try:
         featureextractor = importlib.import_module("radiomics.featureextractor")
+        imageoperations = importlib.import_module("radiomics.imageoperations")
         sitk = importlib.import_module("SimpleITK")
     except ImportError as exc:
         raise ImportError(
             "The pyradiomics backend needs the pyradiomics-cuda package (radiomics) "
-            "and SimpleITK; install the project dependencies (uv pip install -e .)"
+            "and SimpleITK; it builds from source, so run uv sync with a C compiler"
         ) from exc
     # PyRadiomics logs every ROI at INFO.
     logging.getLogger("radiomics").setLevel(logging.ERROR)
-    return featureextractor, sitk
+    return featureextractor, imageoperations, sitk
 
 
 def _extractor_key(cfg: PyradiomicsConfig) -> Tuple[Any, ...]:
     return (
         float(cfg.bin_width),
         bool(cfg.force_2d),
-        bool(cfg.normalize),
-        float(cfg.normalize_scale),
         tuple(cfg.feature_classes),
+        bool(cfg.include_diagnostics),
     )
 
 
@@ -50,8 +52,8 @@ def build_extractor(cfg: PyradiomicsConfig, featureextractor: Any) -> Any:
     extractor = featureextractor.RadiomicsFeatureExtractor(
         binWidth=cfg.bin_width,
         force2D=cfg.force_2d,
-        normalize=cfg.normalize,
-        normalizeScale=cfg.normalize_scale,
+        normalize=False,  # done once per image in get_radiomics_features
+        additionalInfo=cfg.include_diagnostics,
     )
     extractor.disableAllFeatures()
     for feature_class in cfg.feature_classes:
@@ -108,6 +110,21 @@ def _label_counts(mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     return labels[foreground], counts[foreground]
 
 
+def _bounding_boxes(
+    mask: np.ndarray, labels: List[int], all_foreground_labels: np.ndarray
+) -> Dict[int, Tuple[slice, ...]]:
+    """Find boxes directly for dense IDs and renumber sparse IDs first."""
+    if max(labels) <= mask.size:
+        boxes = ndimage.find_objects(mask, max_label=max(labels))
+        return {label: boxes[label - 1] for label in labels}
+    dense = np.where(mask != 0, np.searchsorted(all_foreground_labels, mask) + 1, 0)
+    boxes = ndimage.find_objects(dense)
+    return {
+        label: boxes[int(np.searchsorted(all_foreground_labels, label))]
+        for label in labels
+    }
+
+
 def get_radiomics_features(
     mask: np.ndarray, image: np.ndarray, cfg: PyradiomicsConfig
 ) -> pd.DataFrame:
@@ -128,18 +145,33 @@ def get_radiomics_features(
         empty.attrs["n_skipped_small"] = n_skipped
         return empty
 
-    featureextractor, sitk = _resolve_backend()
+    featureextractor, imageoperations, sitk = _resolve_backend()
     extractor = _get_extractor(cfg, featureextractor)
-    # uint16 would wrap labels above 65,535.
-    image_itk = sitk.GetImageFromArray(np.asarray(image, dtype=np.float32))
-    mask_itk = sitk.GetImageFromArray(np.asarray(mask, dtype=np.uint32))
+    pixels = np.asarray(image, dtype=np.float32)
+    if cfg.normalize:
+        # Before cropping: per-crop statistics would differ.
+        pixels = sitk.GetArrayFromImage(
+            imageoperations.normalizeImage(
+                sitk.GetImageFromArray(pixels), normalizeScale=cfg.normalize_scale
+            )
+        )
+    labels_u32 = np.asarray(mask, dtype=np.uint32)  # uint16 wraps labels > 65,535
+    boxes = _bounding_boxes(labels_u32, keep, labels)
     border = _border_labels(mask)
 
     rows = []
     n_label_errors = 0
     for label in keep:
+        crop = tuple(
+            slice(max(axis.start - _CROP_PAD, 0), min(axis.stop + _CROP_PAD, size))
+            for axis, size in zip(boxes[label], mask.shape)
+        )
         try:
-            result = extractor.execute(image_itk, mask_itk, label=label)
+            result = extractor.execute(
+                sitk.GetImageFromArray(pixels[crop]),
+                sitk.GetImageFromArray(labels_u32[crop]),
+                label=label,
+            )
         except ValueError as exc:  # PyRadiomics ROI checks reject thin fragments
             n_label_errors += 1
             logger.warning("PyRadiomics rejected label %d: %s", label, exc)
