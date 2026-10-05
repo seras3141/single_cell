@@ -187,6 +187,12 @@ def _extract_one_pair(
     return features_df, new_errors, new_coverage
 
 
+def _write_new_parquet(df: pd.DataFrame, path: Path) -> None:
+    # "xb": refuse files created since the check.
+    with open(path, "xb") as handle:
+        df.to_parquet(handle, index=False)
+
+
 class FeatureExtractionPipeline:
     """Pipeline for extracting features from datasets of segmented cells."""
 
@@ -718,6 +724,14 @@ class FeatureExtractionPipeline:
             self.logger.error(f"Image file does not exist: {image_path}")
             self.error_files.append((str(image_path), "File not found"))
             return None
+        if self.output_granularity == "well" and not self._has_full_key(
+            self._key_columns(image_path.name)
+        ):
+            self.logger.error(f"No well/timepoint/z in filename: {image_path.name}")
+            self.error_files.append(
+                (str(image_path), "No well/timepoint/z in filename")
+            )
+            return None
 
         # scPortrait runs its own segmentation and normally needs no mask; every
         # other method requires an existing mask. Milestone 2: when a mask IS
@@ -913,6 +927,7 @@ class FeatureExtractionPipeline:
             image_patterns=image_patterns,
             mask_patterns=mask_patterns,
         )
+        self._check_per_well_batch([image for image, _ in pairs], coverage_before)
         if not pairs:
             only_known_missing = (
                 len(self.expected_unpaired) > expected_before
@@ -924,9 +939,10 @@ class FeatureExtractionPipeline:
                     f"No image-mask pairs in {image_dir}: every unpaired mask is "
                     "registered as known-missing"
                 )
-                return pd.DataFrame()
-            self.logger.error(f"No valid image-mask pairs found in {image_dir}")
-            self.error_files.append((str(mask_dir), "No valid image-mask pairs"))
+            else:
+                self.logger.error(f"No valid image-mask pairs found in {image_dir}")
+                self.error_files.append((str(mask_dir), "No valid image-mask pairs"))
+            self._save_batch_per_well(pd.DataFrame(), coverage_before)
             return pd.DataFrame()
 
         # Process pairs. scPortrait runs its own GPU inference and is kept
@@ -957,41 +973,90 @@ class FeatureExtractionPipeline:
             combined_df = pd.DataFrame()
             self.logger.warning("No features extracted from any files")
 
-        if self.output_granularity == "well":
-            self.save_per_well(combined_df, self.coverage_records[coverage_before:])
+        self._save_batch_per_well(combined_df, coverage_before)
         return combined_df
+
+    @staticmethod
+    def _has_full_key(key: Tuple[str, str, int]) -> bool:
+        sample_id, timepoint, z_index = key
+        return bool(sample_id) and bool(timepoint) and z_index >= 0
+
+    def _per_well_conflict(self, keyed: List[Tuple[Tuple[str, str, int], str]]) -> str:
+        """Why these (key, filename) inputs can't go to per-well files, or ''."""
+        seen: Dict[Tuple[str, str, int], str] = {}
+        for (sample_id, timepoint, z_index), name in keyed:
+            if not self._has_full_key((sample_id, timepoint, z_index)):
+                continue
+            key = (sample_id, timepoint.lstrip("0") or "0", z_index)
+            if key in seen:
+                return (
+                    f"{seen[key]} and {name} share well/timepoint/z {key}; "
+                    "run one experiment per output directory"
+                )
+            seen[key] = name
+        for well in sorted({sample_id for (sample_id, _, _), _ in keyed if sample_id}):
+            if well in self._written_wells:
+                return f"well {well} was written earlier in this run"
+            for path in self._per_well_paths(well):
+                if path.exists():
+                    return (
+                        f"{path} exists from an earlier run; delete that well's "
+                        "files to re-run it"
+                    )
+        return ""
+
+    def _per_well_paths(self, well: str) -> Tuple[Path, Path]:
+        return (
+            self.output_dir / f"{well}.parquet",
+            self.output_dir / f"{well}_coverage.parquet",
+        )
+
+    def _check_per_well_batch(
+        self, image_paths: List[Path], coverage_before: int
+    ) -> None:
+        """Refuse conflicting inputs or earlier outputs before any extraction."""
+        if self.output_granularity != "well":
+            return
+        keyed = [(self._key_columns(path.name), path.name) for path in image_paths]
+        keyed += [
+            ((r["sample_id"], r["timepoint"], r["z_index"]), r["mask_filename"])
+            for r in self.coverage_records[coverage_before:]
+        ]
+        conflict = self._per_well_conflict(keyed)
+        if conflict:
+            raise ValueError(f"Per-well output refused: {conflict}")
+
+    def _save_batch_per_well(
+        self, features_df: pd.DataFrame, coverage_before: int
+    ) -> None:
+        if self.output_granularity == "well":
+            self.save_per_well(features_df, self.coverage_records[coverage_before:])
 
     def save_per_well(
         self, features_df: pd.DataFrame, coverage: List[Dict[str, Any]]
     ) -> None:
-        """Write ``<well>.parquet`` and ``<well>_coverage.parquet``; refuse merges."""
+        """Write ``<well>.parquet`` if it has rows, then its coverage file."""
         coverage_df = pd.DataFrame(coverage)
         if coverage_df.empty:
             return
-        for well, well_coverage in coverage_df.groupby("sample_id", sort=True):
-            name = well or "unknown_well"
-            images = well_coverage["image_filename"]
-            duplicated = images[(images != "") & images.duplicated()]
-            if not duplicated.empty or name in self._written_wells:
-                raise ValueError(
-                    f"Per-well output for {name!r} would merge or overwrite inputs "
-                    f"(e.g. {list(duplicated[:3]) or 'written earlier in this run'}); "
-                    "run one experiment per output directory"
-                )
+        coverage_df = coverage_df[coverage_df["sample_id"] != ""]
+        names = coverage_df["image_filename"].where(
+            coverage_df["image_filename"] != "", coverage_df["mask_filename"]
+        )
+        keys = zip(
+            coverage_df["sample_id"], coverage_df["timepoint"], coverage_df["z_index"]
+        )
+        conflict = self._per_well_conflict(list(zip(keys, names)))
+        if conflict:
+            raise ValueError(f"Per-well output refused: {conflict}")
+        for name, well_coverage in coverage_df.groupby("sample_id", sort=True):
             self._written_wells.add(name)
-            well_coverage.to_parquet(
-                self.output_dir / f"{name}_coverage.parquet", index=False
-            )
-            features_file = self.output_dir / f"{name}.parquet"
-            rows = (
-                features_df[features_df["sample_id"] == well]
-                if not features_df.empty and "sample_id" in features_df
-                else features_df.iloc[0:0]
-            )
-            if rows.empty:
-                features_file.unlink(missing_ok=True)
-            else:
-                rows.to_parquet(features_file, index=False)
+            features_file, coverage_file = self._per_well_paths(name)
+            if not features_df.empty and "sample_id" in features_df:
+                rows = features_df[features_df["sample_id"] == name]
+                if not rows.empty:
+                    _write_new_parquet(rows, features_file)
+            _write_new_parquet(well_coverage, coverage_file)
             self.logger.info(f"Saved per-well outputs for {name}")
 
     def _report_errors(self, errors_before: int, n_inputs: int) -> None:
@@ -1180,6 +1245,7 @@ class FeatureExtractionPipeline:
         all_features = []
         errors_before = len(self.error_files)
         coverage_before = len(self.coverage_records)
+        self._check_per_well_batch(images, coverage_before)
         for image_path in tqdm(images, desc="Processing images"):
             inject_mask: Path | None = None
             if mask_dir is not None:
@@ -1213,8 +1279,7 @@ class FeatureExtractionPipeline:
             combined_df = pd.DataFrame()
             self.logger.warning("No features extracted from any images")
 
-        if self.output_granularity == "well":
-            self.save_per_well(combined_df, self.coverage_records[coverage_before:])
+        self._save_batch_per_well(combined_df, coverage_before)
         return combined_df
 
     def process_single_image(
@@ -1239,12 +1304,12 @@ class FeatureExtractionPipeline:
         self.logger.info(f"Processing single image: {image_path}")
 
         coverage_before = len(self.coverage_records)
+        self._check_per_well_batch([image_path], coverage_before)
         features_df = self.extract_features_from_path(image_path, mask_path)
-        if self.output_granularity == "well":
-            self.save_per_well(
-                features_df if features_df is not None else pd.DataFrame(),
-                self.coverage_records[coverage_before:],
-            )
+        self._save_batch_per_well(
+            features_df if features_df is not None else pd.DataFrame(),
+            coverage_before,
+        )
         if features_df is None or features_df.empty:
             self.logger.warning(f"No features extracted from {image_path.name}")
             return features_df

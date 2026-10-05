@@ -91,19 +91,36 @@ def _to_value(value: Any) -> Any:
     return str(value)
 
 
+def _label_counts(mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Foreground labels and pixel counts; bincount only while labels are dense."""
+    if mask.size == 0:
+        return np.empty(0, np.int64), np.empty(0, np.int64)
+    low, high = int(mask.min()), int(mask.max())
+    if low < 0 or high > np.iinfo(np.uint32).max:
+        raise ValueError(f"Labels must fit uint32, got {low}..{high}")
+    if high <= mask.size:
+        counts = np.bincount(mask.ravel().astype(np.int64, copy=False))
+        labels = np.flatnonzero(counts)
+        counts = counts[labels]
+    else:
+        labels, counts = np.unique(mask, return_counts=True)
+    foreground = labels != 0
+    return labels[foreground], counts[foreground]
+
+
 def get_radiomics_features(
     mask: np.ndarray, image: np.ndarray, cfg: PyradiomicsConfig
 ) -> pd.DataFrame:
     """One row per label; skip counts go in ``df.attrs``."""
-    labels = np.unique(mask)
-    labels = labels[labels != 0]
+    if not (np.issubdtype(mask.dtype, np.integer) or mask.dtype == bool):
+        raise ValueError(f"Mask must be an integer label image, got {mask.dtype}")
+    labels, counts = _label_counts(mask)
     empty = pd.DataFrame(columns=["cell_id"])
     empty.attrs.update(n_skipped_small=0, n_label_errors=0)
     if labels.size == 0:
         return empty
 
-    counts = np.bincount(mask.ravel().astype(np.int64, copy=False))
-    keep = [int(label) for label in labels if counts[label] >= cfg.min_pixels]
+    keep = [int(label) for label in labels[counts >= cfg.min_pixels]]
     n_skipped = int(labels.size - len(keep))
     if n_skipped:
         logger.debug("Skipped %d labels below min_pixels=%d", n_skipped, cfg.min_pixels)

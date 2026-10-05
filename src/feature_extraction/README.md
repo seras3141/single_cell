@@ -40,9 +40,14 @@ The method is set via `feature_extraction.method` in `config/feature_extraction_
   `<well>.parquet` (all cells of that well) and `<well>_coverage.parquet` per well; `well` requires
   `parquet`. [`config/feature_extraction_pyradiomics_config.yaml`](../../config/feature_extraction_pyradiomics_config.yaml)
   uses per-well Parquet.
-- **Coverage.** Every attempted image gets one coverage record: filename, key columns, `status`
-  (`ok`/`empty`/`error`), `n_cells`, `n_skipped_small` and `seconds`. That's what tells a genuinely empty
-  image from one that was never processed. The summary reports the status counts.
+- **Per-well safety.** Before extracting anything, a per-well batch refuses to start if one of its wells
+  already has output files (delete them to re-run that well), was written earlier in the run, or has
+  two inputs with the same well, timepoint and z. A file whose name lacks any of the three is a
+  per-file error. Each batch can cover any set of wells, so one-well-per-task arrays work.
+- **Coverage.** Every attempted image, and every mask without an image, gets one coverage record:
+  filename, key columns, `status` (`ok`/`empty`/`error`/`unpaired`/`known_missing`), `n_cells`,
+  `n_skipped_small`, `n_label_errors` and `seconds`. That's what tells a genuinely empty image from one
+  that was never processed. The summary reports the status counts.
 
 ### Inputs, errors and exclusions
 

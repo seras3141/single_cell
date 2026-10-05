@@ -15,7 +15,7 @@ import src.feature_extraction.feature_extractor_pyradiomics as pyr
 from src.feature_extraction.feature_extraction_pipeline import FeatureExtractionPipeline
 from src.utils.config import ConfigManager
 from src.utils.config_schemas import PyradiomicsConfig
-from src.utils.data_exclusions import DataExclusions
+from src.utils.data_exclusions import DataExclusions, KnownMissing
 from src.utils.image_utils import save_labels
 
 REPO = Path(__file__).resolve().parents[2]
@@ -171,6 +171,31 @@ def test_dtypes_and_large_label_ids(fake_backend):
     assert fake_backend.dtypes == [np.dtype(np.float32), np.dtype(np.uint32)]
 
 
+def test_sparse_label_ids_do_not_size_the_counts(fake_backend):
+    mask = _mask().astype(np.uint32)
+    mask[mask == 2] = 4_000_000_000
+    df = pyr.get_radiomics_features(mask, _image(), PyradiomicsConfig())
+    assert sorted(df["cell_id"]) == [1, 4_000_000_000]
+    assert df.attrs["n_skipped_small"] == 1
+
+
+@pytest.mark.parametrize(
+    "dtype, label", [(np.int64, -1), (np.uint64, 2**32 + 1)], ids=["neg", "big"]
+)
+def test_labels_outside_uint32_are_rejected(fake_backend, dtype, label):
+    mask = _mask().astype(dtype)
+    mask[mask == 2] = label
+    with pytest.raises(ValueError, match="fit uint32"):
+        pyr.get_radiomics_features(mask, _image(), PyradiomicsConfig())
+
+
+def test_float_mask_is_rejected(fake_backend):
+    with pytest.raises(ValueError, match="integer label image"):
+        pyr.get_radiomics_features(
+            _mask().astype(np.float32), _image(), PyradiomicsConfig()
+        )
+
+
 def test_empty_and_all_small_masks(fake_backend):
     empty = pyr.get_radiomics_features(
         np.zeros((8, 8), np.uint16), np.ones((8, 8)), PyradiomicsConfig()
@@ -312,7 +337,7 @@ def pyarrow_present(monkeypatch):
     written = {}
 
     def fake_to_parquet(self, path, index=False):
-        written[Path(path).name] = self.copy()
+        written[Path(getattr(path, "name", path)).name] = self.copy()
 
     monkeypatch.setattr(pd.DataFrame, "to_parquet", fake_to_parquet)
     return written
@@ -346,8 +371,9 @@ def test_per_well_refuses_to_merge_two_experiments(
     for exp in ("expA", "expB"):  # same well + filenames in two experiments
         _dataset(root / exp, {"pMF5V1_E07_t1_z1": _mask()})
     pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
-    with pytest.raises(ValueError, match="merge or overwrite"):
+    with pytest.raises(ValueError, match="share well/timepoint/z"):
         pipeline.process_batch(root, root)
+    assert fake_backend.dtypes == []  # refused before any extraction
 
 
 def test_per_well_refuses_to_overwrite_within_a_run(
@@ -361,16 +387,142 @@ def test_per_well_refuses_to_overwrite_within_a_run(
         _run(pipeline, b_img, b_msk)
 
 
-def test_per_well_removes_stale_features_file(tmp_path, fake_backend, pyarrow_present):
+@pytest.mark.parametrize("earlier", ["E07.parquet", "E07_coverage.parquet"])
+def test_per_well_refuses_earlier_outputs(
+    tmp_path, fake_backend, pyarrow_present, earlier
+):
+    img_dir, msk_dir = _dataset(tmp_path, {"pMF5V1_E07_t1_z1": _mask()})
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    (pipeline.output_dir / earlier).write_text("from an earlier run")
+    with pytest.raises(ValueError, match="exists from an earlier run"):
+        _run(pipeline, img_dir, msk_dir)
+    assert fake_backend.dtypes == [] and not pyarrow_present
+    assert (pipeline.output_dir / earlier).read_text() == "from an earlier run"
+
+
+def test_well_only_name_still_checks_earlier_outputs(
+    tmp_path, fake_backend, pyarrow_present
+):
+    img_dir, msk_dir = _dataset(tmp_path, {"pMF5V1_E07": _mask()})
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    (pipeline.output_dir / "E07_coverage.parquet").write_text("from an earlier run")
+    with pytest.raises(ValueError, match="exists from an earlier run"):
+        _run(pipeline, img_dir, msk_dir)
+
+
+def test_zero_padded_timepoints_collide(tmp_path, fake_backend, pyarrow_present):
     img_dir, msk_dir = _dataset(
-        tmp_path, {"pMF5V1_E07_t1_z1": np.zeros((32, 32), np.uint16)}
+        tmp_path, {"pMF5V1_E07_t1_z1": _mask(), "pMF5V2_E07_t001_z1": _mask()}
     )
     pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
-    stale = pipeline.output_dir / "E07.parquet"
-    stale.write_text("from an earlier run")
+    with pytest.raises(ValueError, match="share well/timepoint/z"):
+        _run(pipeline, img_dir, msk_dir)
+
+
+def test_per_well_skips_names_without_a_well(tmp_path, fake_backend, pyarrow_present):
+    img_dir, msk_dir = _dataset(
+        tmp_path, {"pMF5V1_E07_t1_z1": _mask(), "unparsed": _mask()}
+    )
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    df = _run(pipeline, img_dir, msk_dir)
+    assert set(df["sample_id"]) == {"E07"}
+    assert sorted(pyarrow_present) == ["E07.parquet", "E07_coverage.parquet"]
+    assert pipeline.error_files == [
+        (str(img_dir / "unparsed_BF.tif"), "No well/timepoint/z in filename")
+    ]
+
+
+def test_per_well_refuses_duplicate_unpaired_masks(
+    tmp_path, fake_backend, pyarrow_present
+):
+    root = tmp_path / "root"
+    _dataset(root / "expA", {"pMF5V1_E07_t1_z1": _mask()})
+    for exp in ("expA", "expB"):
+        (root / exp / "msks").mkdir(parents=True, exist_ok=True)
+        save_labels(_mask(), root / exp / "msks" / "pMF5V1_E07_t1_z2_pred_mask.tif")
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    with pytest.raises(ValueError, match="share well/timepoint/z"):
+        pipeline.process_batch(root, root)
+    assert fake_backend.dtypes == []  # refused before any extraction
+
+
+def test_per_well_refuses_same_key_under_different_prefixes(
+    tmp_path, fake_backend, pyarrow_present
+):
+    img_dir, msk_dir = _dataset(
+        tmp_path, {"pMF5V1_E07_t1_z1": _mask(), "pMF5V2_E07_t1_z1": _mask()}
+    )
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    with pytest.raises(ValueError, match="share well/timepoint/z"):
+        _run(pipeline, img_dir, msk_dir)
+
+
+def test_error_only_well_still_gets_coverage(tmp_path, fake_backend, pyarrow_present):
+    img_dir, msk_dir = _dataset(
+        tmp_path,
+        {"pMF5V1_E07_t1_z1": _mask(), "pMF5V1_F08_t1_z1": np.stack([_mask()] * 3)},
+    )
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
     _run(pipeline, img_dir, msk_dir)
-    assert not stale.exists()
-    assert "E07_coverage.parquet" in pyarrow_present
+    assert sorted(pyarrow_present) == [
+        "E07.parquet",
+        "E07_coverage.parquet",
+        "F08_coverage.parquet",
+    ]
+    assert list(pyarrow_present["F08_coverage.parquet"]["status"]) == ["error"]
+
+
+def test_single_image_refuses_to_overwrite_a_well(
+    tmp_path, fake_backend, pyarrow_present
+):
+    img_dir, msk_dir = _dataset(tmp_path, {"pMF5V1_E07_t1_z1": _mask()})
+    pipeline = _pipeline(
+        tmp_path, format="parquet", granularity="well", save_combined_file=False
+    )
+    (pipeline.output_dir / "E07.parquet").write_text("from a batch run")
+    with pytest.raises(ValueError, match="exists from an earlier run"):
+        pipeline.process_single_image(
+            img_dir / "pMF5V1_E07_t1_z1_BF.tif",
+            msk_dir / "pMF5V1_E07_t1_z1_pred_mask.tif",
+        )
+    assert not pyarrow_present
+
+
+def test_per_well_writes_coverage_for_a_known_missing_batch(
+    tmp_path, fake_backend, pyarrow_present
+):
+    exp = "HD1883 MF5V1 0-72h 20-03-26"
+    img_dir, msk_dir = _dataset(tmp_path / exp, {})
+    save_labels(_mask(), msk_dir / "pMF5V1_H09_t201_z4_pred_mask.tif")
+    pipeline = FeatureExtractionPipeline(
+        config={
+            "method": "pyradiomics",
+            "n_jobs": 1,
+            "output": {
+                "save_individual_files": False,
+                "create_subdirs": False,
+                "format": "parquet",
+                "granularity": "well",
+            },
+        },
+        output_dir=str(tmp_path / "out"),
+        exclusions=DataExclusions(
+            known_missing=(KnownMissing(exp, "H09", 201, 4, "BF", "absent"),)
+        ),
+    )
+    _run(pipeline, img_dir, msk_dir)
+    assert sorted(pyarrow_present) == ["H09_coverage.parquet"]
+    assert list(pyarrow_present["H09_coverage.parquet"]["status"]) == ["known_missing"]
+
+
+def test_unpaired_only_batch_writes_coverage(tmp_path, fake_backend, pyarrow_present):
+    img_dir, msk_dir = _dataset(tmp_path, {})
+    save_labels(_mask(), msk_dir / "pMF5V1_E07_t1_z2_pred_mask.tif")
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    _run(pipeline, img_dir, msk_dir)
+    assert sorted(pyarrow_present) == ["E07_coverage.parquet"]
+    assert list(pyarrow_present["E07_coverage.parquet"]["status"]) == ["unpaired"]
+    assert (str(msk_dir), "No valid image-mask pairs") in pipeline.error_files
 
 
 def test_single_image_mode_writes_per_well(tmp_path, fake_backend, pyarrow_present):
