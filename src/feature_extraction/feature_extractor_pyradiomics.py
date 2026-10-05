@@ -117,7 +117,7 @@ def get_radiomics_features(
     extractor = _get_extractor(cfg, featureextractor)
     pixels = np.asarray(image, dtype=np.float32)
     if cfg.normalize:
-        # Same statistics PyRadiomics computes per label.
+        # Before cropping: per-crop statistics would differ.
         pixels = sitk.GetArrayFromImage(
             imageoperations.normalizeImage(
                 sitk.GetImageFromArray(pixels), normalizeScale=cfg.normalize_scale

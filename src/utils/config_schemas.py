@@ -257,7 +257,7 @@ class PyradiomicsConfig:
     force_2d: bool = True
     normalize: bool = True
     normalize_scale: float = 100
-    min_pixels: int = 20  # provisional until the grey-level screen
+    min_pixels: int = 20
     feature_classes: List[str] = field(
         default_factory=lambda: list(PYRADIOMICS_FEATURE_CLASSES)
     )
