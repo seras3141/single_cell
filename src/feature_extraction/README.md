@@ -31,7 +31,7 @@ The method is set via `feature_extraction.method` in `config/feature_extraction_
 
 `scportrait` is imported with a try/except, so the pipeline still imports when it is not installed. `scportrait` cannot share the primary environment (it pins `cellpose<4`); install it into a separate Python 3.11 environment from [`requirements-scportrait.txt`](requirements-scportrait.txt) — see [scPortrait method](#scportrait-method) below.
 
-`pyradiomics` imports PyRadiomics and SimpleITK only when it extracts, so the module loads without them; a missing backend fails on the first file with an `ImportError`. It uses the `pyradiomics-cuda` fork (numpy 2, Python 3.9–3.13) built CPU-only: its only CUDA code is the 3D `shape` class, which this 2D backend does not enable, so it runs on CPU nodes. Labels below `min_pixels` (default 20) are skipped and counted. Each cell is extracted from its bounding box plus 2 px, after normalising the whole image once, so the optional `diagnostics_*` columns (`include_diagnostics`) describe that crop rather than the full image.
+`pyradiomics-cuda` is a core dependency, but PyRadiomics and SimpleITK are imported only when the first label needs extracting; a missing backend then stops the run with an `ImportError`. The fork supports numpy 2 and Python 3.9–3.13. It is built CPU-only because its CUDA path replaces only the 3D `shape` calculation, which this 2D backend does not enable. Labels below `min_pixels` (default 20) are skipped and counted. Each cell is extracted from its bounding box plus 2 px, after normalising the whole image once, so the optional `diagnostics_*` columns (`include_diagnostics`) describe that crop rather than the full image.
 
 ### Outputs
 

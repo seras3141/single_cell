@@ -111,17 +111,18 @@ def _label_counts(mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
 
 
 def _bounding_boxes(
-    mask: np.ndarray, labels: List[int]
+    mask: np.ndarray, labels: List[int], all_foreground_labels: np.ndarray
 ) -> Dict[int, Tuple[slice, ...]]:
-    """Bounding box per label; find_objects scales with the largest label."""
+    """Find boxes directly for dense IDs and renumber sparse IDs first."""
     if max(labels) <= mask.size:
         boxes = ndimage.find_objects(mask, max_label=max(labels))
         return {label: boxes[label - 1] for label in labels}
-    values = np.unique(mask)
-    values = values[values != 0]
-    dense = np.where(mask != 0, np.searchsorted(values, mask) + 1, 0)
+    dense = np.where(mask != 0, np.searchsorted(all_foreground_labels, mask) + 1, 0)
     boxes = ndimage.find_objects(dense)
-    return {label: boxes[int(np.searchsorted(values, label))] for label in labels}
+    return {
+        label: boxes[int(np.searchsorted(all_foreground_labels, label))]
+        for label in labels
+    }
 
 
 def get_radiomics_features(
@@ -155,7 +156,7 @@ def get_radiomics_features(
             )
         )
     labels_u32 = np.asarray(mask, dtype=np.uint32)  # uint16 wraps labels > 65,535
-    boxes = _bounding_boxes(labels_u32, keep)
+    boxes = _bounding_boxes(labels_u32, keep, labels)
     border = _border_labels(mask)
 
     rows = []

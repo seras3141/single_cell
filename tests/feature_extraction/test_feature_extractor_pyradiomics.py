@@ -1,7 +1,7 @@
-"""Tests for the ``pyradiomics`` backend, using a fake PyRadiomics/SimpleITK."""
+"""Tests for the ``pyradiomics`` backend; all but the parity test use a fake backend."""
 
-import importlib.util
 from dataclasses import replace
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -245,20 +245,20 @@ def test_empty_and_all_small_masks(fake_backend):
     assert fake_backend.dtypes == []  # no backend work when nothing is extracted
 
 
-@pytest.mark.skipif(
-    importlib.util.find_spec("radiomics") is None, reason="radiomics not installed"
-)
-def test_real_backend_gives_102_features():
+def test_real_backend_matches_uncropped_reference(monkeypatch):
     pyr._resolve_backend.cache_clear()
+    monkeypatch.setattr(pyr, "_EXTRACTOR_CACHE", {})
     rng = np.random.default_rng(0)
     image = rng.integers(500, 5000, (64, 64)).astype(np.uint16)
-    mask = np.zeros((64, 64), np.uint16)
-    mask[5:25, 5:30] = 1
-    mask[35:60, 30:60] = 2
+    mask = np.zeros((64, 64), np.uint32)
+    mask[:20, :25] = 1
+    mask[35:60, 30:] = 70_000
     df = pyr.get_radiomics_features(mask, image, PyradiomicsConfig())
     features = [c for c in df.columns if c.startswith("original_")]
     assert len(df) == 2 and len(features) == 102
     assert df[features].notna().all().all()
+    by_cell = df.set_index("cell_id")
+    assert by_cell["touches_border"].all()
 
     import SimpleITK as sitk
     from radiomics import featureextractor
@@ -275,20 +275,21 @@ def test_real_backend_gives_102_features():
         reference.enableFeatureClassByName(name)
     image_itk = sitk.GetImageFromArray(image.astype(np.float32))
     mask_itk = sitk.GetImageFromArray(mask.astype(np.uint32))
-    for label in (1, 2):
+    for label in (1, 70_000):
         expected = reference.execute(image_itk, mask_itk, label=label)
-        row = df[df["cell_id"] == label].iloc[0]
         for name in features:
             want = float(expected[name])
-            assert row[name] == pytest.approx(want, rel=1e-4, abs=1e-6), name
+            assert by_cell.loc[label, name] == pytest.approx(
+                want, rel=1e-4, abs=1e-6
+            ), name
 
 
-@pytest.mark.skipif(
-    importlib.util.find_spec("radiomics") is not None, reason="radiomics is installed"
-)
-def test_missing_radiomics_raises_import_error():
+def test_missing_radiomics_raises_import_error(monkeypatch):
+    pyr._resolve_backend.cache_clear()
+    monkeypatch.setitem(sys.modules, "radiomics.featureextractor", None)
     with pytest.raises(ImportError, match="pyradiomics-cuda"):
         pyr._resolve_backend()
+    pyr._resolve_backend.cache_clear()
 
 
 def _dataset(root: Path, masks):
@@ -366,10 +367,11 @@ def test_unpaired_mask_gets_a_coverage_record(tmp_path, fake_backend):
     assert unpaired[0]["image_filename"] == "" and unpaired[0]["z_index"] == 2
 
 
-@pytest.mark.skipif(
-    importlib.util.find_spec("radiomics") is not None, reason="radiomics is installed"
-)
-def test_pipeline_fails_fast_without_backend(tmp_path):
+def test_pipeline_fails_fast_without_backend(tmp_path, monkeypatch):
+    def missing_backend():
+        raise ImportError("backend unavailable")
+
+    monkeypatch.setattr(pyr, "_resolve_backend", missing_backend)
     img_dir, msk_dir = _dataset(tmp_path, {"a": _mask(), "b": _mask()})
     pipeline = _pipeline(tmp_path)
     with pytest.raises(ImportError):
@@ -400,15 +402,23 @@ def test_bad_pyradiomics_settings_fail_at_construction(tmp_path):
         )
 
 
-@pytest.fixture
-def pyarrow_present(monkeypatch):
-    """Pretend pyarrow is importable and record to_parquet calls instead."""
+def _pretend_pyarrow(monkeypatch, installed: bool) -> None:
     real_find_spec = fep.importlib.util.find_spec
     monkeypatch.setattr(
         fep.importlib.util,
         "find_spec",
-        lambda name, *a: object() if name == "pyarrow" else real_find_spec(name, *a),
+        lambda name, *a: (
+            (object() if installed else None)
+            if name == "pyarrow"
+            else real_find_spec(name, *a)
+        ),
     )
+
+
+@pytest.fixture
+def pyarrow_present(monkeypatch):
+    """Pretend pyarrow is importable and record to_parquet calls instead."""
+    _pretend_pyarrow(monkeypatch, installed=True)
     written = {}
 
     def fake_to_parquet(self, path, index=False):
@@ -691,10 +701,8 @@ def test_output_option_validation(tmp_path, pyarrow_present):
         _pipeline(tmp_path, format="parquet", granularity="plate")
 
 
-@pytest.mark.skipif(
-    importlib.util.find_spec("pyarrow") is not None, reason="pyarrow is installed"
-)
-def test_parquet_without_pyarrow_fails_at_construction(tmp_path):
+def test_parquet_without_pyarrow_fails_at_construction(tmp_path, monkeypatch):
+    _pretend_pyarrow(monkeypatch, installed=False)
     with pytest.raises(ImportError, match="pyarrow"):
         _pipeline(tmp_path, format="parquet")
 
@@ -709,7 +717,6 @@ def test_default_output_is_unchanged_csv(tmp_path):
 
 
 def test_parquet_round_trip(tmp_path, fake_backend):
-    pytest.importorskip("pyarrow")
     img_dir, msk_dir = _dataset(tmp_path, {"pMF5V1_E07_t1_z1": _mask()})
     pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
     _run(pipeline, img_dir, msk_dir)
