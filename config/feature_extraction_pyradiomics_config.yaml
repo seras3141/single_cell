@@ -8,7 +8,7 @@ feature_extraction:
   image_pattern: "*_BF.tif"
   mask_pattern: "*_pred_mask.tif"
 
-  n_jobs: 8  # CPU file workers; the probe tunes this
+  n_jobs: 8  # CPU file workers
 
   output:
     format: "parquet"

@@ -252,12 +252,12 @@ PYRADIOMICS_FEATURE_CLASSES: Tuple[str, ...] = (
 
 @dataclass
 class PyradiomicsConfig:
-    """Defaults match the external GPU radiomics delivery."""
+    """Defaults match the external radiomics delivery."""
     bin_width: float = 25
     force_2d: bool = True
     normalize: bool = True
     normalize_scale: float = 100
-    min_pixels: int = 20  # provisional until the grey-level screen
+    min_pixels: int = 20
     feature_classes: List[str] = field(
         default_factory=lambda: list(PYRADIOMICS_FEATURE_CLASSES)
     )
