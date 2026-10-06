@@ -80,10 +80,11 @@ python scripts/run_feature_extraction.py \
 
 # From command-line arguments
 python scripts/run_feature_extraction.py \
-    --input-dir data/segmented \
+    --image-dir data/split_data \
+    --mask-dir data/inference_tracked/cellpose_sam/final_2d \
     --output-dir results/features \
     --image-pattern "*_BF.tif" \
-    --mask-pattern "Cells_*.tif" \
+    --mask-pattern "*_pred_mask.tif" \
     --n-jobs 8
 ```
 
