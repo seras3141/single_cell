@@ -120,3 +120,4 @@ class TestMatchFiles:
             image_patterns=["*_z10_BF.tif"],
         )
         assert len(pairs) == 1
+        assert not pipeline.error_files
