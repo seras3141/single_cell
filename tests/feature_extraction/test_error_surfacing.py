@@ -441,6 +441,15 @@ def test_run_bad_directory_lists_fail_with_summary(tmp_path, image_dirs, mask_di
     assert (pipeline.output_dir / "feature_extraction_summary.txt").exists()
 
 
+def test_unknown_method_is_reported_before_n_jobs(tmp_path):
+    with pytest.raises(ValueError, match="Unsupported feature extraction method"):
+        FeatureExtractionPipeline(
+            config={"method": "nonexistent", "n_jobs": -2},
+            output_dir=str(tmp_path / "out"),
+            exclusions=DataExclusions.empty(),
+        )
+
+
 def test_n_jobs_below_minus_one_is_rejected(tmp_path):
     with pytest.raises(ValueError, match="n_jobs"):
         _pipeline(tmp_path, n_jobs=-2)

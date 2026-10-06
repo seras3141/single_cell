@@ -234,7 +234,6 @@ class FeatureExtractionPipeline:
 
         # Extract configuration sections
         # self.paths_config = feature_config.get('paths', {})
-        validate_feature_extraction_n_jobs(self.feature_config.get("n_jobs"))
         self.method = method or self.feature_config.get("method", "incarta")
         self.output_config = self.feature_config.get("output", {})
         self.processing_config = self.feature_config.get("processing", {})
@@ -242,6 +241,7 @@ class FeatureExtractionPipeline:
         # Validate method. Fail here, not per file: an unavailable method would
         # otherwise fail once per image.
         check_feature_method_available(self.method)
+        validate_feature_extraction_n_jobs(self.feature_config.get("n_jobs"))
         self.exclusions = (
             exclusions if exclusions is not None else load_data_exclusions()
         )
