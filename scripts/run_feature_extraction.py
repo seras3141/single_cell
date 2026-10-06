@@ -178,6 +178,10 @@ def load_config(args) -> Dict[str, Any]:
     return config
 
 
+def _is_single_file(paths_config: Dict[str, Any]) -> bool:
+    return bool(paths_config.get("image_file"))
+
+
 def validate_inputs(config: Dict[str, Any]) -> None:
     """Validate that the required inputs are present for the chosen mode/method.
 
@@ -186,9 +190,8 @@ def validate_inputs(config: Dict[str, Any]) -> None:
     """
     paths_config = config.get("paths", {})
     method = config.get("feature_extraction", {}).get("method", "incarta")
-    image_file = paths_config.get("image_file")
 
-    if image_file:
+    if _is_single_file(paths_config):
         # Single-file mode
         if method != "scportrait" and not paths_config.get("mask_file"):
             raise ValueError(
@@ -207,6 +210,21 @@ def validate_inputs(config: Dict[str, Any]) -> None:
             )
 
 
+def preflight(config: Dict[str, Any]) -> None:
+    """Reject an unusable method or missing inputs before any output is written."""
+    # Availability first: report the real cause.
+    check_feature_method_available(
+        config.get("feature_extraction", {}).get("method", "incarta")
+    )
+    validate_inputs(config)
+
+
+def _batch_mask_dir(paths_config: Dict[str, Any], method: str) -> Optional[str]:
+    # scPortrait reads masks only via --mask-dir.
+    key = "mask_dir_cli" if method == "scportrait" else "mask_dir"
+    return paths_config.get(key)
+
+
 def run_feature_extraction_from_config(config: Dict[str, Any]) -> pd.DataFrame:
     """Run the feature extraction pipeline with the given configuration.
 
@@ -223,12 +241,7 @@ def run_feature_extraction_from_config(config: Dict[str, Any]) -> pd.DataFrame:
         FeatureExtractionError: one or more input files failed. Outputs and the
             summary (which lists the failures) are written first.
     """
-    # Availability before input checks, so an unavailable method is reported as
-    # such rather than as a missing --mask-dir.
-    check_feature_method_available(
-        config.get("feature_extraction", {}).get("method", "incarta")
-    )
-    validate_inputs(config)
+    preflight(config)
 
     pipeline = FeatureExtractionPipeline.from_config(config)
 
@@ -265,16 +278,15 @@ def _extract(
     mask_pattern: Optional[str],
 ) -> pd.DataFrame:
     """Dispatch to single-image, scPortrait batch or mask-paired batch mode."""
-    image_file = paths_config.get("image_file")
-    if image_file:
+    if _is_single_file(paths_config):
         # Single-image mode (saves individual + combined CSV internally)
         features_df = pipeline.process_single_image(
-            image_file, paths_config.get("mask_file")
+            paths_config["image_file"], paths_config.get("mask_file")
         )
         return features_df if features_df is not None else pd.DataFrame()
 
     image_dir = paths_config.get("image_dir", "data/sample_data")
-    inject_mask_dir = paths_config.get("mask_dir_cli")
+    mask_dir = _batch_mask_dir(paths_config, method)
     if method == "scportrait":
         # Native batch runs scPortrait's own segmentation (no --mask-dir). When
         # --mask-dir is given (Milestone 2), the cellpose_sam masks there are
@@ -282,16 +294,15 @@ def _extract(
         features_df = pipeline.process_batch_scportrait(
             image_dir=image_dir,
             image_patterns=[image_pattern] if image_pattern else None,
-            mask_dir=inject_mask_dir,
+            mask_dir=mask_dir,
             # ``feature_extraction.mask_pattern`` is a glob for the mask-paired
             # backends; injection needs a ``{stem}`` template. Forward it as-is
             # so the pipeline is the single place that validates and warns --
             # filtering here would suppress that warning. Native runs resolve no
             # masks, so the pattern is irrelevant to them.
-            mask_pattern=mask_pattern if inject_mask_dir else None,
+            mask_pattern=mask_pattern if mask_dir else None,
         )
     else:
-        mask_dir = paths_config.get("mask_dir", "data/sample_data")
         features_df = pipeline.process_batch(
             image_dir=image_dir,
             mask_dir=mask_dir,
@@ -307,18 +318,23 @@ def _extract(
 def _get_extract_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
     feature_config = config.get("feature_extraction", {})
     paths = config.get("paths", {})
-    return {
-        k: v
-        for k, v in {
-            "method": feature_config.get("method"),
-            "n_jobs": feature_config.get("n_jobs"),
-            "image_dir": paths.get("image_dir"),
-            "mask_dir": paths.get("mask_dir"),
+    if _is_single_file(paths):
+        inputs = {
             "image_file": paths.get("image_file"),
             "mask_file": paths.get("mask_file"),
-        }.items()
-        if v is not None
+        }
+    else:
+        method = feature_config.get("method", "incarta")
+        inputs = {
+            "image_dir": paths.get("image_dir"),
+            "mask_dir": _batch_mask_dir(paths, method),
+        }
+    snapshot = {
+        "method": feature_config.get("method"),
+        "n_jobs": feature_config.get("n_jobs"),
+        **inputs,
     }
+    return {k: v for k, v in snapshot.items() if v is not None}
 
 
 def main():
@@ -329,13 +345,19 @@ def main():
     setup_logging(args.log_level)
 
     config = load_config(args)
+    try:
+        preflight(config)
+    except (ValueError, NotImplementedError) as e:
+        logging.error(f"Feature extraction failed: {e}")
+        sys.exit(1)
 
     manifest = None
     if args.run_dir is not None:
         paths = config.get("paths", {})
-        image_file = paths.get("image_file")
-        input_dir = paths.get("image_dir") or (
-            str(Path(image_file).parent) if image_file else ""
+        input_dir = (
+            str(Path(paths["image_file"]).parent)
+            if _is_single_file(paths)
+            else paths.get("image_dir") or ""
         )
         os.makedirs(args.run_dir, exist_ok=True)
         manifest = create_or_load_manifest(args.run_dir, input_dir, config)

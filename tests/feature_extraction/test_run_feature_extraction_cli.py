@@ -145,11 +145,22 @@ def test_manifest_records_the_image_dir_as_input(tmp_path):
 
 
 @pytest.mark.unit
-def test_manifest_records_the_image_folder_in_single_file_mode(tmp_path):
+@pytest.mark.parametrize(
+    "config_text",
+    [None, "feature_extraction: {}\n", "paths:\n  image_dir: /configured/batch\n"],
+    ids=["no-config", "schema-default-image-dir", "configured-image-dir"],
+)
+def test_manifest_records_the_image_folder_in_single_file_mode(tmp_path, config_text):
     module = _load_script_module()
     run_dir = tmp_path / "run"
+    config_args = []
+    if config_text is not None:
+        config_file = tmp_path / "feature_extraction.yaml"
+        config_file.write_text(config_text)
+        config_args = ["--config", str(config_file)]
     argv = [
         "run_feature_extraction.py",
+        *config_args,
         "--image-file", "/imgs/a_BF.tif",
         "--mask-file", "/masks/a_pred_mask.tif",
         "--output-dir", str(tmp_path / "out"),
@@ -183,3 +194,65 @@ def test_cli_only_run_records_the_default_n_jobs():
     with patch.object(sys, "argv", ["run_feature_extraction.py", "--image-dir", "x"]):
         args = module.get_args()
     assert module.load_config(args)["feature_extraction"]["n_jobs"] == -1
+
+
+@pytest.mark.unit
+def test_snapshot_lists_only_the_inputs_of_the_mode_used():
+    module = _load_script_module()
+    paths = {"image_dir": "/batch/imgs", "mask_dir": "/batch/masks"}
+    batch = module._get_extract_snapshot({"paths": paths})
+    single = module._get_extract_snapshot(
+        {"paths": {**paths, "image_file": "/imgs/a_BF.tif", "mask_file": "/m/a.tif"}}
+    )
+    assert {"image_dir", "mask_dir"} <= batch.keys()
+    assert single.keys() & {"image_dir", "mask_dir"} == set()
+    assert single["image_file"] == "/imgs/a_BF.tif"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("mask_dir_cli, expected", [(None, None), ("/masks", "/masks")])
+def test_scportrait_snapshot_records_only_injected_masks(mask_dir_cli, expected):
+    module = _load_script_module()
+    paths = {"image_dir": "/bf", "mask_dir": "/configured/masks"}
+    if mask_dir_cli:
+        paths["mask_dir_cli"] = mask_dir_cli
+    snapshot = module._get_extract_snapshot(
+        {"paths": paths, "feature_extraction": {"method": "scportrait"}}
+    )
+    assert snapshot.get("mask_dir") == expected
+
+
+@pytest.mark.unit
+def test_invalid_inputs_are_rejected_before_the_manifest_is_written(tmp_path):
+    module = _load_script_module()
+    argv = ["run_feature_extraction.py", "--run-dir", str(tmp_path / "run")]
+    with patch.object(sys, "argv", argv), patch.object(module, "setup_logging"):
+        with patch.object(module, "create_or_load_manifest") as create:
+            with pytest.raises(SystemExit) as exited:
+                module.main()
+    assert exited.value.code == 1
+    create.assert_not_called()
+
+
+@pytest.mark.unit
+def test_unavailable_method_is_reported_before_missing_inputs(
+    tmp_path, monkeypatch, caplog
+):
+    import src.utils.config_schemas as config_schemas
+
+    monkeypatch.setitem(
+        config_schemas.UNAVAILABLE_FEATURE_METHODS, "regionprops", "test"
+    )
+    module = _load_script_module()
+    argv = [
+        "run_feature_extraction.py",
+        "--method", "regionprops",
+        "--image-dir", "/bf",
+        "--run-dir", str(tmp_path / "run"),
+    ]  # fmt: skip
+    with patch.object(sys, "argv", argv), patch.object(module, "setup_logging"):
+        with patch.object(module, "create_or_load_manifest") as create:
+            with pytest.raises(SystemExit):
+                module.main()
+    assert "not yet available" in caplog.text
+    create.assert_not_called()
