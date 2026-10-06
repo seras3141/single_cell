@@ -30,6 +30,7 @@ from src.utils.config_schemas import (
     FeatureExtractionConfig,
     PyradiomicsConfig,
     check_feature_method_available,
+    validate_feature_extraction_n_jobs,
     validate_pyradiomics_config,
 )
 from src.utils.data_exclusions import DataExclusions, load_data_exclusions
@@ -240,6 +241,7 @@ class FeatureExtractionPipeline:
         # Validate method. Fail here, not per file: an unavailable method would
         # otherwise fail once per image.
         check_feature_method_available(self.method)
+        validate_feature_extraction_n_jobs(self.feature_config.get("n_jobs"))
         self.exclusions = (
             exclusions if exclusions is not None else load_data_exclusions()
         )
@@ -858,9 +860,7 @@ class FeatureExtractionPipeline:
                 # controls per-cell parallelism; when the outer file loop is
                 # parallel the caller passes 1 (see ``process_batch``).
                 n_jobs = (
-                    inner_n_jobs
-                    if inner_n_jobs is not None
-                    else self.feature_config.get("n_jobs", -1)
+                    inner_n_jobs if inner_n_jobs is not None else self._inner_n_jobs()
                 )
 
                 if self.method == "incarta":
@@ -1136,6 +1136,10 @@ class FeatureExtractionPipeline:
             f"{len(batch_errors)} file error(s) across {n_inputs} inputs. "
             f"First: {preview}"
         )
+
+    def _inner_n_jobs(self) -> int:
+        raw = self.feature_config.get("n_jobs", -1)
+        return 1 if raw in (None, 0) else int(raw)
 
     def _resolve_file_workers(self) -> int:
         """Resolve the number of concurrent file workers from ``n_jobs``.

@@ -288,6 +288,9 @@ class ScportraitConfig:
     overwrite: bool = True
     debug: bool = False
     save_plots: bool = True
+    # None: derive <sample>/inference_scportrait[_injected]/ from the image path.
+    mask_export_root: Optional[str] = None
+    injected_mask_export_root: Optional[str] = None
 
 
 @dataclass
@@ -323,6 +326,16 @@ FEATURE_METHODS: Tuple[str, ...] = (
 UNAVAILABLE_FEATURE_METHODS: Dict[str, str] = {}
 
 
+def validate_feature_extraction_n_jobs(n_jobs: Optional[int]) -> None:
+    """Raise ValueError unless ``n_jobs`` is None, -1, 0 or a positive integer."""
+    is_int = isinstance(n_jobs, int) and not isinstance(n_jobs, bool)
+    if n_jobs is not None and (not is_int or n_jobs < -1):
+        raise ValueError(
+            f"feature_extraction.n_jobs={n_jobs}: use -1 (all cores), 0 or 1 "
+            "(sequential), or a positive count"
+        )
+
+
 def check_feature_method_available(method: str) -> None:
     """Raise unless ``method`` is a recognised, currently usable method.
 
@@ -345,7 +358,7 @@ def check_feature_method_available(method: str) -> None:
 @dataclass
 class FeatureExtractionConfig:
     """Feature extraction configuration."""
-    n_jobs: int = -1  # Use all available cores (or set to 0)
+    n_jobs: int = -1  # -1: all cores; 0 or 1: sequential
 
     method: str = "incarta"
     image_pattern: str = "*_BF.tif"

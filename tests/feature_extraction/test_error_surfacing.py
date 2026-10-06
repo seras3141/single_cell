@@ -439,3 +439,37 @@ def test_run_bad_directory_lists_fail_with_summary(tmp_path, image_dirs, mask_di
     with pytest.raises(FeatureExtractionError):
         pipeline.run(image_dirs, mask_dirs)
     assert (pipeline.output_dir / "feature_extraction_summary.txt").exists()
+
+
+def test_unknown_method_is_reported_before_n_jobs(tmp_path):
+    with pytest.raises(ValueError, match="Unsupported feature extraction method"):
+        FeatureExtractionPipeline(
+            config={"method": "nonexistent", "n_jobs": -2},
+            output_dir=str(tmp_path / "out"),
+            exclusions=DataExclusions.empty(),
+        )
+
+
+def test_n_jobs_below_minus_one_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match="n_jobs"):
+        _pipeline(tmp_path, n_jobs=-2)
+
+
+def test_n_jobs_zero_runs_cells_sequentially(tmp_path, monkeypatch):
+    img_dir, msk_dir = _dataset(tmp_path, ["a"])
+    seen = []
+
+    def record_n_jobs(*args, n_jobs=None, **kwargs):
+        seen.append(n_jobs)
+        return pd.DataFrame({"cell_id": [1]})
+
+    monkeypatch.setattr(fep, "extract_all_instance_features", record_n_jobs)
+    pipeline = FeatureExtractionPipeline(
+        config={"method": "incarta", "n_jobs": 0, "output": {}},
+        output_dir=str(tmp_path / "out"),
+        exclusions=DataExclusions.empty(),
+    )
+    pipeline.extract_features_from_path(
+        img_dir / "a_BF.tif", msk_dir / "a_pred_mask.tif"
+    )
+    assert seen == [1]
