@@ -137,7 +137,7 @@ class FilterConfig:
 
 @dataclass
 class TrackingConfig:
-    """Configuration for 3D cell tracking."""
+    """Configuration for 3D cell tracking (z-linking within one stack)."""
     # Tracking parameters
     search_range: float = 5.0
     memory: int = 1

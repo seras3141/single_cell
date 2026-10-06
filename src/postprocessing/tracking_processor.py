@@ -1,5 +1,5 @@
 """
-Unified postprocessing pipeline for 3D cell tracking with optional blur-based filtering.
+Unified postprocessing pipeline for z-linking cells with optional blur-based filtering.
 
 This module provides a single class for both batch and single-file processing,
 with optional saving of intermediate results and TIFF-only output.

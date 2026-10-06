@@ -86,7 +86,7 @@ postprocessing:
     # max_nucleus_size: 500
     blur_threshold: 0.5
 
-  # Cell tracking parameters
+  # Cell tracking parameters (z-linking, not temporal)
   tracking:
     min_area: 30
     max_area: 1000

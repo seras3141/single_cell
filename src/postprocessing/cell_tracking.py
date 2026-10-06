@@ -1,8 +1,8 @@
 """
 3D Cell tracking module for postprocessing segmentation results.
 
-This module provides robust 3D cell tracking capabilities across z-stacks using trackpy,
-with configurable parameters and quality assessment.
+This module links cell instances across z-slices within one stack using trackpy.
+It does not link across timepoints: `cell_id` does not persist across a timelapse.
 """
 
 import os
@@ -24,10 +24,7 @@ logger = logging.getLogger(__name__)
 
 class CellTracker3D:
     """
-    3D cell tracker for segmentation masks across z-stacks.
-    
-    This class provides robust cell tracking functionality with configurable
-    parameters and quality assessment capabilities.
+    Links cell instances across the z-slices of one segmentation stack.
     """
     
     def __init__(self, config: Optional[TrackingConfig] = None):
@@ -135,21 +132,21 @@ class CellTracker3D:
     
     def track_cells(self, segmentation_stack: np.ndarray, **kwargs) -> np.ndarray:
         """
-        Track cells across a 3D segmentation stack.
-        
+        Link cell instances across the z-slices of one 3D segmentation stack.
+
         Args:
             segmentation_stack: 3D array with instance labels (z, y, x)
             **kwargs: Additional arguments passed to extract_3d_centers
-            
+
         Returns:
-            3D array with tracked cell IDs
+            3D array with z-linked cell IDs
         """
         self.logger.info(f"Tracking cells in stack of shape {segmentation_stack.shape}")
         
         # Extract cell centers from all z-slices
         centers_with_z = self.extract_3d_centers(segmentation_stack, **kwargs)
         
-        # Combine all centers into a single DataFrame for tracking
+        # trackpy "frame" is the z-index, not time
         all_data = []
         for z, properties in centers_with_z:
             if not properties.empty:
@@ -246,14 +243,14 @@ def track_segmentation_masks(
     **kwargs
 ) -> Dict[str, Any]:
     """
-    High-level function to track cells in segmentation masks.
-    
+    Z-link cell instances within one 3D segmentation stack.
+
     Args:
         input_path: Path to 3D segmentation mask file
         output_path: Path to save tracked results
         config: Tracking configuration
         **kwargs: Additional arguments for tracking
-        
+
     Returns:
         Dictionary with tracking results and statistics
     """

@@ -34,10 +34,11 @@ Cellpose-based inference pipeline for running cell segmentation predictions.
 
 ## Postprocessing (`src/postprocessing/`)
 
-3D cell tracking and quality filtering pipeline.
+3D cell tracking (across z-stacks, within one timepoint) and quality filtering pipeline.
 
 **Key features:**
-- 3D cell tracking across z-stacks using trackpy
+- 3D cell tracking across z-stacks using trackpy — links instances within a single
+  timepoint's stack; does not link cells across timepoints
 - Blur-based quality filtering (supports inverted thresholds)
 - Configurable processing workflows
 - Comprehensive result reporting

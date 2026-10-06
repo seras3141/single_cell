@@ -144,6 +144,6 @@ Interactive examples are in `notebooks/`:
 | `02_cellpose_evaluation_example.ipynb` | Cellpose model evaluation with metrics and plots |
 | `02a_cellpose_inference_example.ipynb` | Cellpose inference walkthrough |
 | `03_custom_configuration_example.ipynb` | Custom configuration |
-| `04_prediction_postprocessing.ipynb` | 3D cell tracking with blur filtering |
+| `04_prediction_postprocessing.ipynb` | 3D cell tracking across z-stacks (within one timepoint) with blur filtering |
 | `05_eval_segmentation.ipynb` | Segmentation evaluation |
 | `feature_visualization_tutorial.ipynb` | Feature visualisation, dimensionality reduction, heatmaps |
