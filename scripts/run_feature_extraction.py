@@ -38,7 +38,11 @@ import pandas as pd
 from src.feature_extraction.feature_extraction_pipeline import FeatureExtractionPipeline
 from src.utils.logging_utils import setup_logging, add_file_handler
 from src.utils.config import ConfigManager
-from src.utils.config_schemas import FEATURE_METHODS, check_feature_method_available
+from src.utils.config_schemas import (
+    FEATURE_METHODS,
+    check_feature_method_available,
+    validate_feature_extraction_n_jobs,
+)
 from src.dataset_analysis.run_manifest import create_or_load_manifest
 
 
@@ -213,9 +217,9 @@ def validate_inputs(config: Dict[str, Any]) -> None:
 def preflight(config: Dict[str, Any]) -> None:
     """Reject an unusable method or missing inputs before any output is written."""
     # Availability first: report the real cause.
-    check_feature_method_available(
-        config.get("feature_extraction", {}).get("method", "incarta")
-    )
+    feature_config = config.get("feature_extraction", {})
+    check_feature_method_available(feature_config.get("method", "incarta"))
+    validate_feature_extraction_n_jobs(feature_config.get("n_jobs"))
     validate_inputs(config)
 
 

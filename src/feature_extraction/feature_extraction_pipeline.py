@@ -24,6 +24,7 @@ from src.feature_extraction.feature_extractor_regionprops import get_region_prop
 from src.utils.config_schemas import (
     FeatureExtractionConfig,
     check_feature_method_available,
+    validate_feature_extraction_n_jobs,
 )
 from src.utils.data_exclusions import DataExclusions, load_data_exclusions
 from src.utils.file_utils import ConfigurableFileHandler
@@ -204,12 +205,7 @@ class FeatureExtractionPipeline:
 
         # Extract configuration sections
         # self.paths_config = feature_config.get('paths', {})
-        n_jobs = self.feature_config.get("n_jobs")
-        if n_jobs is not None and n_jobs < -1:
-            raise ValueError(
-                f"feature_extraction.n_jobs={n_jobs}: use -1 (all cores), 0 or 1 "
-                "(sequential), or a positive count"
-            )
+        validate_feature_extraction_n_jobs(self.feature_config.get("n_jobs"))
         self.method = method or self.feature_config.get("method", "incarta")
         self.output_config = self.feature_config.get("output", {})
         self.processing_config = self.feature_config.get("processing", {})

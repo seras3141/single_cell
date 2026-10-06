@@ -256,3 +256,22 @@ def test_unavailable_method_is_reported_before_missing_inputs(
                 module.main()
     assert "not yet available" in caplog.text
     create.assert_not_called()
+
+
+@pytest.mark.unit
+def test_n_jobs_below_minus_one_is_rejected_before_the_manifest(tmp_path, caplog):
+    module = _load_script_module()
+    argv = [
+        "run_feature_extraction.py",
+        "--image-dir", "/bf",
+        "--mask-dir", "/masks",
+        "--n-jobs", "-2",
+        "--run-dir", str(tmp_path / "run"),
+    ]  # fmt: skip
+    with patch.object(sys, "argv", argv), patch.object(module, "setup_logging"):
+        with patch.object(module, "create_or_load_manifest") as create:
+            with pytest.raises(SystemExit) as exited:
+                module.main()
+    assert exited.value.code == 1
+    assert "n_jobs=-2" in caplog.text
+    create.assert_not_called()
