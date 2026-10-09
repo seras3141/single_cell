@@ -37,7 +37,7 @@ The method is set via `feature_extraction.method` in `config/feature_extraction_
 
 - **Format and grouping.** `output.format` is `csv` (default) or `parquet`; `parquet` needs `pyarrow`.
   `output.granularity` is `image` (default: one file per image) or `well`. With `well`, the run writes
-  `<well>.parquet` (all cells of that well) and `<well>_coverage.parquet` per well; `well` requires
+  `<well>.parquet` (all cells of that well) and `coverage/<well>.parquet` per well, so `*.parquet` in the output folder matches only cells; `well` requires
   `parquet`. [`config/feature_extraction_pyradiomics_config.yaml`](../../config/feature_extraction_pyradiomics_config.yaml)
   uses per-well Parquet.
 - **Per-well safety.** Before extracting anything, a per-well batch refuses to start if one of its wells

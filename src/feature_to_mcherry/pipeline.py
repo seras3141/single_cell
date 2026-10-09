@@ -238,6 +238,7 @@ def run(config: FeatureToMcherryConfig) -> ResultsBundle:
             sample_id_column=config.sample_id_column,
             timepoint_column=config.timepoint_column,
             z_index_column=config.z_index_column,
+            pattern=config.feature_pattern,
         )
     else:
         features_df = load_features(

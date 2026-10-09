@@ -422,10 +422,22 @@ def pyarrow_present(monkeypatch):
     written = {}
 
     def fake_to_parquet(self, path, index=False):
-        written[Path(getattr(path, "name", path)).name] = self.copy()
+        path = Path(getattr(path, "name", path))
+        key = (
+            f"{path.parent.name}/{path.name}"
+            if path.parent.name == fep.COVERAGE_SUBDIR
+            else path.name
+        )
+        written[key] = self.copy()
 
     monkeypatch.setattr(pd.DataFrame, "to_parquet", fake_to_parquet)
     return written
+
+
+def _write_stale_coverage(pipeline, well, text):
+    stale = pipeline.output_dir / fep.COVERAGE_SUBDIR / f"{well}.parquet"
+    stale.parent.mkdir(exist_ok=True)
+    stale.write_text(text)
 
 
 def test_per_well_outputs(tmp_path, fake_backend, pyarrow_present):
@@ -441,12 +453,24 @@ def test_per_well_outputs(tmp_path, fake_backend, pyarrow_present):
     _run(pipeline, img_dir, msk_dir)
     assert sorted(pyarrow_present) == [
         "E07.parquet",
-        "E07_coverage.parquet",
-        "F08_coverage.parquet",
+        "coverage/E07.parquet",
+        "coverage/F08.parquet",
     ]
     assert len(pyarrow_present["E07.parquet"]) == 4
-    assert list(pyarrow_present["F08_coverage.parquet"]["status"]) == ["empty"]
+    assert list(pyarrow_present["coverage/F08.parquet"]["status"]) == ["empty"]
     assert not list((tmp_path / "out").glob("*.csv"))  # no per-image files
+
+
+def test_per_well_writes_real_files_with_coverage_in_subfolder(tmp_path, fake_backend):
+    pytest.importorskip("pyarrow")
+    img_dir, msk_dir = _dataset(tmp_path, {"pMF5V1_E07_t1_z1": _mask()})
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    _run(pipeline, img_dir, msk_dir)
+    out = pipeline.output_dir
+    assert [p.name for p in out.glob("*.parquet")] == ["E07.parquet"]
+    assert [p.name for p in (out / fep.COVERAGE_SUBDIR).glob("*.parquet")] == [
+        "E07.parquet"
+    ]
 
 
 def test_per_well_refuses_to_merge_two_experiments(
@@ -489,9 +513,9 @@ def test_per_well_writes_only_wells_with_masks(tmp_path, fake_backend, pyarrow_p
     img_dir, msk_dir = _dataset(tmp_path, {"pMF5V1_E07_t1_z1": _mask()})
     tifffile.imwrite(img_dir / "pMF5V1_F08_t1_z1_BF.tif", _image())
     pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
-    (pipeline.output_dir / "F08_coverage.parquet").write_text("another task's well")
+    _write_stale_coverage(pipeline, "F08", "another task's well")
     _run(pipeline, img_dir, msk_dir)
-    assert sorted(pyarrow_present) == ["E07.parquet", "E07_coverage.parquet"]
+    assert sorted(pyarrow_present) == ["E07.parquet", "coverage/E07.parquet"]
     assert [msg for _, msg in pipeline.error_files] == ["No matching mask"]
 
 
@@ -502,7 +526,7 @@ def test_per_well_extra_image_without_mask_fails_only_itself(
     tifffile.imwrite(img_dir / "pMF5V1_E07_t1_z1_old_BF.tif", _image())
     pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
     _run(pipeline, img_dir, msk_dir)
-    assert sorted(pyarrow_present) == ["E07.parquet", "E07_coverage.parquet"]
+    assert sorted(pyarrow_present) == ["E07.parquet", "coverage/E07.parquet"]
     assert [msg for _, msg in pipeline.error_files] == ["No matching mask"]
 
 
@@ -513,9 +537,9 @@ def test_per_well_duplicate_images_without_mask_own_no_well(
     tifffile.imwrite(img_dir / "pMF5V1_F08_t1_z1_BF.tif", _image())
     tifffile.imwrite(img_dir / "pMF5V1_F08_t1_z1.tif", _image())
     pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
-    (pipeline.output_dir / "F08_coverage.parquet").write_text("another task's well")
+    _write_stale_coverage(pipeline, "F08", "another task's well")
     pipeline.process_batch(img_dir, msk_dir, image_patterns=["*_BF.tif", "*.tif"])
-    assert sorted(pyarrow_present) == ["E07.parquet", "E07_coverage.parquet"]
+    assert sorted(pyarrow_present) == ["E07.parquet", "coverage/E07.parquet"]
     assert [msg for _, msg in pipeline.error_files] == [
         "Duplicate pairing key 'pMF5V1_F08_t1_z1'"
     ] * 2
@@ -528,7 +552,7 @@ def test_per_well_coverage_lists_unsegmented_z0(
     tifffile.imwrite(img_dir / "pMF5V1_E07_t1_z0_BF.tif", _image())
     pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
     _run(pipeline, img_dir, msk_dir)
-    coverage = pyarrow_present["E07_coverage.parquet"]
+    coverage = pyarrow_present["coverage/E07.parquet"]
     assert sorted(coverage["status"]) == ["ok", "unsegmented"]
 
 
@@ -543,12 +567,13 @@ def test_per_well_refuses_to_overwrite_within_a_run(
         _run(pipeline, b_img, b_msk)
 
 
-@pytest.mark.parametrize("earlier", ["E07.parquet", "E07_coverage.parquet"])
+@pytest.mark.parametrize("earlier", ["E07.parquet", "coverage/E07.parquet"])
 def test_per_well_refuses_earlier_outputs(
     tmp_path, fake_backend, pyarrow_present, earlier
 ):
     img_dir, msk_dir = _dataset(tmp_path, {"pMF5V1_E07_t1_z1": _mask()})
     pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    (pipeline.output_dir / earlier).parent.mkdir(exist_ok=True)
     (pipeline.output_dir / earlier).write_text("from an earlier run")
     with pytest.raises(ValueError, match="exists from an earlier run"):
         _run(pipeline, img_dir, msk_dir)
@@ -561,7 +586,7 @@ def test_well_only_name_still_checks_earlier_outputs(
 ):
     img_dir, msk_dir = _dataset(tmp_path, {"pMF5V1_E07": _mask()})
     pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
-    (pipeline.output_dir / "E07_coverage.parquet").write_text("from an earlier run")
+    _write_stale_coverage(pipeline, "E07", "from an earlier run")
     with pytest.raises(ValueError, match="exists from an earlier run"):
         _run(pipeline, img_dir, msk_dir)
 
@@ -582,7 +607,7 @@ def test_per_well_skips_names_without_a_well(tmp_path, fake_backend, pyarrow_pre
     pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
     df = _run(pipeline, img_dir, msk_dir)
     assert set(df["sample_id"]) == {"E07"}
-    assert sorted(pyarrow_present) == ["E07.parquet", "E07_coverage.parquet"]
+    assert sorted(pyarrow_present) == ["E07.parquet", "coverage/E07.parquet"]
     assert pipeline.error_files == [
         (str(img_dir / "unparsed_BF.tif"), "No well/timepoint/z in filename")
     ]
@@ -622,10 +647,10 @@ def test_error_only_well_still_gets_coverage(tmp_path, fake_backend, pyarrow_pre
     _run(pipeline, img_dir, msk_dir)
     assert sorted(pyarrow_present) == [
         "E07.parquet",
-        "E07_coverage.parquet",
-        "F08_coverage.parquet",
+        "coverage/E07.parquet",
+        "coverage/F08.parquet",
     ]
-    assert list(pyarrow_present["F08_coverage.parquet"]["status"]) == ["error"]
+    assert list(pyarrow_present["coverage/F08.parquet"]["status"]) == ["error"]
 
 
 def test_single_image_refuses_to_overwrite_a_well(
@@ -667,8 +692,8 @@ def test_per_well_writes_coverage_for_a_known_missing_batch(
         ),
     )
     _run(pipeline, img_dir, msk_dir)
-    assert sorted(pyarrow_present) == ["H09_coverage.parquet"]
-    assert list(pyarrow_present["H09_coverage.parquet"]["status"]) == ["known_missing"]
+    assert sorted(pyarrow_present) == ["coverage/H09.parquet"]
+    assert list(pyarrow_present["coverage/H09.parquet"]["status"]) == ["known_missing"]
 
 
 def test_unpaired_only_batch_writes_coverage(tmp_path, fake_backend, pyarrow_present):
@@ -676,8 +701,8 @@ def test_unpaired_only_batch_writes_coverage(tmp_path, fake_backend, pyarrow_pre
     save_labels(_mask(), msk_dir / "pMF5V1_E07_t1_z2_pred_mask.tif")
     pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
     _run(pipeline, img_dir, msk_dir)
-    assert sorted(pyarrow_present) == ["E07_coverage.parquet"]
-    assert list(pyarrow_present["E07_coverage.parquet"]["status"]) == ["unpaired"]
+    assert sorted(pyarrow_present) == ["coverage/E07.parquet"]
+    assert list(pyarrow_present["coverage/E07.parquet"]["status"]) == ["unpaired"]
     assert (str(msk_dir), "No valid image-mask pairs") in pipeline.error_files
 
 
@@ -689,7 +714,7 @@ def test_single_image_mode_writes_per_well(tmp_path, fake_backend, pyarrow_prese
     pipeline.process_single_image(
         img_dir / "pMF5V1_E07_t1_z1_BF.tif", msk_dir / "pMF5V1_E07_t1_z1_pred_mask.tif"
     )
-    assert sorted(pyarrow_present) == ["E07.parquet", "E07_coverage.parquet"]
+    assert sorted(pyarrow_present) == ["E07.parquet", "coverage/E07.parquet"]
 
 
 def test_output_option_validation(tmp_path, pyarrow_present):

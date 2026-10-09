@@ -25,6 +25,13 @@ _PROVENANCE_COLUMNS = {
 }
 
 
+def _read_table(path: Path) -> pd.DataFrame:
+    """Read a feature table: Parquet by ``.parquet`` suffix, CSV otherwise."""
+    if Path(path).suffix.lower() == ".parquet":
+        return pd.read_parquet(path)
+    return pd.read_csv(path)
+
+
 def drop_excluded_stacks(
     df: pd.DataFrame, csv_path: Path, exclusions: Optional[DataExclusions] = None
 ) -> pd.DataFrame:
@@ -182,7 +189,7 @@ def load_features(
     file_handler: Optional[ConfigurableFileHandler] = None,
     exclusions: Optional[DataExclusions] = None,
 ) -> pd.DataFrame:
-    """Load a per-cell feature CSV, normalized to CELL_KEY + feature columns.
+    """Load a per-cell feature CSV/Parquet table as CELL_KEY + feature columns.
 
     Works generically across feature-extraction backends (regionprops, pyradiomics,
     incarta, or any future source) via the ``id_column``/``sample_id_column``/
@@ -192,7 +199,7 @@ def load_features(
     Parameters
     ----------
     csv_path : Path
-        Path to a per-cell feature CSV.
+        Path to a per-cell feature table; a ``.parquet`` suffix is read as Parquet.
     id_column : str
         Name of the per-cell id column in this CSV (e.g. ``"instance_id"`` for the
         regionprops/incarta backends). Renamed to ``cell_id`` internally.
@@ -221,7 +228,7 @@ def load_features(
         Columns: ``CELL_KEY + <numeric feature columns>``.
     """
     csv_path = Path(csv_path)
-    df = pd.read_csv(csv_path)
+    df = _read_table(csv_path)
 
     if id_column not in df.columns:
         raise ValueError(
@@ -338,7 +345,7 @@ def load_features_from_directory(
     file_handler: Optional[ConfigurableFileHandler] = None,
     exclusions: Optional[DataExclusions] = None,
 ) -> pd.DataFrame:
-    """Load and concatenate a directory of per-(well, timepoint, z) feature CSVs.
+    """Load and concatenate a directory of feature tables (CSV or Parquet).
 
     Some feature-extraction backends write one CSV per (well, timepoint, z) slice
     (e.g. the incarta ``split_data`` layout —
@@ -358,7 +365,8 @@ def load_features_from_directory(
         Forwarded to :func:`load_features` for every matched file — see its
         docstring for the resolution order.
     pattern : str
-        Glob pattern selecting the feature CSVs within ``directory``.
+        Glob pattern selecting the feature tables within ``directory`` (use
+        ``*.parquet`` for Parquet; the default is ``*.csv``).
     file_handler : ConfigurableFileHandler, optional
         Handler used for filename parsing; passed through to :func:`load_features`.
 

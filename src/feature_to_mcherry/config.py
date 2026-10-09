@@ -40,6 +40,9 @@ class FeatureToMcherryConfig:
         ``Path.is_dir()`` and loaded with
         :func:`data.loaders.load_targets_from_directory` instead of
         :func:`data.loaders.load_targets`. Required, no default.
+    feature_pattern : str
+        Glob selecting feature files when ``feature_csv`` is a directory (``*.csv``
+        by default; ``*.parquet`` for the pyradiomics per-well tables).
     id_column : str
         Name of the per-cell id column in the feature CSV (e.g. ``"instance_id"`` for
         the regionprops/incarta backends). Renamed to ``cell_id`` internally.
@@ -109,6 +112,7 @@ class FeatureToMcherryConfig:
 
     feature_csv: str
     target_csv: str
+    feature_pattern: str = "*.csv"
     id_column: str = "instance_id"
     sample_id_column: Optional[str] = None
     timepoint_column: Optional[str] = None
