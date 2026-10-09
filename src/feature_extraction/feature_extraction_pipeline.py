@@ -37,6 +37,8 @@ from src.utils.data_exclusions import DataExclusions, load_data_exclusions
 from src.utils.file_utils import ConfigurableFileHandler
 from src.utils.image_utils import load_image, load_labels
 
+COVERAGE_SUBDIR = "coverage"
+
 # Default filename patterns, from the same schema defaults the CLI config uses
 # (MF5V1 layout: ``<stem>_BF.tif`` images, ``<stem>_pred_mask.tif`` masks).
 DEFAULT_IMAGE_PATTERN = FeatureExtractionConfig.image_pattern
@@ -1051,7 +1053,8 @@ class FeatureExtractionPipeline:
         for well in sorted({sample_id for (sample_id, _, _), _ in keyed if sample_id}):
             if well in self._written_wells:
                 return f"well {well} was written earlier in this run"
-            for path in self._per_well_paths(well):
+            legacy_coverage = self.output_dir / f"{well}_coverage.parquet"
+            for path in (*self._per_well_paths(well), legacy_coverage):
                 if path.exists():
                     return (
                         f"{path} exists from an earlier run; delete that well's "
@@ -1062,7 +1065,7 @@ class FeatureExtractionPipeline:
     def _per_well_paths(self, well: str) -> Tuple[Path, Path]:
         return (
             self.output_dir / f"{well}.parquet",
-            self.output_dir / f"{well}_coverage.parquet",
+            self.output_dir / COVERAGE_SUBDIR / f"{well}.parquet",
         )
 
     def _require_one_folder_per_well_batch(
@@ -1104,7 +1107,7 @@ class FeatureExtractionPipeline:
     def save_per_well(
         self, features_df: pd.DataFrame, coverage: List[Dict[str, Any]]
     ) -> None:
-        """Write ``<well>.parquet`` if it has rows, then its coverage file."""
+        """Write ``<well>.parquet`` if it has rows, then its ``coverage/`` table."""
         coverage_df = pd.DataFrame(coverage)
         if coverage_df.empty:
             return
@@ -1116,6 +1119,7 @@ class FeatureExtractionPipeline:
         conflict = self._per_well_conflict([_keyed_record(r) for r in owning])
         if conflict:
             raise ValueError(f"Per-well output refused: {conflict}")
+        (self.output_dir / COVERAGE_SUBDIR).mkdir(parents=True, exist_ok=True)
         for name, well_coverage in coverage_df.groupby("sample_id", sort=True):
             self._written_wells.add(name)
             features_file, coverage_file = self._per_well_paths(name)

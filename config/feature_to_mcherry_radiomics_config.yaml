@@ -1,0 +1,47 @@
+# feature_csv/target_csv default to HD1509; the driver overrides them per culture.
+# Coverage tables sit in coverage/, which the non-recursive *.parquet glob skips.
+
+feature_to_mcherry:
+  feature_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/HD1509 MF5V1 0-72h 23-02-26/inference_tracked/cellpose_sam/features_radiomics"
+  feature_pattern: "*.parquet"
+  target_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/HD1509 MF5V1 0-72h 23-02-26/mcherry_metrics/cellpose_sam/instance_metrics.csv"
+  id_column: cell_id
+  sample_id_column: null
+  timepoint_column: null
+  z_index_column: null
+  target_columns: [percentile_75, percentile_90, percentile_95]
+
+  # All 102 features stay in the extracted tables; these 13 are excluded from modelling.
+  # Screen: HD1509 E07 t101 and HD1883 F09 t101, union of both wells (a feature failing in
+  # either is dropped, since Energy and MCC flipped between wells near the cutoff).
+  # Border-driven: the cell ranking changes after eroding the mask by 2 px, so the value
+  # tracks the halo/edge pixels rather than the cell interior.
+  # Size proxies: a noise image reproduces their ranking and they track cell area
+  # (rho 0.86-0.93 for the NonUniformity features and Coarseness, ~0.71 for Energy and
+  # TotalEnergy, which are pixel sums), so they re-encode area, which shape2D supplies.
+  exclude_feature_columns:
+    # border-driven
+    - original_firstorder_Kurtosis
+    - original_firstorder_Skewness
+    - original_glcm_ClusterShade
+    - original_glcm_MCC
+    # size proxies
+    - original_firstorder_Energy
+    - original_firstorder_TotalEnergy
+    - original_glrlm_GrayLevelNonUniformity
+    - original_glrlm_RunLengthNonUniformity
+    - original_glszm_GrayLevelNonUniformity
+    - original_glszm_SizeZoneNonUniformity
+    - original_gldm_GrayLevelNonUniformity
+    - original_gldm_DependenceNonUniformity
+    - original_ngtdm_Coarseness
+
+  group_by: sample_id
+  n_splits: 5
+  ridge_alpha: 1.0
+  quantile_alpha: 0.0
+  quantile_solver: highs
+  quantile_train_subsample_size: 25000
+  quantile_train_subsample_seed: 0
+  sort_quantiles: true
+  output_dir: results/feature_to_mcherry_radiomics
