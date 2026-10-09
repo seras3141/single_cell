@@ -162,7 +162,7 @@ class CellTracker3D:
         tracking_data = pd.concat(all_data, ignore_index=True)
         
         # Perform tracking
-        self.logger.info(f"Linking {len(tracking_data)} detections across {segmentation_stack.shape[0]} frames")
+        self.logger.info(f"Linking {len(tracking_data)} detections across {segmentation_stack.shape[0]} z-slices")
         tracked_data = tp.link_df(
             tracking_data, 
             search_range=self.config.search_range,

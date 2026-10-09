@@ -6,12 +6,14 @@ import pandas as pd
 import pytest
 
 from src.dataset_analysis.raw_share_summary import (
+    MEASURED_BF_WAVELENGTH,
     build_raw_summary,
     missing_frames_table,
     parse_frame_name,
     scan_frames,
     write_raw_summary,
 )
+from src.utils.file_utils import EXPERIMENT_WAVELENGTH_MAPPINGS
 
 
 def frame(t, well="E07", site=1, wavelength=1, z=1):
@@ -281,3 +283,10 @@ def test_write_raw_summary_handles_folder_with_no_gaps(tmp_path):
     missing = pd.read_csv(written["missing"])
     assert missing.empty
     assert list(missing.columns) == ["folder", "wavelength", "file_name", "reason"]
+
+
+@pytest.mark.parametrize("experiment", sorted(MEASURED_BF_WAVELENGTH))
+def test_measured_bf_wavelength_matches_canonical_mapping(experiment):
+    canonical = EXPERIMENT_WAVELENGTH_MAPPINGS[experiment]
+    brightfield = [w for w, name in canonical.items() if name == "BF"]
+    assert brightfield == [MEASURED_BF_WAVELENGTH[experiment]]
