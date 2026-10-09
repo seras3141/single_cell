@@ -27,7 +27,7 @@ _PROVENANCE_COLUMNS = {
 
 def _read_table(path: Path) -> pd.DataFrame:
     """Read a feature table: Parquet by ``.parquet`` suffix, CSV otherwise."""
-    if Path(path).suffix.lower() == ".parquet":
+    if path.suffix.lower() == ".parquet":
         return pd.read_parquet(path)
     return pd.read_csv(path)
 

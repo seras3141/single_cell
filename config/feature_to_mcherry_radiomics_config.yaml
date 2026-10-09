@@ -16,9 +16,9 @@ feature_to_mcherry:
   # either is dropped, since Energy and MCC flipped between wells near the cutoff).
   # Border-driven: the cell ranking changes after eroding the mask by 2 px, so the value
   # tracks the halo/edge pixels rather than the cell interior.
-  # Size proxies: a noise image reproduces their ranking and they track cell area at
-  # rho ~0.9, so they re-encode area, which shape2D already supplies.
-  # Plan: docs/feature_extraction/plan_pyradiomics_cuda_integration.md, section 6a.
+  # Size proxies: a noise image reproduces their ranking and they track cell area
+  # (rho 0.86-0.93 for the NonUniformity features and Coarseness, ~0.71 for Energy and
+  # TotalEnergy, which are pixel sums), so they re-encode area, which shape2D supplies.
   exclude_feature_columns:
     # border-driven
     - original_firstorder_Kurtosis
