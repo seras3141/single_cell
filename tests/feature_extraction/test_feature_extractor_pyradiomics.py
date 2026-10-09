@@ -581,6 +581,18 @@ def test_per_well_refuses_earlier_outputs(
     assert (pipeline.output_dir / earlier).read_text() == "from an earlier run"
 
 
+def test_per_well_refuses_a_root_level_coverage_file_from_the_old_layout(
+    tmp_path, fake_backend, pyarrow_present
+):
+    img_dir, msk_dir = _dataset(tmp_path, {"pMF5V1_E07_t1_z1": _mask()})
+    pipeline = _pipeline(tmp_path, format="parquet", granularity="well")
+    old_layout = pipeline.output_dir / "E07_coverage.parquet"
+    old_layout.write_text("from an earlier run")
+    with pytest.raises(ValueError, match="exists from an earlier run"):
+        _run(pipeline, img_dir, msk_dir)
+    assert fake_backend.dtypes == [] and not pyarrow_present
+
+
 def test_well_only_name_still_checks_earlier_outputs(
     tmp_path, fake_backend, pyarrow_present
 ):

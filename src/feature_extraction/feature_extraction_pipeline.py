@@ -1053,7 +1053,8 @@ class FeatureExtractionPipeline:
         for well in sorted({sample_id for (sample_id, _, _), _ in keyed if sample_id}):
             if well in self._written_wells:
                 return f"well {well} was written earlier in this run"
-            for path in self._per_well_paths(well):
+            legacy_coverage = self.output_dir / f"{well}_coverage.parquet"
+            for path in (*self._per_well_paths(well), legacy_coverage):
                 if path.exists():
                     return (
                         f"{path} exists from an earlier run; delete that well's "

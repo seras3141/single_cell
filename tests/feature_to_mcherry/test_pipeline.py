@@ -8,6 +8,7 @@ from typing import Tuple
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from src.feature_to_mcherry.config import FeatureToMcherryConfig
 from src.feature_to_mcherry.pipeline import _run_model, run
@@ -283,6 +284,30 @@ def test_pipeline_end_to_end_with_directory_feature_csv(tmp_path: Path) -> None:
             assert math.isfinite(metrics["mae"])
             assert math.isfinite(metrics["r2"])
             assert math.isfinite(metrics["pinball_loss"])
+
+
+def test_pipeline_forwards_feature_pattern_to_the_directory_loader(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("pyarrow")
+    feature_dir, target_csv = _write_synthetic_directory_csvs(tmp_path)
+    for csv_path in feature_dir.glob("*.csv"):
+        pd.read_csv(csv_path).to_parquet(csv_path.with_suffix(".parquet"), index=False)
+        csv_path.unlink()
+    config = FeatureToMcherryConfig(
+        feature_csv=str(feature_dir),
+        feature_pattern="*.parquet",
+        target_csv=str(target_csv),
+        id_column="cell_id",
+        group_by="sample_id",
+        n_splits=2,
+        output_dir=str(tmp_path / "results"),
+    )
+
+    results = run(config)
+
+    assert results.n_cells == 40
+    assert set(results.feature_names) == {"feature_1", "feature_2"}
 
 
 def test_pipeline_end_to_end_with_quantile_train_subsample(tmp_path: Path) -> None:
