@@ -30,6 +30,7 @@ Usage:
 import argparse
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -44,6 +45,14 @@ from src.utils.config_schemas import (
     validate_feature_extraction_n_jobs,
 )
 from src.dataset_analysis.run_manifest import create_or_load_manifest
+
+
+def _run_name(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", value):
+        raise argparse.ArgumentTypeError(
+            f"{value!r} is not a plain file name (letters, digits, '.', '_', '-')"
+        )
+    return value
 
 
 def get_args():
@@ -116,6 +125,14 @@ def get_args():
         help="Logging level",
     )
     parser.add_argument(
+        "--run-name",
+        type=_run_name,
+        default=None,
+        help="Name the log '<name>.log' and the summary '<name>_summary.txt' so "
+        "several runs can share one output directory. Other outputs (e.g. a "
+        "combined all_features file) are not renamed.",
+    )
+    parser.add_argument(
         "--run-dir",
         type=str,
         default=None,
@@ -174,6 +191,13 @@ def load_config(args) -> Dict[str, Any]:
         config["feature_extraction"]["image_pattern"] = args.image_pattern
     if args.mask_pattern:
         config["feature_extraction"]["mask_pattern"] = args.mask_pattern
+
+    config.setdefault("logging", {})
+    if args.run_name is not None:
+        config["logging"]["filename"] = f"{args.run_name}.log"
+        config["feature_extraction"].setdefault("output", {})[
+            "summary_filename"
+        ] = f"{args.run_name}_summary.txt"
 
     config["logging"]["level"] = args.log_level
 

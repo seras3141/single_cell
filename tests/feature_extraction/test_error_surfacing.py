@@ -108,6 +108,13 @@ class TestPartialFailure:
         with pytest.raises(FeatureExtractionError, match="1 input file"):
             pipeline.raise_if_errors(summary)
 
+    def test_summary_uses_the_configured_filename(self, tmp_path):
+        pipeline = _pipeline(tmp_path, summary_filename="E07_summary.txt")
+        summary = pipeline.save_summary(pd.DataFrame())
+
+        assert summary == pipeline.output_dir / "E07_summary.txt"
+        assert not (pipeline.output_dir / "feature_extraction_summary.txt").exists()
+
     def test_no_errors_does_not_raise(self, tmp_path):
         img_dir, msk_dir = _dataset(tmp_path, ["a"])
         pipeline = _pipeline(tmp_path)

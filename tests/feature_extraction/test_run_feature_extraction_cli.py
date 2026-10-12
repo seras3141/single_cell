@@ -3,6 +3,7 @@
 Covers the config/CLI merge only -- no pipeline, no scPortrait, no GPU.
 """
 
+import argparse
 import importlib.util
 import sys
 from pathlib import Path
@@ -35,6 +36,7 @@ def _args(**overrides):
         image_pattern=None,
         mask_pattern=None,
         log_level="INFO",
+        run_name=None,
     )
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -275,3 +277,37 @@ def test_n_jobs_below_minus_one_is_rejected_before_the_manifest(tmp_path, caplog
     assert exited.value.code == 1
     assert "n_jobs=-2" in caplog.text
     create.assert_not_called()
+
+
+def test_run_name_sets_the_log_and_summary_names():
+    module = _load_script_module()
+    config = module.load_config(_args(run_name="E07"))
+    assert config["logging"]["filename"] == "E07.log"
+    assert config["feature_extraction"]["output"]["summary_filename"] == (
+        "E07_summary.txt"
+    )
+
+
+def test_default_log_and_summary_names_are_unchanged():
+    module = _load_script_module()
+    config = module.load_config(_args())
+    assert "filename" not in config["logging"]
+    assert "summary_filename" not in config["feature_extraction"].get("output", {})
+
+
+@pytest.mark.parametrize("run_name", ["", "../x", "a/b", ".", "..", " ", ".hidden"])
+def test_run_name_must_be_a_plain_file_name(run_name):
+    module = _load_script_module()
+    with pytest.raises(argparse.ArgumentTypeError, match="plain file name"):
+        module._run_name(run_name)
+
+
+def test_run_name_with_a_config_that_omits_logging_and_output(tmp_path):
+    module = _load_script_module()
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("feature_extraction:\n  method: regionprops\n")
+    config = module.load_config(_args(config=str(config_file), run_name="E07"))
+    assert config["logging"]["filename"] == "E07.log"
+    assert config["feature_extraction"]["output"]["summary_filename"] == (
+        "E07_summary.txt"
+    )
