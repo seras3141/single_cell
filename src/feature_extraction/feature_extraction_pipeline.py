@@ -1466,7 +1466,9 @@ class FeatureExtractionPipeline:
         Returns:
             Path of the summary file.
         """
-        summary_file = self.output_dir / "feature_extraction_summary.txt"
+        summary_file = self.output_dir / self.output_config.get(
+            "summary_filename", "feature_extraction_summary.txt"
+        )
         with open(summary_file, "w") as f:
             f.write("Feature Extraction Summary\n")
             f.write("========================\n\n")
