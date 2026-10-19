@@ -29,7 +29,11 @@ def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--features-dir", type=Path, required=True)
     parser.add_argument("--mask-dir", type=Path, required=True)
-    parser.add_argument("--wells", nargs="+", help="Default: every <well>.parquet")
+    parser.add_argument(
+        "--wells",
+        nargs="+",
+        help="Default: every well with a feature or coverage table",
+    )
     parser.add_argument(
         "--min-pixels",
         type=int,

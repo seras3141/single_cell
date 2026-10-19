@@ -350,8 +350,59 @@ def test_audit_tree_discovers_wells_and_writes_the_report(tree, tmp_path):
 
 
 def test_audit_tree_with_no_wells_is_an_error(tmp_path):
-    with pytest.raises(ValueError, match="No <well>.parquet"):
+    with pytest.raises(ValueError, match="No well tables"):
         audit_tree(tmp_path, tmp_path)
+
+
+def test_a_coverage_only_well_is_discovered_and_fails(tree):
+    (tree["features"] / COVERAGE_SUBDIR / "F08.parquet").write_bytes(
+        (tree["features"] / COVERAGE_SUBDIR / f"{WELL}.parquet").read_bytes()
+    )
+    result = audit_tree(tree["features"], tree["masks"], min_pixels=MIN_PIXELS)
+    by_well = {well.well: well for well in result.wells}
+    assert sorted(by_well) == ["E07", "F08"]
+    assert any("missing file" in f for f in by_well["F08"].failures)
+    assert not result.passed
+
+
+def test_a_float_mask_is_named_as_unreadable(tree):
+    tifffile.imwrite(tree["masks"] / _stack_names("1", 2), _mask().astype(np.float32))
+    assert any("unreadable masks" in f and "2D integer" in f for f in _audit(tree))
+
+
+def test_a_3d_mask_is_named_as_unreadable(tree):
+    tifffile.imwrite(tree["masks"] / _stack_names("1", 2), np.stack([_mask(), _mask()]))
+    assert any("unreadable masks" in f and "2D integer" in f for f in _audit(tree))
+
+
+def test_unsegmented_rows_must_have_zero_counts(tree):
+    rows = [dict(r) for r in tree["coverage_rows"]]
+    rows[-1]["n_label_errors"] = 2
+    tree["write"](coverage_rows=rows)
+    assert any("unsegmented rows with nonzero counts" in f for f in _audit(tree))
+
+
+def test_a_duplicated_unsegmented_stack_is_named(tree):
+    tree["write"](coverage_rows=tree["coverage_rows"] + [tree["coverage_rows"][-1]])
+    assert any("stacks with more than one coverage row" in f for f in _audit(tree))
+
+
+def test_a_non_integral_cell_id_is_named_and_does_not_pass_as_a_label(tree):
+    rows = [dict(r) for r in tree["feature_rows"]]
+    rows[0]["cell_id"] = 1.5
+    tree["write"](feature_rows=rows)
+    failures = _audit(tree)
+    assert any("non-integral cell_id" in f for f in failures)
+    assert any("labels without a row" in f for f in failures)
+
+
+def test_min_pixels_below_one_is_rejected(tree, monkeypatch):
+    with pytest.raises(ValueError, match="min_pixels"):
+        audit_tree(tree["features"], tree["masks"], min_pixels=0)
+    with pytest.raises(ValueError, match="min_pixels"):
+        audit_well(tree["features"], tree["masks"], WELL, -1)
+    common = ["--features-dir", tree["features"], "--mask-dir", tree["masks"]]
+    assert _run_cli(monkeypatch, *common, "--min-pixels", 0) == 2
 
 
 def test_a_process_pool_gives_the_same_result(tree):
