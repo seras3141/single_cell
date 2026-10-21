@@ -32,7 +32,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--wells",
         nargs="+",
-        help="Default: every well with a feature or coverage table",
+        help="Default: every well with a mask, a feature table or a coverage table",
     )
     parser.add_argument(
         "--min-pixels",

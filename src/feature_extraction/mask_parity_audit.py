@@ -142,6 +142,21 @@ def _key_problems(table: pd.DataFrame, well: str, name: str) -> List[str]:
                 table.loc[~integral, "z_index"].tolist(),
             )
         )
+    missing_z = integral & (z_index < 0)
+    missing_timepoint = table["timepoint"].isna() | (
+        table["timepoint"].astype(str) == ""
+    )
+    unparsed = missing_z | missing_timepoint
+    if unparsed.any():
+        problems.append(
+            _named(
+                f"{name} rows with a missing timepoint or z_index",
+                table.loc[unparsed, ["timepoint", "z_index"]]
+                .astype(str)
+                .agg("/".join, axis=1)
+                .tolist(),
+            )
+        )
     foreign = table.loc[table["sample_id"].astype(str) != well, "sample_id"]
     if len(foreign):
         problems.append(

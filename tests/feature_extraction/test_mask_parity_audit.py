@@ -411,6 +411,22 @@ def test_a_non_integral_z_index_in_both_tables_is_named(tree):
     assert any("feature rows with a non-integral z_index" in f for f in failures)
 
 
+@pytest.mark.parametrize(
+    "sentinel", [{"timepoint": ""}, {"timepoint": None}, {"z_index": -1}]
+)
+def test_sentinel_timepoint_and_z_keys_are_named(tree, sentinel):
+    features = [dict(r, **sentinel) for r in tree["feature_rows"]]
+    coverage = [dict(r, **sentinel) for r in tree["coverage_rows"]]
+    tree["write"](feature_rows=features, coverage_rows=coverage)
+    failures = _audit(tree)
+    assert any(
+        "coverage rows with a missing timepoint or z_index" in f for f in failures
+    )
+    assert any(
+        "feature rows with a missing timepoint or z_index" in f for f in failures
+    )
+
+
 def test_tables_of_another_well_are_named(tree):
     features = [dict(r, sample_id="F08") for r in tree["feature_rows"]]
     coverage = [dict(r, sample_id="F08") for r in tree["coverage_rows"]]
