@@ -1,13 +1,14 @@
 """Audit per-well radiomics tables against the masks they were extracted from.
 
-Masks are the top-level ``*_<well>_*_pred_mask.tif`` files of the mask folder.
+Masks are the top-level ``*_<well>_*_pred_mask.tif`` files of the mask folder; wells
+are discovered from the masks and from the feature and coverage tables.
 
 Per well, three checks, each failure named and never averaged away:
 
 1. coverage completeness: every mask has one ``ok``/``empty`` coverage row;
 2. mask parity: the ``cell_id`` set of each mask's features equals its labels with at
-   least ``min_pixels`` pixels, less exactly the labels PyRadiomics rejected (their
-   number is taken from coverage, so it is reported as ``n_rejected_labels``);
+   least ``min_pixels`` pixels, allowing the number of rejected labels that coverage
+   reports (``n_rejected_labels``; which labels were rejected cannot be verified);
 3. table integrity: no duplicate cells, no feature row without a coverage row.
 """
 
@@ -24,14 +25,19 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
-from src.feature_extraction.feature_extraction_pipeline import COVERAGE_SUBDIR
+from src.feature_extraction.feature_extraction_pipeline import (
+    COVERAGE_SUBDIR,
+    file_stack_key,
+)
 from src.feature_extraction.feature_extractor_pyradiomics import _label_counts
 from src.utils.config_schemas import PyradiomicsConfig
+from src.utils.file_utils import ConfigurableFileHandler
 from src.utils.image_utils import load_labels
 
 logger = logging.getLogger(__name__)
 
 AUDIT_FILENAME = "mask_parity_audit.json"
+MASK_GLOB = "*_pred_mask.tif"
 _MAX_EXAMPLES = 5
 _CELL_KEY = ["sample_id", "timepoint", "z_index"]
 _COVERAGE_COLUMNS = _CELL_KEY + [
@@ -124,6 +130,29 @@ def _stack_keys(table: pd.DataFrame) -> List[Tuple[str, str, int]]:
     )
 
 
+def _key_problems(table: pd.DataFrame, well: str, name: str) -> List[str]:
+    """Rows whose key cannot belong to this well's integer-z stacks."""
+    z_index = pd.to_numeric(table["z_index"], errors="coerce")
+    integral = z_index.notna() & (z_index % 1 == 0)
+    problems = []
+    if not integral.all():
+        problems.append(
+            _named(
+                f"{name} rows with a non-integral z_index",
+                table.loc[~integral, "z_index"].tolist(),
+            )
+        )
+    foreign = table.loc[table["sample_id"].astype(str) != well, "sample_id"]
+    if len(foreign):
+        problems.append(
+            _named(
+                f"{name} rows whose sample_id is not {well}",
+                sorted(set(foreign.astype(str))),
+            )
+        )
+    return problems
+
+
 def _require_min_pixels(min_pixels: int) -> None:
     if min_pixels < 1:
         raise ValueError(f"min_pixels must be >= 1, got {min_pixels}")
@@ -178,6 +207,10 @@ def audit_well(
         for status, count in coverage["status"].value_counts().items()
     }
     audit.n_rejected_labels = int(coverage["n_label_errors"].sum())
+    audit.failures += _key_problems(coverage, well, "coverage")
+    audit.failures += _key_problems(features, well, "feature")
+    if audit.failures:
+        return audit
 
     unsegmented = coverage[coverage["status"] == "unsegmented"]
     stray = unsegmented[unsegmented["z_index"] != 0]
@@ -190,6 +223,13 @@ def audit_well(
     if len(counted):
         audit.failures.append(
             _named("unsegmented rows with nonzero counts", _stack_keys(counted))
+        )
+    named = unsegmented[unsegmented["mask_filename"].fillna("") != ""]
+    if len(named):
+        audit.failures.append(
+            _named(
+                "unsegmented rows that name a mask", sorted(set(named["mask_filename"]))
+            )
         )
     other = coverage[~coverage["status"].isin(["ok", "empty", "unsegmented"])]
     if len(other):
@@ -215,6 +255,17 @@ def audit_well(
                 "stacks with more than one coverage row",
                 sorted(set(_stack_keys(shared_stacks))),
             )
+        )
+    handler = ConfigurableFileHandler()
+    disagreeing = [
+        row.mask_filename
+        for row in with_mask.itertuples(index=False)
+        if file_stack_key(handler, row.mask_filename)
+        != (str(row.sample_id), str(row.timepoint), int(row.z_index))
+    ]
+    if disagreeing:
+        audit.failures.append(
+            _named("coverage key disagrees with the mask filename", disagreeing)
         )
     covered = set(with_mask["mask_filename"])
     if masks_on_disk - covered:
@@ -287,10 +338,11 @@ def audit_well(
         if row.mask_filename not in labels:
             continue
         kept, n_small = labels[row.mask_filename]
+        eligible = set(kept)
         found = cells_by_mask.get(row.mask_filename, set())
-        if found - set(kept):
+        if found - eligible:
             flag("cells not among the mask's labels", row.mask_filename)
-        if len(set(kept) - found) != row.n_label_errors:
+        if len(eligible - found) != row.n_label_errors:
             flag("labels without a row beyond the rejected ones", row.mask_filename)
         if row.n_skipped_small != n_small:
             flag("n_skipped_small differs from the mask", row.mask_filename)
@@ -318,7 +370,10 @@ def audit_tree(
         min_pixels = PyradiomicsConfig().min_pixels
     _require_min_pixels(min_pixels)
     if wells is None:
-        found = {path.stem for path in features_dir.glob("*.parquet")}
+        handler = ConfigurableFileHandler()
+        found = {file_stack_key(handler, p.name)[0] for p in mask_dir.glob(MASK_GLOB)}
+        found.discard("")
+        found |= {path.stem for path in features_dir.glob("*.parquet")}
         found |= {
             path.stem for path in (features_dir / COVERAGE_SUBDIR).glob("*.parquet")
         }

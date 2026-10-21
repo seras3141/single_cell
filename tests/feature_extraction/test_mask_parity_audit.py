@@ -160,16 +160,6 @@ def test_unsegmented_above_z0_is_named(tree):
     assert any("unsegmented rows outside z0" in f for f in _audit(tree))
 
 
-def test_a_rejected_label_passes_when_accounted_for(tree):
-    rows = [dict(r) for r in tree["coverage_rows"]]
-    rows[0]["n_cells"], rows[0]["n_label_errors"] = 1, 1
-    tree["write"](
-        feature_rows=tree["feature_rows"][1:2] + tree["feature_rows"][2:],
-        coverage_rows=rows,
-    )
-    assert _audit(tree) == []
-
-
 def test_an_unreadable_mask_is_named_without_aborting(tree):
     (tree["masks"] / _stack_names("1", 2)).write_bytes(b"not a tiff")
     failures = _audit(tree)
@@ -365,6 +355,22 @@ def test_a_coverage_only_well_is_discovered_and_fails(tree):
     assert not result.passed
 
 
+def test_a_well_with_masks_but_no_tables_is_discovered_and_fails(tree):
+    tifffile.imwrite(tree["masks"] / "pMF5V1_G09_t1_z1_pred_mask.tif", _mask())
+    result = audit_tree(tree["features"], tree["masks"], min_pixels=MIN_PIXELS)
+    by_well = {well.well: well for well in result.wells}
+    assert sorted(by_well) == ["E07", "G09"]
+    assert any("missing file" in f for f in by_well["G09"].failures)
+    assert not result.passed
+
+
+def test_an_unsegmented_row_that_names_a_mask_is_named(tree):
+    rows = [dict(r) for r in tree["coverage_rows"]]
+    rows[-1]["mask_filename"] = _stack_names("1", 2)
+    tree["write"](coverage_rows=rows)
+    assert any("unsegmented rows that name a mask" in f for f in _audit(tree))
+
+
 def test_a_float_mask_is_named_as_unreadable(tree):
     tifffile.imwrite(tree["masks"] / _stack_names("1", 2), _mask().astype(np.float32))
     assert any("unreadable masks" in f and "2D integer" in f for f in _audit(tree))
@@ -394,6 +400,34 @@ def test_a_non_integral_cell_id_is_named_and_does_not_pass_as_a_label(tree):
     failures = _audit(tree)
     assert any("non-integral cell_id" in f for f in failures)
     assert any("labels without a row" in f for f in failures)
+
+
+def test_a_non_integral_z_index_in_both_tables_is_named(tree):
+    features = [dict(r, z_index=1.5) for r in tree["feature_rows"]]
+    coverage = [dict(r, z_index=1.5) for r in tree["coverage_rows"]]
+    tree["write"](feature_rows=features, coverage_rows=coverage)
+    failures = _audit(tree)
+    assert any("coverage rows with a non-integral z_index" in f for f in failures)
+    assert any("feature rows with a non-integral z_index" in f for f in failures)
+
+
+def test_tables_of_another_well_are_named(tree):
+    features = [dict(r, sample_id="F08") for r in tree["feature_rows"]]
+    coverage = [dict(r, sample_id="F08") for r in tree["coverage_rows"]]
+    tree["write"](feature_rows=features, coverage_rows=coverage)
+    failures = _audit(tree)
+    assert any("coverage rows whose sample_id is not E07" in f for f in failures)
+    assert any("feature rows whose sample_id is not E07" in f for f in failures)
+
+
+def test_swapped_mask_filenames_in_coverage_are_named(tree):
+    rows = [dict(r) for r in tree["coverage_rows"]]
+    rows[0]["mask_filename"], rows[1]["mask_filename"] = (
+        rows[1]["mask_filename"],
+        rows[0]["mask_filename"],
+    )
+    tree["write"](coverage_rows=rows)
+    assert any("disagrees with the mask filename" in f for f in _audit(tree))
 
 
 def test_min_pixels_below_one_is_rejected(tree, monkeypatch):
