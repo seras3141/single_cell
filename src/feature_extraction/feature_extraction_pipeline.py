@@ -203,6 +203,20 @@ def _keyed_record(record: Dict[str, Any]) -> Tuple[Tuple[str, str, int], str]:
     return key, record["image_filename"] or record["mask_filename"]
 
 
+def file_stack_key(
+    handler: ConfigurableFileHandler, filename: str
+) -> Tuple[str, str, int]:
+    """(sample_id, timepoint, z_index) of a file name; per-well output joins on it."""
+    sample_id = handler.extract_sample_id(filename)
+    timepoint = handler.extract_time_point(filename)
+    z_index = handler.extract_z_index(filename)
+    return (
+        sample_id if sample_id is not None else "",
+        "" if timepoint == "unknown" else str(timepoint),
+        -1 if z_index is None else int(z_index),
+    )
+
+
 def _write_new_parquet(df: pd.DataFrame, path: Path) -> None:
     # "xb": refuse files created since the check.
     with open(path, "xb") as handle:
@@ -658,16 +672,7 @@ class FeatureExtractionPipeline:
         return export_root.joinpath(*SCPORTRAIT_MASK_SUBDIRS, f"{stem}_pred_mask.tif")
 
     def _key_columns(self, filename: str) -> Tuple[str, str, int]:
-        # Single source: per-well output joins on these.
-        handler = self._get_file_handler()
-        sample_id = handler.extract_sample_id(filename)
-        timepoint = handler.extract_time_point(filename)
-        z_index = handler.extract_z_index(filename)
-        return (
-            sample_id if sample_id is not None else "",
-            "" if timepoint == "unknown" else str(timepoint),
-            -1 if z_index is None else int(z_index),
-        )
+        return file_stack_key(self._get_file_handler(), filename)
 
     def _append_coverage(
         self,
