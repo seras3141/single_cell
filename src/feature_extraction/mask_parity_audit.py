@@ -1,15 +1,9 @@
 """Audit per-well radiomics tables against the masks they were extracted from.
 
-Masks are the top-level ``*_<well>_*_pred_mask.tif`` files of the mask folder; wells
-are discovered from the masks and from the feature and coverage tables.
-
-Per well, three checks, each failure named and never averaged away:
-
-1. coverage completeness: every mask has one ``ok``/``empty`` coverage row;
-2. mask parity: the ``cell_id`` set of each mask's features equals its labels with at
-   least ``min_pixels`` pixels, allowing the number of rejected labels that coverage
-   reports (``n_rejected_labels``; which labels were rejected cannot be verified);
-3. table integrity: no duplicate cells, no feature row without a coverage row.
+Masks are the top-level ``*_<well>_*_pred_mask.tif`` files; wells are discovered from
+the masks and the tables. Each failure is named per well, and a structural problem stops
+a well before the parity checks. Which labels PyRadiomics rejected cannot be verified,
+so exactly ``n_label_errors`` missing labels are allowed per mask. See README.md.
 """
 
 from __future__ import annotations
@@ -37,7 +31,8 @@ from src.utils.image_utils import load_labels
 logger = logging.getLogger(__name__)
 
 AUDIT_FILENAME = "mask_parity_audit.json"
-MASK_GLOB = "*_pred_mask.tif"
+_MASK_SUFFIX = "_pred_mask.tif"
+MASK_GLOB = f"*{_MASK_SUFFIX}"
 _MAX_EXAMPLES = 5
 _CELL_KEY = ["sample_id", "timepoint", "z_index"]
 _COVERAGE_COLUMNS = _CELL_KEY + [
@@ -193,7 +188,7 @@ def audit_well(
     for path in (features_path, coverage_path):
         if not path.exists():
             audit.failures.append(f"missing file {path}")
-    mask_paths = sorted(mask_dir.glob(f"*_{glob.escape(well)}_*_pred_mask.tif"))
+    mask_paths = sorted(mask_dir.glob(f"*_{glob.escape(well)}_*{_MASK_SUFFIX}"))
     audit.n_masks = len(mask_paths)
     masks_on_disk = {path.name for path in mask_paths}
     if not mask_paths:

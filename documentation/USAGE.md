@@ -88,6 +88,16 @@ python scripts/run_feature_extraction.py \
     --n-jobs 8
 ```
 
+`--run-name NAME` gives a run its own `NAME.log` and `NAME_summary.txt`, so several runs (for example one per well) can share an output directory. Only the log and summary are renamed; a combined `all_features` file would still be overwritten.
+
+To check per-well radiomics tables against their masks (pass the same `--min-pixels` the extraction used if it was not the default 20; the script exits 1 when a well fails and 2 when it could not run, and it writes `mask_parity_audit.json` into the features folder unless `--report` says otherwise):
+
+```bash
+python scripts/run_feature_audit.py \
+    --features-dir <exp>/inference_tracked/cellpose_sam/features_radiomics \
+    --mask-dir <exp>/inference_tracked/cellpose_sam/final_2d --n-jobs 8
+```
+
 #### 5. Visualisation GUI
 
 ```bash
