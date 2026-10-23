@@ -11,6 +11,7 @@ src/feature_extraction/
 ├── feature_extractor_regionprops.py # scikit-image regionprops (2D and 3D)
 ├── feature_extractor_pyradiomics.py # PyRadiomics per-cell features
 ├── feature_extractor_scportrait.py  # ConvNeXt deep features via scPortrait (optional dependency)
+├── mask_parity_audit.py             # Audit of per-well radiomics tables against their masks
 ├── scportrait_project/              # scPortrait project config and helpers
 │   └── config.yml                   # CytosolOnlySegmentationCellpose + ConvNeXtFeaturizer
 ├── feature_list_2d.txt              # Full description of the 2D feature set
@@ -55,6 +56,18 @@ The method is set via `feature_extraction.method` in `config/feature_extraction_
   filename, key columns, `status` (`ok`/`empty`/`error`/`unpaired`/`known_missing`/`no_mask`/`unsegmented`/`duplicate`), `n_cells`,
   `n_skipped_small`, `n_label_errors` and `seconds`. That's what tells a genuinely empty image from one
   that was never processed. The summary reports the status counts.
+
+### Auditing the output
+
+`scripts/run_feature_audit.py` checks a `features_radiomics/` folder against the masks it was extracted from ([`mask_parity_audit.py`](mask_parity_audit.py)). Per mask, the `cell_id` set must equal the labels with at least `min_pixels` pixels, except for exactly as many labels as coverage reports in `n_label_errors` (the ones PyRadiomics rejected), and `n_skipped_small`, `n_cells` and `status` must agree with the mask and the feature rows. Coverage must have one row per mask with a key that matches the mask's file name, no stack may appear twice in coverage, and no cell twice in the features. Coverage `status` must be `ok`, `empty` or `unsegmented` (z0 only, zero counts, no mask name), and every `cell_id` must be an integer. Keys are validated before these checks, but after the file, mask and column checks: `z_index` must be an integer, `timepoint` and `z_index` must be present, and `sample_id` must be the well. A bad mask, table or well becomes a named failure and the other wells are still audited. The tool writes `mask_parity_audit.json` into the folder (or to `--report`), and exits 1 when a well fails. It exits 2 when it could not run or write its report: a missing directory, no wells found, `--min-pixels` below 1, or an unwritable report.
+
+```bash
+uv run scripts/run_feature_audit.py \
+    --features-dir "<exp>/inference_tracked/cellpose_sam/features_radiomics" \
+    --mask-dir "<exp>/inference_tracked/cellpose_sam/final_2d" --n-jobs 8
+```
+
+Pass the same `--min-pixels` the extraction used (default 20): a mask with a label between the two floors fails, as a `n_skipped_small` mismatch and as a label-versus-row mismatch. The features folder should hold only per-well tables, because every `*.parquet` file in it is treated as a well. The audit reads flat top-level `*_<well>_*_pred_mask.tif` files only, so unreferenced nested or non-`.tif` masks are not detected, and it cannot verify which labels PyRadiomics rejected.
 
 ### Inputs, errors and exclusions
 

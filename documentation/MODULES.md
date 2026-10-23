@@ -65,7 +65,7 @@ Extracts per-cell features from 2D and 3D segmented microscopy images. Supports 
 | Spatial | Centroids, centre of mass, mass displacement |
 | Texture | Gabor mean/std, skewness, kurtosis, entropy |
 
-**CLI entry point:** `scripts/run_feature_extraction.py`
+**CLI entry points:** `scripts/run_feature_extraction.py`, and `scripts/run_feature_audit.py` to check per-well radiomics tables against their masks
 
 **Module README:** [`src/feature_extraction/README.md`](../src/feature_extraction/README.md)
 
