@@ -94,8 +94,8 @@ To check per-well radiomics tables against their masks (pass the same `--min-pix
 
 ```bash
 python scripts/run_feature_audit.py \
-    --features-dir <exp>/inference_tracked/cellpose_sam/features_radiomics \
-    --mask-dir <exp>/inference_tracked/cellpose_sam/final_2d --n-jobs 8
+    --features-dir "<exp>/inference_tracked/cellpose_sam/features_radiomics" \
+    --mask-dir "<exp>/inference_tracked/cellpose_sam/final_2d" --n-jobs 8
 ```
 
 #### 5. Visualisation GUI

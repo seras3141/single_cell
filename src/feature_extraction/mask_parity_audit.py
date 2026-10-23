@@ -1,9 +1,12 @@
 """Audit per-well radiomics tables against the masks they were extracted from.
 
 Masks are the top-level ``*_<well>_*_pred_mask.tif`` files; wells are discovered from
-the masks and the tables. Each failure is named per well, and a structural problem stops
-a well before the parity checks. Which labels PyRadiomics rejected cannot be verified,
-so exactly ``n_label_errors`` missing labels are allowed per mask. See README.md.
+the masks and the tables. Each failure is named per well. Missing files or masks, an
+unreadable table, missing columns and invalid keys (a non-integral or missing z_index or
+timepoint, a foreign sample_id) end a well's audit before any mask is compared, and only
+that stage's problems are reported. Every other check runs and reports. Which labels
+PyRadiomics rejected cannot be verified, so exactly ``n_label_errors`` missing labels
+are allowed per mask. See README.md.
 """
 
 from __future__ import annotations
