@@ -1,0 +1,74 @@
+# Informativeness gate on the per-well PyRadiomics Parquet tables. Defaults are the HD1509
+# sharpness tree; override feature_csv, target_csv, dmso_well and output_dir together.
+# coverage/ is not matched by the non-recursive *.parquet glob.
+
+morphology_informativeness:
+  feature_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/HD1509 MF5V1 0-72h 23-02-26/inference_filtered_sharpness/cellpose_sam/features_radiomics"
+  feature_pattern: "*.parquet"
+  target_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/HD1509 MF5V1 0-72h 23-02-26/inference_filtered_sharpness/cellpose_sam/mcherry_metrics/instance_metrics.csv"
+  id_column: cell_id
+  sample_id_column: null
+  timepoint_column: null
+  z_index_column: null
+  target_columns: [percentile_75, percentile_90, percentile_95]
+  group_by: sample_id
+  n_splits: 5
+
+  # All 102 features stay in the extracted tables; these 13 never reach the gate.
+  # Screen: HD1509 E07 t101 and HD1883 F09 t101, union of both wells (a feature failing in
+  # either is dropped, since Energy and MCC flipped between wells near the cutoff).
+  # Border-driven: the cell ranking changes after eroding the mask by 2 px, so the value
+  # tracks the halo/edge pixels rather than the cell interior.
+  # Size proxies: a noise image reproduces their ranking and they track cell area
+  # (rho 0.86-0.93 for the NonUniformity features and Coarseness, ~0.71 for Energy and
+  # TotalEnergy, which are pixel sums), so they re-encode area, which shape2D supplies.
+  exclude_feature_columns:
+    - original_firstorder_Kurtosis
+    - original_firstorder_Skewness
+    - original_glcm_ClusterShade
+    - original_glcm_MCC
+    - original_firstorder_Energy
+    - original_firstorder_TotalEnergy
+    - original_glrlm_GrayLevelNonUniformity
+    - original_glrlm_RunLengthNonUniformity
+    - original_glszm_GrayLevelNonUniformity
+    - original_glszm_SizeZoneNonUniformity
+    - original_gldm_GrayLevelNonUniformity
+    - original_gldm_DependenceNonUniformity
+    - original_ngtdm_Coarseness
+
+  morphology_feature_patterns:
+    - "original_*"
+  # First-order features in intensity units, the radiomics analogue of incarta's
+  # *mean_intensity and *_intensity_std: they track brightness and focus as much as
+  # morphology. Entropy and Uniformity are not in intensity units and stay clean.
+  suspect_feature_patterns:
+    - "original_firstorder_Mean"
+    - "original_firstorder_Median"
+    - "original_firstorder_Minimum"
+    - "original_firstorder_Maximum"
+    - "original_firstorder_10Percentile"
+    - "original_firstorder_90Percentile"
+    - "original_firstorder_RootMeanSquared"
+    - "original_firstorder_Variance"
+    - "original_firstorder_Range"
+    - "original_firstorder_InterquartileRange"
+    - "original_firstorder_MeanAbsoluteDeviation"
+    - "original_firstorder_RobustMeanAbsoluteDeviation"
+
+  ridge_alpha: 1.0
+  nonlinear_backend: auto
+  top_k_features: 5
+  well_timepoint_scatter_top_k: 3
+  well_timepoint_scatter_max_wells: null
+  well_timepoint_scatter_max_points_per_well: 2000
+  well_timepoint_scatter_seed: 0
+  well_timepoint_colormap: viridis
+  plate_layout_json: config/MF5v1_plate_layout.json
+
+  # Both backends must use identical target settings for a like-for-like comparison.
+  normalize_to_dmso: true
+  dmso_well: N11
+  dmso_gate_min_peak_fraction: 0.10
+  dmso_gate_absolute_floor: 30
+  output_dir: results/morphology_informativeness_radiomics

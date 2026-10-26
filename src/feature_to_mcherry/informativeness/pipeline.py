@@ -135,6 +135,7 @@ def run(config: InformativenessConfig) -> ResultsBundle:
             sample_id_column=config.sample_id_column,
             timepoint_column=config.timepoint_column,
             z_index_column=config.z_index_column,
+            pattern=config.feature_pattern,
         )
     else:
         features_df_full = load_features(
@@ -145,8 +146,16 @@ def run(config: InformativenessConfig) -> ResultsBundle:
             z_index_column=config.z_index_column,
         )
 
+    excluded = set(config.exclude_feature_columns)
+    unmatched = sorted(excluded - set(features_df_full.columns))
+    if unmatched:
+        raise ValueError(
+            f"exclude_feature_columns not in the feature table: {unmatched}"
+        )
     candidate_columns = [
-        column for column in features_df_full.columns if column not in CELL_KEY
+        column
+        for column in features_df_full.columns
+        if column not in CELL_KEY and column not in excluded
     ]
     selection = select_morphology_features(
         candidate_columns,

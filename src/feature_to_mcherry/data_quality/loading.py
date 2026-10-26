@@ -33,6 +33,7 @@ def load_source(
             sample_id_column=source.sample_id_column,
             timepoint_column=source.timepoint_column,
             z_index_column=source.z_index_column,
+            pattern=source.feature_pattern,
         )
     else:
         features_df = load_features(

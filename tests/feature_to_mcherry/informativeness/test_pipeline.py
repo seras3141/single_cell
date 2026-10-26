@@ -8,6 +8,7 @@ from typing import Tuple
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from src.feature_to_mcherry.informativeness.config import InformativenessConfig
 from src.feature_to_mcherry.informativeness.pipeline import run
@@ -358,6 +359,72 @@ def test_pipeline_end_to_end_with_directory_feature_csv(tmp_path: Path) -> None:
 
     floor_metrics = pd.read_csv(output_dir / "floor_metrics.csv")
     assert floor_metrics["r2"].apply(np.isfinite).all()
+
+
+def test_pipeline_reads_a_parquet_directory_and_honours_exclusions(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("pyarrow")
+    feature_dir, target_csv = _write_synthetic_directory_csvs(tmp_path)
+    for csv_path in feature_dir.glob("*.csv"):
+        pd.read_csv(csv_path).to_parquet(csv_path.with_suffix(".parquet"), index=False)
+        csv_path.unlink()
+    config = InformativenessConfig(
+        feature_csv=str(feature_dir),
+        feature_pattern="*.parquet",
+        target_csv=str(target_csv),
+        id_column="cell_id",
+        group_by="sample_id",
+        n_splits=2,
+        exclude_feature_columns=["perimeter"],
+        morphology_feature_patterns=["area", "perimeter"],
+        suspect_feature_patterns=["mean_intensity"],
+        plate_layout_json=str(REAL_LAYOUT_PATH),
+        output_dir=str(tmp_path / "results"),
+    )
+
+    bundle = run(config)
+
+    assert bundle.n_cells == len(WELLS) * 15
+    assert bundle.n_features_all == 2
+    assert bundle.n_features_clean == 1
+
+
+def _exclusion_config(
+    tmp_path: Path, feature_dir: Path, target_csv: Path, excluded: list
+) -> InformativenessConfig:
+    return InformativenessConfig(
+        feature_csv=str(feature_dir),
+        target_csv=str(target_csv),
+        id_column="cell_id",
+        group_by="sample_id",
+        n_splits=2,
+        exclude_feature_columns=excluded,
+        morphology_feature_patterns=["area", "perimeter"],
+        suspect_feature_patterns=["mean_intensity"],
+        plate_layout_json=str(REAL_LAYOUT_PATH),
+        output_dir=str(tmp_path / "results"),
+    )
+
+
+def test_an_excluded_suspect_feature_leaves_the_suspect_set(tmp_path: Path) -> None:
+    feature_dir, target_csv = _write_synthetic_directory_csvs(tmp_path)
+    config = _exclusion_config(tmp_path, feature_dir, target_csv, ["mean_intensity"])
+
+    bundle = run(config)
+
+    assert bundle.n_features_all == 2
+    assert bundle.n_features_clean == 2
+
+
+def test_an_excluded_name_missing_from_the_table_is_an_error(tmp_path: Path) -> None:
+    feature_dir, target_csv = _write_synthetic_directory_csvs(tmp_path)
+    config = _exclusion_config(
+        tmp_path, feature_dir, target_csv, ["perimeter", "Perimeter_typo"]
+    )
+
+    with pytest.raises(ValueError, match="Perimeter_typo"):
+        run(config)
 
 
 def test_pipeline_end_to_end_with_directory_feature_and_target_csv(
