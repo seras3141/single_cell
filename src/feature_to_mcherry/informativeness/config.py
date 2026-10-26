@@ -58,7 +58,8 @@ class InformativenessConfig:
     exclude_feature_columns : list[str]
         Feature columns dropped before the pattern selection, so they never reach the
         gate (e.g. the pyradiomics features screened out as border-driven or size
-        proxies).
+        proxies). A name not in the feature table raises ``ValueError``, unlike the
+        main baseline and data-quality configs, which ignore it.
     target_columns : list[str]
         mCherry percentile columns used as targets.
     group_by : {"sample_id", "timepoint"}

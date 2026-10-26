@@ -189,7 +189,7 @@ def load_features(
     file_handler: Optional[ConfigurableFileHandler] = None,
     exclusions: Optional[DataExclusions] = None,
 ) -> pd.DataFrame:
-    """Load a per-cell feature CSV/Parquet table as CELL_KEY + feature columns.
+    """Load a per-cell feature table as CELL_KEY + feature columns.
 
     Works generically across feature-extraction backends (regionprops, pyradiomics,
     incarta, or any future source) via the ``id_column``/``sample_id_column``/
@@ -232,7 +232,7 @@ def load_features(
 
     if id_column not in df.columns:
         raise ValueError(
-            f"id_column {id_column!r} not found in feature CSV {csv_path}; "
+            f"id_column {id_column!r} not found in feature table {csv_path}; "
             f"available columns: {list(df.columns)}"
         )
     df = df.rename(columns={id_column: "cell_id"})
@@ -246,7 +246,7 @@ def load_features(
             continue
         if column_arg not in df.columns:
             raise ValueError(
-                f"{canonical_name}_column {column_arg!r} not found in feature CSV "
+                f"{canonical_name}_column {column_arg!r} not found in feature table "
                 f"{csv_path}; available columns: {list(df.columns)}"
             )
         df = df.rename(columns={column_arg: canonical_name})
@@ -360,7 +360,7 @@ def load_features_from_directory(
     Parameters
     ----------
     directory : Path
-        Directory containing the per-slice feature CSVs.
+        Directory containing the per-slice or per-well feature tables.
     id_column, sample_id_column, timepoint_column, z_index_column, image_filename_column
         Forwarded to :func:`load_features` for every matched file — see its
         docstring for the resolution order.

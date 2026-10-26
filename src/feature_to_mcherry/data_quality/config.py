@@ -37,8 +37,9 @@ class SourceConfig:
     id_column, sample_id_column, timepoint_column, z_index_column : str, optional
         Same semantics as :class:`feature_to_mcherry.config.FeatureToMcherryConfig`.
     exclude_feature_columns : list[str]
-        Feature-CSV columns to drop before analysis (e.g. a column known to be
-        entirely NaN in this source's backend output).
+        Feature columns to drop before analysis (e.g. a column known to be
+        entirely NaN in this source's backend output). A name not in the table is
+        ignored.
     """
 
     label: str
