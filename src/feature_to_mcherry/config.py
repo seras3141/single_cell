@@ -56,7 +56,7 @@ class FeatureToMcherryConfig:
     target_columns : list[str]
         mCherry percentile columns used as regression targets.
     exclude_feature_columns : list[str]
-        Feature-CSV columns to drop before building the model matrix (e.g. a column
+        Feature columns to drop before building the model matrix (e.g. a column
         known to be entirely NaN in a given backend's output, or a positional column
         like a centroid that carries no morphology signal). Applied after loading,
         by name; a name not present in the loaded feature table is ignored.
