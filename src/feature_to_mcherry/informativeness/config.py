@@ -52,6 +52,13 @@ class InformativenessConfig:
         Same semantics as :class:`feature_to_mcherry.config.FeatureToMcherryConfig`,
         including the directory-input auto-detection for both ``feature_csv`` and
         ``target_csv``.
+    feature_pattern : str
+        Glob selecting feature files when ``feature_csv`` is a directory (``*.csv`` by
+        default; ``*.parquet`` for the pyradiomics per-well tables).
+    exclude_feature_columns : list[str]
+        Feature columns dropped before the pattern selection, so they never reach the
+        gate (e.g. the pyradiomics features screened out as border-driven or size
+        proxies).
     target_columns : list[str]
         mCherry percentile columns used as targets.
     group_by : {"sample_id", "timepoint"}
@@ -101,10 +108,12 @@ class InformativenessConfig:
 
     feature_csv: str
     target_csv: str
+    feature_pattern: str = "*.csv"
     id_column: str = "instance_id"
     sample_id_column: Optional[str] = None
     timepoint_column: Optional[str] = None
     z_index_column: Optional[str] = None
+    exclude_feature_columns: List[str] = field(default_factory=list)
     target_columns: List[str] = field(default_factory=lambda: list(TARGET_COLUMNS))
     group_by: str = "sample_id"
     n_splits: int = 5

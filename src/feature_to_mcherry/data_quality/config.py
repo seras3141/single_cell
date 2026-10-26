@@ -31,6 +31,9 @@ class SourceConfig:
         Same semantics as :class:`feature_to_mcherry.config.FeatureToMcherryConfig`
         — a single CSV, or a directory of per-(well, timepoint, z) CSVs, auto-detected
         via ``Path.is_dir()``.
+    feature_pattern : str
+        Glob selecting feature files when ``feature_csv`` is a directory (``*.csv`` by
+        default; ``*.parquet`` for the pyradiomics per-well tables).
     id_column, sample_id_column, timepoint_column, z_index_column : str, optional
         Same semantics as :class:`feature_to_mcherry.config.FeatureToMcherryConfig`.
     exclude_feature_columns : list[str]
@@ -41,6 +44,7 @@ class SourceConfig:
     label: str
     feature_csv: str
     target_csv: str
+    feature_pattern: str = "*.csv"
     id_column: str = "instance_id"
     sample_id_column: Optional[str] = None
     timepoint_column: Optional[str] = None

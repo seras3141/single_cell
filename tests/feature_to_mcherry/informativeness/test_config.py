@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from fnmatch import fnmatch
+from pathlib import Path
+
 import pytest
 
-from src.feature_to_mcherry.informativeness.config import InformativenessConfig
+from src.feature_to_mcherry.informativeness.config import (
+    InformativenessConfig,
+    load_config,
+)
 
 
 def _valid_kwargs(**overrides):
@@ -125,3 +131,28 @@ def test_gate_recommended_settings_are_valid() -> None:
     )
     assert config.dmso_gate_min_peak_fraction == 0.10
     assert config.dmso_gate_absolute_floor == 30
+
+
+RADIOMICS_CONFIGS = (
+    "morphology_informativeness_radiomics_config.yaml",
+    "feature_to_mcherry_radiomics_config.yaml",
+)
+
+
+def test_both_radiomics_configs_exclude_the_same_13_features() -> None:
+    from src.feature_to_mcherry.config import load_config as load_baseline_config
+
+    root = Path(__file__).resolve().parents[3] / "config"
+    gate = load_config(root / RADIOMICS_CONFIGS[0])
+    baseline = load_baseline_config(root / RADIOMICS_CONFIGS[1])
+
+    assert gate.feature_pattern == baseline.feature_pattern == "*.parquet"
+    assert len(set(gate.exclude_feature_columns)) == 13
+    assert set(gate.exclude_feature_columns) == set(baseline.exclude_feature_columns)
+    assert gate.morphology_feature_patterns == ["original_*"]
+    assert not [
+        name
+        for name in gate.exclude_feature_columns
+        for pattern in gate.suspect_feature_patterns
+        if fnmatch(name, pattern)
+    ]

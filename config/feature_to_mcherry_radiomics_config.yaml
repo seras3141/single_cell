@@ -1,10 +1,10 @@
-# feature_csv/target_csv default to HD1509; the driver overrides them per culture.
+# feature_csv/target_csv default to the HD1509 sharpness tree (primary); the driver overrides them per culture and tree.
 # Coverage tables sit in coverage/, which the non-recursive *.parquet glob skips.
 
 feature_to_mcherry:
-  feature_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/HD1509 MF5V1 0-72h 23-02-26/inference_tracked/cellpose_sam/features_radiomics"
+  feature_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/HD1509 MF5V1 0-72h 23-02-26/inference_filtered_sharpness/cellpose_sam/features_radiomics"
   feature_pattern: "*.parquet"
-  target_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/HD1509 MF5V1 0-72h 23-02-26/mcherry_metrics/cellpose_sam/instance_metrics.csv"
+  target_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/HD1509 MF5V1 0-72h 23-02-26/inference_filtered_sharpness/cellpose_sam/mcherry_metrics/instance_metrics.csv"
   id_column: cell_id
   sample_id_column: null
   timepoint_column: null
