@@ -19,7 +19,6 @@ import sys
 from pathlib import Path
 
 from src.feature_to_mcherry.data_quality.join_parity import (
-    MAX_GAP_ROWS,
     compare_tables,
     count_raw_target_rows,
     load_feature_keys,
@@ -46,6 +45,11 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--radiomics-pattern", default="*.parquet")
     parser.add_argument("--incarta-pattern", default="*.csv")
     parser.add_argument(
+        "--id-column",
+        default="cell_id",
+        help="Per-cell id column of both feature tables (the target keeps cell_id)",
+    )
+    parser.add_argument(
         "--report",
         type=Path,
         default=None,
@@ -58,12 +62,16 @@ def main() -> int:
     args = get_args()
     setup_logging()
     report_path = args.report or Path("results/join_parity") / f"{args.label}.json"
-    report_path.unlink(missing_ok=True)
-    report_path.with_suffix(".gaps.csv").unlink(missing_ok=True)
     try:
+        report_path.unlink(missing_ok=True)
+        report_path.with_suffix(".gaps.csv").unlink(missing_ok=True)
         tables = {
-            "radiomics": load_feature_keys(args.radiomics_dir, args.radiomics_pattern),
-            "incarta": load_feature_keys(args.incarta_dir, args.incarta_pattern),
+            "radiomics": load_feature_keys(
+                args.radiomics_dir, args.radiomics_pattern, args.id_column
+            ),
+            "incarta": load_feature_keys(
+                args.incarta_dir, args.incarta_pattern, args.id_column
+            ),
             "target": load_target_keys(args.target_csv),
         }
         report, gaps = compare_tables(
@@ -90,9 +98,15 @@ def main() -> int:
         logger.info("%s: %d rows in the CSV, before any filter", name, n_raw)
     if report.gaps_truncated:
         logger.warning(
-            "%d gap rows; only the first %d are in the gaps file",
+            "%d gap rows; the gaps file keeps at most %d per pair",
             report.n_gap_rows,
-            MAX_GAP_ROWS,
+            report.gaps_per_pair_cap,
+        )
+    if report.breakdown_truncated:
+        logger.warning(
+            "%d breakdown rows (pair, side, well, timepoint); the report lists %d",
+            report.n_breakdown_rows,
+            len(report.gap_by_stack),
         )
     for pair in report.pairs:
         logger.log(

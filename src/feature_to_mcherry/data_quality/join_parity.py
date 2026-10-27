@@ -25,7 +25,7 @@ from ..data.loaders import load_features_from_directory, load_targets
 logger = logging.getLogger(__name__)
 
 MAX_GAP_ROWS = 10_000
-_BREAKDOWN_ROWS = 20
+_BREAKDOWN_ROWS = 100
 
 
 @dataclass
@@ -50,7 +50,10 @@ class ParityReport:
     null_keys: Dict[str, int] = field(default_factory=dict)
     pairs: List[PairParity] = field(default_factory=list)
     n_gap_rows: int = 0
+    gaps_per_pair_cap: int = 0
     gaps_truncated: bool = False
+    n_breakdown_rows: int = 0
+    breakdown_truncated: bool = False
     gap_by_stack: List[Dict[str, object]] = field(default_factory=list)
 
     @property
@@ -107,6 +110,8 @@ def compare_tables(
     raw_rows: Optional[Dict[str, int]] = None,
 ) -> Tuple[ParityReport, pd.DataFrame]:
     """Pairwise parity of the ``CELL_KEY`` rows of every table in ``tables``."""
+    if len(tables) < 2:
+        raise ValueError("join parity needs at least two tables")
     report = ParityReport(label=label, raw_rows=dict(raw_rows or {}))
     normalized = {}
     for name, keys in tables.items():
@@ -129,17 +134,27 @@ def compare_tables(
 
     gaps = pd.concat(gap_frames, ignore_index=True) if gap_frames else pd.DataFrame()
     report.n_gap_rows = len(gaps)
-    report.gaps_truncated = len(gaps) > MAX_GAP_ROWS
     if len(gaps):
+        report.gaps_per_pair_cap = _per_pair_cap(gaps)
+        report.gaps_truncated = bool(
+            (gaps["pair"].value_counts() > report.gaps_per_pair_cap).any()
+        )
+        keys = ["pair", "only_in", "sample_id", "timepoint"]
         breakdown = (
-            gaps.groupby(["pair", "only_in", "sample_id", "timepoint"])
+            gaps.groupby(keys)
             .size()
             .rename("n_cells")
             .reset_index()
-            .sort_values("n_cells", ascending=False)
+            .sort_values(["n_cells"] + keys, ascending=[False, True, True, True, True])
         )
+        report.n_breakdown_rows = len(breakdown)
+        report.breakdown_truncated = len(breakdown) > _BREAKDOWN_ROWS
         report.gap_by_stack = breakdown.head(_BREAKDOWN_ROWS).to_dict("records")
     return report, gaps
+
+
+def _per_pair_cap(gaps: pd.DataFrame) -> int:
+    return max(1, MAX_GAP_ROWS // gaps["pair"].nunique())
 
 
 def write_report(
@@ -158,6 +173,5 @@ def write_report(
     if gaps.empty:
         gap_path.unlink(missing_ok=True)
         return None
-    per_pair = max(1, MAX_GAP_ROWS // gaps["pair"].nunique())
-    gaps.groupby("pair").head(per_pair).to_csv(gap_path, index=False)
+    gaps.groupby("pair").head(_per_pair_cap(gaps)).to_csv(gap_path, index=False)
     return gap_path

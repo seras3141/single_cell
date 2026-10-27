@@ -249,3 +249,86 @@ def test_cli_rejects_a_label_that_is_not_a_plain_file_name(
     with pytest.raises(SystemExit) as raised:
         _run_cli(monkeypatch, *args)
     assert raised.value.code == 2
+
+
+def test_one_table_is_not_a_comparison() -> None:
+    with pytest.raises(ValueError, match="at least two tables"):
+        compare_tables("t", {"a": _keys()})
+
+
+def test_a_long_breakdown_is_flagged_and_capped(monkeypatch) -> None:
+    monkeypatch.setattr(join_parity, "_BREAKDOWN_ROWS", 2)
+    many_wells = ("E07", "F08", "C03", "D04")
+
+    report, _ = compare_tables("t", {"a": _keys(many_wells), "b": _keys(WELLS)})
+
+    assert report.n_breakdown_rows == 2
+    assert not report.breakdown_truncated
+
+    report, _ = compare_tables("t", {"a": _keys(many_wells), "b": _keys(("E07",))})
+
+    assert report.n_breakdown_rows == 3
+    assert report.breakdown_truncated
+    assert len(report.gap_by_stack) == 2
+    assert [row["sample_id"] for row in report.gap_by_stack] == ["C03", "D04"]
+
+
+def test_the_largest_stacks_come_first_in_the_breakdown() -> None:
+    partial_c03 = _keys(("C03",)).iloc[:2]
+    right = pd.concat([_keys(WELLS), partial_c03])
+
+    report, _ = compare_tables(
+        "t", {"a": _keys(("E07", "F08", "C03", "D04")), "b": right}
+    )
+
+    assert [(row["sample_id"], row["n_cells"]) for row in report.gap_by_stack] == [
+        ("D04", 6),
+        ("C03", 4),
+    ]
+
+
+def test_a_per_pair_cut_is_flagged_even_when_the_total_is_under_the_cap(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(join_parity, "MAX_GAP_ROWS", 6)
+    small = _keys(("E07",))
+
+    report, gaps = compare_tables("t", {"a": _keys(), "b": small, "c": small})
+    gap_path = write_report(report, gaps, tmp_path / "t.json")
+
+    assert report.n_gap_rows == 12 > 6
+    assert report.gaps_truncated
+    assert report.gaps_per_pair_cap == 3
+    written = pd.read_csv(gap_path)
+    assert written["pair"].value_counts().to_dict() == {"a|b": 3, "a|c": 3}
+
+    report, _ = compare_tables("t", {"a": _keys(), "b": _keys(), "c": _keys()})
+    assert not report.gaps_truncated
+
+
+def test_cli_exits_2_when_the_report_path_is_unwritable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    args = _cli_args(tmp_path, _write_tables(tmp_path))
+    blocker = tmp_path / "blocker"
+    blocker.write_text("a file, not a directory")
+    args[args.index("--report") + 1] = blocker / "t.json"
+
+    assert _run_cli(monkeypatch, *args) == 2
+
+
+def test_cli_takes_the_feature_id_column_and_warns_on_a_long_breakdown(
+    tmp_path: Path, monkeypatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    renamed = _keys().rename(columns={"cell_id": "label"})
+    paths = _write_tables(tmp_path, radiomics=renamed, incarta=renamed)
+    args = _cli_args(tmp_path, paths)
+    assert _run_cli(monkeypatch, *args, "--id-column", "label") == 0
+
+    gap = tmp_path / "gap"
+    gap.mkdir()
+    gap_args = _cli_args(gap, _write_tables(gap, target=_keys().iloc[6:]))
+    monkeypatch.setattr(join_parity, "_BREAKDOWN_ROWS", 1)
+    with caplog.at_level("WARNING"):
+        assert _run_cli(monkeypatch, *gap_args) == 1
+    assert "breakdown rows" in caplog.text
