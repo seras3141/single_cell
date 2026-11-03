@@ -54,7 +54,7 @@ class ParityReport:
     gaps_truncated: bool = False
     n_breakdown_rows: int = 0
     breakdown_truncated: bool = False
-    gap_by_stack: List[Dict[str, object]] = field(default_factory=list)
+    gap_breakdown: List[Dict[str, object]] = field(default_factory=list)
 
     @property
     def exact(self) -> bool:
@@ -117,7 +117,7 @@ def compare_tables(
     for name, keys in tables.items():
         report.rows[name] = len(keys)
         report.null_keys[name] = int(keys[CELL_KEY].isna().any(axis=1).sum())
-        normalized[name] = normalize_cell_key(keys)
+        normalized[name] = normalize_cell_key(keys[CELL_KEY].dropna())
         report.duplicates[name] = int(normalized[name].duplicated(CELL_KEY).sum())
 
     gap_frames = []
@@ -132,7 +132,7 @@ def compare_tables(
         )
         gap_frames.append(gaps)
 
-    gaps = pd.concat(gap_frames, ignore_index=True) if gap_frames else pd.DataFrame()
+    gaps = pd.concat(gap_frames, ignore_index=True)
     report.n_gap_rows = len(gaps)
     if len(gaps):
         report.gaps_per_pair_cap = _per_pair_cap(gaps)
@@ -149,7 +149,7 @@ def compare_tables(
         )
         report.n_breakdown_rows = len(breakdown)
         report.breakdown_truncated = len(breakdown) > _BREAKDOWN_ROWS
-        report.gap_by_stack = breakdown.head(_BREAKDOWN_ROWS).to_dict("records")
+        report.gap_breakdown = breakdown.head(_BREAKDOWN_ROWS).to_dict("records")
     return report, gaps
 
 

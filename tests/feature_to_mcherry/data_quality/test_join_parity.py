@@ -102,7 +102,7 @@ def test_an_extra_target_row_names_its_well_and_timepoint(tmp_path: Path) -> Non
     report, _ = _report(tmp_path, target=pd.concat([_keys(), extra]))
 
     assert not report.exact
-    top = report.gap_by_stack[0]
+    top = report.gap_breakdown[0]
     assert (top["only_in"], top["sample_id"], top["timepoint"]) == (
         "target",
         "F08",
@@ -269,8 +269,8 @@ def test_a_long_breakdown_is_flagged_and_capped(monkeypatch) -> None:
 
     assert report.n_breakdown_rows == 3
     assert report.breakdown_truncated
-    assert len(report.gap_by_stack) == 2
-    assert [row["sample_id"] for row in report.gap_by_stack] == ["C03", "D04"]
+    assert len(report.gap_breakdown) == 2
+    assert [row["sample_id"] for row in report.gap_breakdown] == ["C03", "D04"]
 
 
 def test_the_largest_stacks_come_first_in_the_breakdown() -> None:
@@ -281,29 +281,62 @@ def test_the_largest_stacks_come_first_in_the_breakdown() -> None:
         "t", {"a": _keys(("E07", "F08", "C03", "D04")), "b": right}
     )
 
-    assert [(row["sample_id"], row["n_cells"]) for row in report.gap_by_stack] == [
+    assert [(row["sample_id"], row["n_cells"]) for row in report.gap_breakdown] == [
         ("D04", 6),
         ("C03", 4),
     ]
 
 
-def test_a_per_pair_cut_is_flagged_even_when_the_total_is_under_the_cap(
+def _ids(*cell_ids: int) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {"sample_id": "E07", "timepoint": "101", "z_index": 1, "cell_id": c}
+            for c in cell_ids
+        ]
+    )
+
+
+def test_a_per_pair_cut_is_flagged_when_the_total_is_under_the_cap(
     tmp_path: Path, monkeypatch
 ) -> None:
-    monkeypatch.setattr(join_parity, "MAX_GAP_ROWS", 6)
-    small = _keys(("E07",))
+    monkeypatch.setattr(join_parity, "MAX_GAP_ROWS", 15)
+    tables = {"a": _ids(*range(1, 9)), "b": _ids(1, 2), "c": _ids(1)}
 
-    report, gaps = compare_tables("t", {"a": _keys(), "b": small, "c": small})
+    report, gaps = compare_tables("t", tables)
     gap_path = write_report(report, gaps, tmp_path / "t.json")
 
-    assert report.n_gap_rows == 12 > 6
+    assert report.n_gap_rows == 14 < 15
+    assert report.gaps_per_pair_cap == 5
     assert report.gaps_truncated
-    assert report.gaps_per_pair_cap == 3
     written = pd.read_csv(gap_path)
-    assert written["pair"].value_counts().to_dict() == {"a|b": 3, "a|c": 3}
+    assert written["pair"].value_counts().to_dict() == {"a|b": 5, "a|c": 5, "b|c": 1}
 
-    report, _ = compare_tables("t", {"a": _keys(), "b": _keys(), "c": _keys()})
+    monkeypatch.setattr(join_parity, "MAX_GAP_ROWS", 21)
+    report, _ = compare_tables("t", tables)
     assert not report.gaps_truncated
+
+
+def test_extra_columns_do_not_change_the_counts() -> None:
+    plain = _ids(1, 2, 3)
+    repeated = pd.concat([plain, plain]).assign(
+        original_shape2D_Elongation=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    )
+
+    report, _ = compare_tables("t", {"a": repeated, "b": plain})
+
+    assert report.duplicates == {"a": 3, "b": 0}
+    assert report.pairs[0].matched == 3
+    assert report.pairs[0].exact
+
+
+def test_null_key_rows_do_not_match_each_other() -> None:
+    with_null = _ids(1, 2).assign(cell_id=[1, None])
+
+    report, _ = compare_tables("t", {"a": with_null, "b": with_null})
+
+    assert report.null_keys == {"a": 1, "b": 1}
+    assert report.pairs[0].matched == 1
+    assert not report.exact
 
 
 def test_cli_exits_2_when_the_report_path_is_unwritable(

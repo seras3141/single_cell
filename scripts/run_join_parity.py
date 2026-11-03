@@ -106,7 +106,7 @@ def main() -> int:
         logger.warning(
             "%d breakdown rows (pair, side, well, timepoint); the report lists %d",
             report.n_breakdown_rows,
-            len(report.gap_by_stack),
+            len(report.gap_breakdown),
         )
     for pair in report.pairs:
         logger.log(
