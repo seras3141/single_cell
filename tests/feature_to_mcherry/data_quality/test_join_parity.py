@@ -316,6 +316,14 @@ def test_a_per_pair_cut_is_flagged_when_the_total_is_under_the_cap(
     assert not report.gaps_truncated
 
 
+def test_more_pairs_than_the_gap_cap_is_rejected(monkeypatch) -> None:
+    monkeypatch.setattr(join_parity, "MAX_GAP_ROWS", 2)
+    tables = {name: _ids(i) for i, name in enumerate("abcd", start=1)}
+
+    with pytest.raises(ValueError, match="too many tables"):
+        compare_tables("t", tables)
+
+
 def test_extra_columns_do_not_change_the_counts() -> None:
     plain = _ids(1, 2, 3)
     repeated = pd.concat([plain, plain]).assign(

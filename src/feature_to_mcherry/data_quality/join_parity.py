@@ -112,6 +112,8 @@ def compare_tables(
     """Pairwise parity of the ``CELL_KEY`` rows of every table in ``tables``."""
     if len(tables) < 2:
         raise ValueError("join parity needs at least two tables")
+    if len(tables) * (len(tables) - 1) // 2 > MAX_GAP_ROWS:
+        raise ValueError(f"too many tables to compare: {len(tables)}")
     report = ParityReport(label=label, raw_rows=dict(raw_rows or {}))
     normalized = {}
     for name, keys in tables.items():
