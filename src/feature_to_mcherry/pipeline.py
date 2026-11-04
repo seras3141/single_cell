@@ -12,7 +12,7 @@ import pandas as pd
 
 from .config import FeatureToMcherryConfig
 from .data.contract import taus_from_target_columns
-from .data.join import build_matrix
+from .data.join import build_matrix_with_metadata
 from .data.loaders import (
     load_features,
     load_features_from_directory,
@@ -22,8 +22,13 @@ from .data.loaders import (
 from .data.normalize import apply_dmso_normalization
 from .evaluation.cv import grouped_kfold_indices
 from .evaluation.metrics import per_target_regression_metrics, quantile_crossing_rate
+from .evaluation.well_timepoint import (
+    first_low_count_timepoints,
+    well_timepoint_metrics,
+)
 from .models.linear_quantile import LinearQuantileRegressor
 from .models.ridge import RidgeMeanBaseline
+from .provenance import write_run_provenance
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +42,7 @@ class ModelResult:
     pooled_metrics: List[Dict[str, Any]]
     pooled_crossing_rate: float
     oof_predictions: np.ndarray
+    fold: np.ndarray
 
 
 @dataclass
@@ -86,10 +92,12 @@ def _run_model(
     not for Ridge-style closed-form fits, which don't need it.
     """
     oof_predictions = np.full_like(y, np.nan, dtype=float)
+    fold_of = np.full(len(y), -1, dtype=int)
     per_fold_metrics: List[List[Dict[str, Any]]] = []
     rng = np.random.default_rng(train_subsample_seed)
 
-    for train_idx, val_idx in grouped_kfold_indices(X, groups, n_splits, group_by):
+    folds = enumerate(grouped_kfold_indices(X, groups, n_splits, group_by))
+    for fold, (train_idx, val_idx) in folds:
         if train_subsample_size is not None and len(train_idx) > train_subsample_size:
             fit_idx = rng.choice(train_idx, size=train_subsample_size, replace=False)
             logger.info(
@@ -107,6 +115,7 @@ def _run_model(
         if apply_sort:
             preds = _sort_quantiles(preds)
         oof_predictions[val_idx] = preds
+        fold_of[val_idx] = fold
         per_fold_metrics.append(
             per_target_regression_metrics(y[val_idx], preds, taus, target_names)
         )
@@ -134,6 +143,7 @@ def _run_model(
         pooled_metrics=pooled_metrics,
         pooled_crossing_rate=pooled_crossing_rate,
         oof_predictions=oof_predictions,
+        fold=fold_of,
     )
 
 
@@ -208,6 +218,38 @@ def _write_oof_predictions(results: ResultsBundle, output_dir: Path) -> None:
     logger.info("Wrote Ridge out-of-fold predictions to %s", output_dir)
 
 
+def _write_well_timepoint_outputs(
+    results: ResultsBundle,
+    metadata: pd.DataFrame,
+    raw_targets_df: pd.DataFrame,
+    dmso_well: str,
+    output_dir: Path,
+) -> None:
+    """Write the per-(well, timepoint) metrics, the low-count marks and the folds."""
+    metrics = pd.concat(
+        [
+            well_timepoint_metrics(
+                metadata,
+                results.y,
+                result.oof_predictions,
+                results.target_names,
+                result.model_name,
+            )
+            for result in (results.ridge, results.linear_quantile)
+        ],
+        ignore_index=True,
+    )
+    metrics.to_csv(output_dir / "well_timepoint_metrics.csv", index=False)
+    first_low_count_timepoints(raw_targets_df, dmso_well).to_csv(
+        output_dir / "well_first_low_count_timepoint.csv", index=False
+    )
+    folds = pd.DataFrame({"group_id": results.groups, "fold": results.ridge.fold})
+    folds.drop_duplicates().sort_values("group_id").to_csv(
+        output_dir / "fold_assignments.csv", index=False
+    )
+    logger.info("Wrote per-(well, timepoint) outputs to %s", output_dir)
+
+
 def run(config: FeatureToMcherryConfig) -> ResultsBundle:
     """Run the full pipeline: load, join, CV-fit, evaluate, and report both models."""
     target_path = Path(config.target_csv)
@@ -217,6 +259,15 @@ def run(config: FeatureToMcherryConfig) -> ResultsBundle:
         )
     else:
         targets_df = load_targets(target_path, target_columns=config.target_columns)
+
+    raw_targets_df = None
+    if config.write_well_timepoint_outputs:
+        raw_targets_df = targets_df.copy()
+        if config.dmso_well not in set(raw_targets_df["sample_id"]):
+            raise ValueError(
+                f"dmso_well {config.dmso_well!r} is not in the target table; the "
+                "low-count marks need it"
+            )
 
     # Optional DMSO normalization: swaps in z_-prefixed targets (see data.normalize).
     # Single-experiment input only (loaders drop non-target columns, so there is no
@@ -259,7 +310,7 @@ def run(config: FeatureToMcherryConfig) -> ResultsBundle:
             logger.info("Excluding configured feature columns: %s", to_drop)
             features_df = features_df.drop(columns=to_drop)
 
-    X, y, groups, feature_names = build_matrix(
+    X, y, groups, feature_names, metadata = build_matrix_with_metadata(
         features_df,
         targets_df,
         target_columns=target_columns,
@@ -320,5 +371,10 @@ def run(config: FeatureToMcherryConfig) -> ResultsBundle:
     output_dir = Path(config.output_dir)
     _write_report(results, output_dir)
     _write_oof_predictions(results, output_dir)
+    if config.write_well_timepoint_outputs:
+        _write_well_timepoint_outputs(
+            results, metadata, raw_targets_df, config.dmso_well, output_dir
+        )
+    write_run_provenance(config, output_dir)
 
     return results

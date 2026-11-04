@@ -355,6 +355,7 @@ def test_pipeline_end_to_end_with_directory_feature_csv(tmp_path: Path) -> None:
     assert (output_dir / "floor_metrics.csv").exists()
     assert (output_dir / "summary.json").exists()
     assert (output_dir / "report.md").exists()
+    assert (output_dir / "run_provenance.json").exists()
     assert any((output_dir / "figures").glob("*.png"))
 
     floor_metrics = pd.read_csv(output_dir / "floor_metrics.csv")

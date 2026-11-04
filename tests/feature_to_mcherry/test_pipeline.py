@@ -488,3 +488,80 @@ def test_run_with_dmso_normalization(tmp_path: Path) -> None:
         "z_percentile_90",
         "z_percentile_95",
     }
+
+
+def _dmso_config(tmp_path: Path, name: str, **overrides) -> FeatureToMcherryConfig:
+    feature_csv, target_csv = _write_synthetic_dmso_csvs(tmp_path / name)
+    kwargs = dict(
+        feature_csv=str(feature_csv),
+        target_csv=str(target_csv),
+        id_column="instance_id",
+        sample_id_column="well",
+        timepoint_column="frame",
+        z_index_column="z",
+        n_splits=2,
+        normalize_to_dmso=True,
+        dmso_well="M11",
+        output_dir=str(tmp_path / name / "out"),
+    )
+    kwargs.update(overrides)
+    return FeatureToMcherryConfig(**kwargs)
+
+
+def test_well_timepoint_outputs_are_written_only_when_enabled(tmp_path: Path) -> None:
+    (tmp_path / "on").mkdir()
+    (tmp_path / "off").mkdir()
+
+    run(_dmso_config(tmp_path, "on", write_well_timepoint_outputs=True))
+    run(_dmso_config(tmp_path, "off"))
+
+    on, off = tmp_path / "on" / "out", tmp_path / "off" / "out"
+    metrics = pd.read_csv(on / "well_timepoint_metrics.csv")
+    assert set(metrics["model"]) == {"ridge", "linear_quantile"}
+    assert {"n_cells", "r2", "mae", "sample_id", "timepoint"} <= set(metrics.columns)
+    assert metrics["sample_id"].nunique() == 3
+    assert (on / "well_first_low_count_timepoint.csv").exists()
+    assert (on / "run_provenance.json").exists()
+    for name in ("well_timepoint_metrics.csv", "fold_assignments.csv"):
+        assert not (off / name).exists()
+    assert (off / "run_provenance.json").exists()
+
+
+def test_fold_assignments_do_not_depend_on_the_features(tmp_path: Path) -> None:
+    (tmp_path / "all").mkdir()
+    (tmp_path / "fewer").mkdir()
+
+    run(_dmso_config(tmp_path, "all", write_well_timepoint_outputs=True))
+    run(
+        _dmso_config(
+            tmp_path,
+            "fewer",
+            write_well_timepoint_outputs=True,
+            exclude_feature_columns=["feature_2"],
+        )
+    )
+
+    all_folds = pd.read_csv(tmp_path / "all" / "out" / "fold_assignments.csv")
+    fewer_folds = pd.read_csv(tmp_path / "fewer" / "out" / "fold_assignments.csv")
+    assert len(all_folds) == 3
+    pd.testing.assert_frame_equal(all_folds, fewer_folds)
+
+
+def test_well_timepoint_outputs_require_a_dmso_well() -> None:
+    with pytest.raises(ValueError, match="requires dmso_well"):
+        FeatureToMcherryConfig(
+            feature_csv="f.csv", target_csv="t.csv", write_well_timepoint_outputs=True
+        )
+
+
+def test_a_missing_dmso_well_fails_before_any_model_is_fit(tmp_path: Path) -> None:
+    (tmp_path / "bad").mkdir()
+    config = _dmso_config(
+        tmp_path, "bad", write_well_timepoint_outputs=True, dmso_well="Z99"
+    )
+    config.normalize_to_dmso = False
+
+    with pytest.raises(ValueError, match="not in the target table"):
+        run(config)
+
+    assert not (tmp_path / "bad" / "out").exists()
