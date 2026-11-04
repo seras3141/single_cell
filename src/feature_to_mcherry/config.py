@@ -106,6 +106,11 @@ class FeatureToMcherryConfig:
         Confidence-gate degenerate-statistics floor in distinct cells (Step 2 keeps
         ``30``). ``None`` (default) disables that condition. Only meaningful with
         ``normalize_to_dmso``.
+    write_well_timepoint_outputs : bool
+        Also write ``well_timepoint_metrics.csv`` (n, R² and MAE per model, target, well
+        and timepoint), ``well_first_low_count_timepoint.csv`` and
+        ``fold_assignments.csv``. Requires ``dmso_well``, which the low-count marks use
+        to read the raw target table.
     output_dir : str
         Directory to write the results CSV and summary report to.
     """
@@ -131,11 +136,14 @@ class FeatureToMcherryConfig:
     dmso_well: Optional[str] = None
     dmso_gate_min_peak_fraction: Optional[float] = None
     dmso_gate_absolute_floor: Optional[int] = None
+    write_well_timepoint_outputs: bool = False
     output_dir: str = "results/feature_to_mcherry"
 
     def __post_init__(self) -> None:
         if not self.feature_csv:
             raise ValueError("feature_csv must be set")
+        if self.write_well_timepoint_outputs and not self.dmso_well:
+            raise ValueError("write_well_timepoint_outputs requires dmso_well")
         if not self.target_csv:
             raise ValueError("target_csv must be set")
         if not self.target_columns:

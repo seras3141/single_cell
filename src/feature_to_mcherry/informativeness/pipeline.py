@@ -21,6 +21,7 @@ from ..data.loaders import (
     load_targets_from_directory,
 )
 from ..data.normalize import apply_dmso_normalization
+from ..provenance import write_run_provenance
 from .config import InformativenessConfig
 from .features import select_morphology_features
 from .floor import FloorResult, compute_floor
@@ -299,6 +300,7 @@ def run(config: InformativenessConfig) -> ResultsBundle:
 
     _write_summary_json(bundle, output_dir)
     write_report(bundle, output_dir)
+    write_run_provenance(config, output_dir)
 
     logger.info(
         "Morphology-informativeness gate complete: n_cells=%d, n_features_all=%d, "
