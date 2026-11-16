@@ -103,6 +103,11 @@ class InformativenessConfig:
         Confidence-gate degenerate-statistics floor in distinct cells (Step 2 keeps
         ``30``). ``None`` (default) disables that condition. Requires
         ``normalize_to_dmso``.
+    write_nonlinear_oof_predictions : bool
+        Also write the nonlinear model's out-of-fold predictions (all features, with
+        the suspect ones) with each row's ``CELL_KEY`` to
+        ``nonlinear_oof_predictions.parquet``. Off by default: the table has one row per
+        modelled row, which is one per (cell, z-slice) on a per-slice table.
     output_dir : str
         Directory to write the results bundle (CSVs, JSON, report, figures) to.
     """
@@ -137,6 +142,7 @@ class InformativenessConfig:
     dmso_well: Optional[str] = None
     dmso_gate_min_peak_fraction: Optional[float] = None
     dmso_gate_absolute_floor: Optional[int] = None
+    write_nonlinear_oof_predictions: bool = False
     output_dir: str = "results/morphology_informativeness"
 
     def __post_init__(self) -> None:
