@@ -95,14 +95,82 @@ def test_missing_experiment_returns_none_fields_not_exception(tmp_path: Path) ->
         "baseline_ladder_csv",
         "scportrait_baseline_ladder_csv",
         "scportrait_floor_metrics_csv",
+        "scportrait_injected_floor_metrics_csv",
         "informativeness_dir",
         "floor_metrics_csv",
         "univariate_correlations_csv",
         "feature_importances_csv",
+        "decomposition_dir",
         "data_quality_csv",
         "feature_dir",
         "instance_metrics_csv",
     }
+
+
+def _write_sibling_floor(config, suffix: str) -> Path:
+    ftm_dir = Path(config.feature_to_mcherry_dir)
+    floor = (
+        ftm_dir.parent
+        / f"{ftm_dir.name}_{suffix}"
+        / "morphology_informativeness"
+        / "floor_metrics.csv"
+    )
+    floor.parent.mkdir(parents=True)
+    floor.write_text("variant\n")
+    return floor
+
+
+def test_resolves_injected_scportrait_floor_separately_from_native(
+    tmp_path: Path,
+) -> None:
+    config = _make_config(tmp_path)
+    native = _write_sibling_floor(config, "hd1509_scportrait")
+    injected = _write_sibling_floor(config, "hd1509_scportrait_injected")
+
+    paths = resolve_experiment_paths("HD1509", config)
+
+    assert paths.scportrait_floor_metrics_csv == native
+    assert paths.scportrait_injected_floor_metrics_csv == injected
+
+
+def test_injected_floor_stays_unset_when_only_native_exists(tmp_path: Path) -> None:
+    config = _make_config(tmp_path)
+    native = _write_sibling_floor(config, "ew2_2_scportrait")
+
+    paths = resolve_experiment_paths("Ew2-2", config)
+
+    assert paths.scportrait_floor_metrics_csv == native
+    assert paths.scportrait_injected_floor_metrics_csv is None
+
+
+def test_resolves_injected_floor_for_hyphenated_experiment(tmp_path: Path) -> None:
+    config = _make_config(tmp_path)
+    injected = _write_sibling_floor(config, "ew2_2_scportrait_injected")
+
+    paths = resolve_experiment_paths("Ew2-2", config)
+
+    assert paths.scportrait_injected_floor_metrics_csv == injected
+
+
+def test_resolves_nested_decomposition_dir(tmp_path: Path) -> None:
+    config = _make_config(tmp_path)
+    decomposition = Path(config.feature_to_mcherry_dir) / "HD1509" / "decomposition"
+    decomposition.mkdir(parents=True)
+
+    paths = resolve_experiment_paths("HD1509", config)
+
+    assert paths.decomposition_dir == decomposition
+
+
+def test_ignores_decomposition_file_that_is_not_a_directory(tmp_path: Path) -> None:
+    config = _make_config(tmp_path)
+    exp_dir = Path(config.feature_to_mcherry_dir) / "HD1509"
+    exp_dir.mkdir(parents=True)
+    (exp_dir / "decomposition").write_text("")
+
+    paths = resolve_experiment_paths("HD1509", config)
+
+    assert paths.decomposition_dir is None
 
 
 def test_resolves_data_quality_csv_by_source_membership_in_pair_dir(

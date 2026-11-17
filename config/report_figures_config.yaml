@@ -11,6 +11,8 @@ report_figures:
   experiments: [HD1509, SA110, HD1883, Ew2-1, Ew2-2]
   scportrait_experiments: [HD1509, SA110, Ew2-2]
   a5_experiments: [HD1509, SA110]
+  scportrait_injected_pending: true
+  signal_location_target: percentile_90
   a5_area_p90_dir: data/scportrait_diagnostics_area_p90
   cohort_sizes:
     HD1509: 851800

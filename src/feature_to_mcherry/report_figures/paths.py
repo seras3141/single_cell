@@ -66,10 +66,12 @@ class ExperimentPaths:
     baseline_ladder_csv: Optional[Path] = None
     scportrait_baseline_ladder_csv: Optional[Path] = None
     scportrait_floor_metrics_csv: Optional[Path] = None
+    scportrait_injected_floor_metrics_csv: Optional[Path] = None
     informativeness_dir: Optional[Path] = None
     floor_metrics_csv: Optional[Path] = None
     univariate_correlations_csv: Optional[Path] = None
     feature_importances_csv: Optional[Path] = None
+    decomposition_dir: Optional[Path] = None
     data_quality_csv: Optional[Path] = None
     feature_dir: Optional[Path] = None
     instance_metrics_csv: Optional[Path] = None
@@ -108,6 +110,12 @@ def find_sibling_dir_case_insensitive(parent: Path, target_name: str) -> Optiona
     return None
 
 
+def _floor_metrics_in(run_dir: Optional[Path]) -> Optional[Path]:
+    if run_dir is None:
+        return None
+    return _first_existing(run_dir / "morphology_informativeness" / "floor_metrics.csv")
+
+
 def resolve_experiment_paths(exp: str, config: ReportFiguresConfig) -> ExperimentPaths:
     """Resolve every known result path for ``exp``, tolerating missing files."""
     ftm_dir = Path(config.feature_to_mcherry_dir)
@@ -132,12 +140,14 @@ def resolve_experiment_paths(exp: str, config: ReportFiguresConfig) -> Experimen
         if scportrait_dir
         else None
     )
-    scportrait_floor_metrics_csv = (
-        _first_existing(
-            scportrait_dir / "morphology_informativeness" / "floor_metrics.csv"
+    scportrait_floor_metrics_csv = _floor_metrics_in(scportrait_dir)
+    scportrait_injected_floor_metrics_csv = _floor_metrics_in(
+        find_sibling_dir_case_insensitive(
+            ftm_dir.parent, f"{ftm_dir.name}_{exp}_scportrait_injected"
         )
-        if scportrait_dir
-        else None
+    )
+    decomposition_dir = (
+        exp_dir / "decomposition" if (exp_dir / "decomposition").is_dir() else None
     )
 
     # informativeness: convention 3 (top-level) first, else convention 2 (nested).
@@ -205,10 +215,12 @@ def resolve_experiment_paths(exp: str, config: ReportFiguresConfig) -> Experimen
         baseline_ladder_csv=baseline_ladder_csv,
         scportrait_baseline_ladder_csv=scportrait_baseline_ladder_csv,
         scportrait_floor_metrics_csv=scportrait_floor_metrics_csv,
+        scportrait_injected_floor_metrics_csv=scportrait_injected_floor_metrics_csv,
         informativeness_dir=informativeness_dir,
         floor_metrics_csv=floor_metrics_csv,
         univariate_correlations_csv=univariate_correlations_csv,
         feature_importances_csv=feature_importances_csv,
+        decomposition_dir=decomposition_dir,
         data_quality_csv=data_quality_csv,
         feature_dir=feature_dir,
         instance_metrics_csv=instance_metrics_csv,

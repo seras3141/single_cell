@@ -67,3 +67,18 @@ def test_load_config_dotlist_override(tmp_path: Path) -> None:
     config = load_config(yaml_path=yaml_path, overrides=["dpi=72"])
 
     assert config.dpi == 72
+
+
+@pytest.mark.parametrize("target", ["percentile_90", "z_percentile_95"])
+def test_accepts_raw_and_normalized_signal_location_targets(target: str) -> None:
+    config = ReportFiguresConfig(signal_location_target=target)
+
+    assert config.signal_location_target == target
+
+
+@pytest.mark.parametrize(
+    "target", ["p90", "percentile_90\n", "percentile_\u0669\u0660"]
+)
+def test_rejects_malformed_signal_location_target(target: str) -> None:
+    with pytest.raises(ValueError, match="signal_location_target"):
+        ReportFiguresConfig(signal_location_target=target)
