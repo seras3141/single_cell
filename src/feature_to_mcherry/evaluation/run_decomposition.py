@@ -11,15 +11,8 @@ import numpy as np
 import pandas as pd
 
 from ..config import FeatureToMcherryConfig
-from ..data.join import build_matrix_with_metadata
-from ..data.loaders import (
-    load_features,
-    load_features_from_directory,
-    load_targets,
-    load_targets_from_directory,
-)
-from ..data.normalize import apply_dmso_normalization
 from .nested_r2 import nested_r2, per_fold_r2
+from .run_matrix import load_run_matrix
 
 logger = logging.getLogger(__name__)
 
@@ -33,43 +26,7 @@ def rebuild_targets_and_metadata(
             f"group_by={config.group_by!r}: only runs grouped by sample_id (well) "
             "can be decomposed"
         )
-    target_path = Path(config.target_csv)
-    if target_path.is_dir():
-        targets_df = load_targets_from_directory(
-            target_path, target_columns=config.target_columns
-        )
-    else:
-        targets_df = load_targets(target_path, target_columns=config.target_columns)
-    targets_df, target_columns = apply_dmso_normalization(
-        targets_df,
-        enabled=config.normalize_to_dmso,
-        dmso_well=config.dmso_well,
-        target_columns=config.target_columns,
-        min_peak_fraction=config.dmso_gate_min_peak_fraction,
-        absolute_floor=config.dmso_gate_absolute_floor,
-    )
-    feature_path = Path(config.feature_csv)
-    feature_arguments = dict(
-        id_column=config.id_column,
-        sample_id_column=config.sample_id_column,
-        timepoint_column=config.timepoint_column,
-        z_index_column=config.z_index_column,
-    )
-    if feature_path.is_dir():
-        features_df = load_features_from_directory(
-            feature_path, pattern=config.feature_pattern, **feature_arguments
-        )
-    else:
-        features_df = load_features(feature_path, **feature_arguments)
-    features_df = features_df.drop(
-        columns=[c for c in config.exclude_feature_columns if c in features_df.columns]
-    )
-    _, y, _, _, metadata = build_matrix_with_metadata(
-        features_df,
-        targets_df,
-        target_columns=target_columns,
-        group_by=config.group_by,
-    )
+    _, y, _, metadata = load_run_matrix(config)
     return y, metadata
 
 
