@@ -1,7 +1,7 @@
 # Morphology-informativeness gate tuned for the scPortrait DEEP-EMBEDDING backend
-# (ConvNeXt features reduced to 100 principal components), NOT incarta handcrafted
+# (ConvNeXt features reduced to 100 principal components), NOT handcrafted
 # morphology. This gives the scPortrait features their fair NONLINEAR comparison
-# against incarta's floor: the incarta gate reports a linear (Ridge) vs nonlinear
+# against handcrafted's floor: the handcrafted gate reports a linear (Ridge) vs nonlinear
 # (LightGBM) floor gap, and the scPortrait baseline ladder only measured the LINEAR
 # (Ridge) floor. Running the same gate here surfaces whether a nonlinear head unlocks
 # signal the linear ladder missed.
@@ -27,7 +27,7 @@ morphology_informativeness:
   # The 100 principal components of the ConvNeXt embedding. fnmatch is case-insensitive.
   morphology_feature_patterns:
     - "PC_*"
-  # Deep-embedding PCs are not raw-intensity proxies in the way incarta's *intensity
+  # Deep-embedding PCs are not raw-intensity proxies in the way handcrafted's *intensity
   # columns are, and there are no intensity-named columns here anyway -> no suspects.
   suspect_feature_patterns: []
   ridge_alpha: 1.0

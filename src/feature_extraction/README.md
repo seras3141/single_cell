@@ -7,7 +7,7 @@ Extracts per-cell features from 2D and 3D segmented microscopy images. Each extr
 ```
 src/feature_extraction/
 ├── feature_extraction_pipeline.py   # Orchestrates batch extraction across datasets
-├── feature_extractor_incarta.py     # Custom 2D extractor: morphology, intensity, texture
+├── feature_extractor_handcrafted.py # Custom 2D extractor: morphology, intensity, texture
 ├── feature_extractor_regionprops.py # scikit-image regionprops (2D and 3D)
 ├── feature_extractor_pyradiomics.py # PyRadiomics per-cell features
 ├── feature_extractor_scportrait.py  # ConvNeXt deep features via scPortrait (optional dependency)
@@ -25,7 +25,7 @@ The method is set via `feature_extraction.method` in `config/feature_extraction_
 
 | Method | What it computes | Key dependencies |
 |---|---|---|
-| `incarta` *(default)* | 25 handcrafted 2D features across four groups (see below) | `scikit-image`, `scipy` |
+| `handcrafted` *(default)* | 25 handcrafted 2D features across four groups (see below) | `scikit-image`, `scipy` |
 | `regionprops` | Standard skimage `regionprops_table` properties. `get_region_properties` accepts 2D and 3D arrays; the batch pipeline feeds it 2D slices only | `scikit-image` |
 | `pyradiomics` | 102 PyRadiomics features per cell (`shape2D`, `firstorder`, `glcm`, `glrlm`, `glszm`, `gldm`, `ngtdm`; original image only), plus `touches_border`. Settings live under `feature_extraction.pyradiomics` | `pyradiomics-cuda` (CPU build), `SimpleITK` |
 | `scportrait` | ConvNeXt encoder embeddings per cell via scPortrait's segment→extract→featurize pipeline | `scportrait` *(optional, requires Python ≥ 3.11)* |
@@ -77,7 +77,7 @@ Pass the same `--min-pixels` the extraction used (default 20): a mask with a lab
 - **Unpaired masks.** A mask with no matching image is an error, unless its slice is listed under `known_missing` in [`config/data_exclusions.yaml`](../../config/data_exclusions.yaml). An image with no mask is an error too, and so are all files sharing a pairing key, none of which are paired. The exception is z0 in a batch with no z0 mask at all (per-slice trees never segment the z0 projection): those images are recorded as `unsegmented`.
 - **Excluded stacks.** Stacks listed under `excluded_stacks` are still extracted. The `feature_to_mcherry` loaders drop their rows.
 
-## Feature groups (`incarta`, 2D)
+## Feature groups (`handcrafted`, 2D)
 
 See `feature_list_2d.txt` for full definitions. Summary:
 

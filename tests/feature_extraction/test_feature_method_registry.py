@@ -20,8 +20,8 @@ def _pipeline(tmp_path, **config):
 
 
 @pytest.fixture
-def incarta_unavailable(monkeypatch):  # no method is unavailable today
-    monkeypatch.setitem(schemas.UNAVAILABLE_FEATURE_METHODS, "incarta", "test reason")
+def handcrafted_unavailable(monkeypatch):  # no method is unavailable today
+    monkeypatch.setitem(schemas.UNAVAILABLE_FEATURE_METHODS, "handcrafted", "test reason")
 
 
 def test_pyradiomics_is_available(tmp_path):
@@ -29,16 +29,16 @@ def test_pyradiomics_is_available(tmp_path):
     assert _pipeline(tmp_path, method="pyradiomics").method == "pyradiomics"
 
 
-def test_unavailable_method_rejected_at_construction(tmp_path, incarta_unavailable):
+def test_unavailable_method_rejected_at_construction(tmp_path, handcrafted_unavailable):
     with pytest.raises(NotImplementedError, match="not yet available: test reason"):
-        _pipeline(tmp_path, method="incarta")
+        _pipeline(tmp_path, method="handcrafted")
 
 
-def test_method_argument_overrides_config(tmp_path, incarta_unavailable):
+def test_method_argument_overrides_config(tmp_path, handcrafted_unavailable):
     with pytest.raises(NotImplementedError, match="not yet available"):
         FeatureExtractionPipeline(
             config={"method": "regionprops", "output": {}},
-            method="incarta",
+            method="handcrafted",
             output_dir=str(tmp_path / "out"),
             exclusions=DataExclusions.empty(),
         )
@@ -49,7 +49,25 @@ def test_unknown_method_raises_value_error(tmp_path):
         _pipeline(tmp_path, method="nope")
 
 
-def test_cli_reports_unavailable_before_missing_mask_dir(incarta_unavailable):
+def test_the_older_incarta_name_is_an_alias_for_handcrafted(tmp_path):
+    from tests.feature_extraction.test_run_feature_extraction_cli import (
+        _load_script_module,
+    )
+
+    assert schemas.canonical_feature_method("incarta") == "handcrafted"
+    assert schemas.canonical_feature_method("regionprops") == "regionprops"
+    assert _pipeline(tmp_path, method="incarta").method == "handcrafted"
+    cfg = PipelineConfig()
+    cfg.feature_extraction.method = "incarta"
+    validate_pipeline_config(cfg)
+    module = _load_script_module()
+    with patch.object(
+        sys, "argv", ["run_feature_extraction.py", "--method", "incarta"]
+    ):
+        assert module.get_args().method == "handcrafted"
+
+
+def test_cli_reports_unavailable_before_missing_mask_dir(handcrafted_unavailable):
     from tests.feature_extraction.test_run_feature_extraction_cli import (
         _load_script_module,
     )
@@ -57,7 +75,7 @@ def test_cli_reports_unavailable_before_missing_mask_dir(incarta_unavailable):
     module = _load_script_module()
     config = {
         "paths": {"image_dir": "imgs"},  # no mask_dir
-        "feature_extraction": {"method": "incarta"},
+        "feature_extraction": {"method": "handcrafted"},
         "logging": {},
     }
     with pytest.raises(NotImplementedError, match="not yet available"):

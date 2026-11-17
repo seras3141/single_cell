@@ -78,6 +78,24 @@ def _floor_metrics_dataframe(
     return pd.DataFrame(rows)
 
 
+def _write_nonlinear_oof_predictions(
+    metadata_df: pd.DataFrame,
+    y: np.ndarray,
+    oof_predictions: np.ndarray,
+    target_columns: List[str],
+    output_dir: Path,
+) -> None:
+    table = metadata_df[CELL_KEY].reset_index(drop=True)
+    for j, target in enumerate(target_columns):
+        table[f"y_true_{target}"] = y[:, j]
+        table[f"y_pred_{target}"] = oof_predictions[:, j]
+    path = output_dir / "nonlinear_oof_predictions.parquet"
+    table.to_parquet(path, index=False)
+    logger.info(
+        "Wrote nonlinear out-of-fold predictions (%d rows) to %s", len(table), path
+    )
+
+
 def _json_default(value: Any) -> Any:
     if isinstance(value, np.floating):
         return float(value)
@@ -296,6 +314,15 @@ def run(config: InformativenessConfig) -> ResultsBundle:
         logger.info(
             "Nonlinear floor model exposed no feature_importances_; skipping "
             "feature_importances.csv."
+        )
+
+    if config.write_nonlinear_oof_predictions:
+        _write_nonlinear_oof_predictions(
+            metadata_df,
+            y,
+            floor_results["with_suspect"]["nonlinear"].oof_predictions,
+            target_columns,
+            output_dir,
         )
 
     _write_summary_json(bundle, output_dir)

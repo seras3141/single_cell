@@ -39,7 +39,7 @@ morphology_informativeness:
 
   morphology_feature_patterns:
     - "original_*"
-  # First-order features in intensity units, the radiomics analogue of incarta's
+  # First-order features in intensity units, the radiomics analogue of handcrafted's
   # *mean_intensity and *_intensity_std: they track brightness and focus as much as
   # morphology. Entropy and Uniformity are not in intensity units and stay clean.
   suspect_feature_patterns:

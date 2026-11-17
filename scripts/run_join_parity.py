@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check that radiomics, incarta and the mCherry target hold the same cells.
+"""Check that radiomics, handcrafted and the mCherry target hold the same cells.
 
 Exits 0 on an exact join of all three tables, 1 on a gap, a repeated or null key or an
 empty table, and 2 when the check could not run. Writes a JSON report, and the gap keys
@@ -8,7 +8,7 @@ beside it when there are any.
 Example:
     uv run scripts/run_join_parity.py --label HD1509_sharpness \
         --radiomics-dir "<tree>/features_radiomics" \
-        --incarta-dir "<tree>/features_incarta/split_data" \
+        --handcrafted-dir "<tree>/features_incarta/split_data" \
         --target-csv "<tree>/mcherry_metrics/instance_metrics.csv"
 """
 
@@ -40,10 +40,21 @@ def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--label", type=_label, required=True)
     parser.add_argument("--radiomics-dir", type=Path, required=True)
-    parser.add_argument("--incarta-dir", type=Path, required=True)
+    parser.add_argument(
+        "--handcrafted-dir",
+        "--incarta-dir",
+        dest="handcrafted_dir",
+        type=Path,
+        required=True,
+    )
     parser.add_argument("--target-csv", type=Path, required=True)
     parser.add_argument("--radiomics-pattern", default="*.parquet")
-    parser.add_argument("--incarta-pattern", default="*.csv")
+    parser.add_argument(
+        "--handcrafted-pattern",
+        "--incarta-pattern",
+        dest="handcrafted_pattern",
+        default="*.csv",
+    )
     parser.add_argument(
         "--id-column",
         default="cell_id",
@@ -69,8 +80,8 @@ def main() -> int:
             "radiomics": load_feature_keys(
                 args.radiomics_dir, args.radiomics_pattern, args.id_column
             ),
-            "incarta": load_feature_keys(
-                args.incarta_dir, args.incarta_pattern, args.id_column
+            "handcrafted": load_feature_keys(
+                args.handcrafted_dir, args.handcrafted_pattern, args.id_column
             ),
             "target": load_target_keys(args.target_csv),
         }

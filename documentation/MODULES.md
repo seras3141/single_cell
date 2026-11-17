@@ -52,12 +52,12 @@ Cellpose-based inference pipeline for running cell segmentation predictions.
 Extracts per-cell features from 2D and 3D segmented microscopy images. Supports multiple backends; output is a `DataFrame` with one row per cell instance.
 
 **Key features:**
-- 25 morphological, intensity, spatial, and texture features per cell (incarta backend)
-- Multi-backend support: `incarta`, `regionprops`, `pyradiomics` (102 PyRadiomics features, CPU), `scportrait` (separate Python 3.11 env)
+- 25 morphological, intensity, spatial, and texture features per cell (handcrafted backend)
+- Multi-backend support: `handcrafted`, `regionprops`, `pyradiomics` (102 PyRadiomics features, CPU), `scportrait` (separate Python 3.11 env)
 - CSV or Parquet output, per image or per well; coverage status counts go to the run summary, and per-well output also writes a `coverage/<well>.parquet` table
 - Parallel processing via joblib
 
-**Extracted features (incarta / 2D):**
+**Extracted features (handcrafted / 2D):**
 | Category | Features |
 |---|---|
 | Morphology | Area, perimeter, elongation, compactness, circularity, Feret diameter, radius of gyration, major/minor axis |

@@ -12,7 +12,7 @@ import pandas as pd
 from tqdm import tqdm
 from joblib import Parallel, delayed
 
-from src.feature_extraction.feature_extractor_incarta import (
+from src.feature_extraction.feature_extractor_handcrafted import (
     extract_all_instance_features,
 )
 
@@ -29,6 +29,7 @@ from src.feature_extraction.feature_extractor_regionprops import get_region_prop
 from src.utils.config_schemas import (
     FeatureExtractionConfig,
     PyradiomicsConfig,
+    canonical_feature_method,
     check_feature_method_available,
     validate_feature_extraction_n_jobs,
     validate_pyradiomics_config,
@@ -250,7 +251,9 @@ class FeatureExtractionPipeline:
 
         # Extract configuration sections
         # self.paths_config = feature_config.get('paths', {})
-        self.method = method or self.feature_config.get("method", "incarta")
+        self.method = canonical_feature_method(
+            method or self.feature_config.get("method", "handcrafted")
+        )
         self.output_config = self.feature_config.get("output", {})
         self.processing_config = self.feature_config.get("processing", {})
 
@@ -870,7 +873,7 @@ class FeatureExtractionPipeline:
                     inner_n_jobs if inner_n_jobs is not None else self._inner_n_jobs()
                 )
 
-                if self.method == "incarta":
+                if self.method == "handcrafted":
                     features_df = extract_all_instance_features(
                         mask, image, n_jobs=n_jobs
                     )

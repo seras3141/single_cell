@@ -31,7 +31,7 @@ def get_region_properties(segmentation_mask, intensity_image=None):
             ]
         )
         # Rename skimage's ``label`` id column to ``cell_id`` for consistency
-        # with the incarta/scPortrait outputs and the mcherry_metrics contract.
+        # with the handcrafted/scPortrait outputs and the mcherry_metrics contract.
         return pd.DataFrame(properties).rename(columns={'label': 'cell_id'})
 
     elif segmentation_mask.ndim == 3:

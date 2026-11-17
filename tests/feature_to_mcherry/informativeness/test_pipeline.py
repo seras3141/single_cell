@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from src.feature_to_mcherry.data.contract import CELL_KEY
 from src.feature_to_mcherry.informativeness.config import InformativenessConfig
 from src.feature_to_mcherry.informativeness.pipeline import run
 
@@ -360,6 +361,36 @@ def test_pipeline_end_to_end_with_directory_feature_csv(tmp_path: Path) -> None:
 
     floor_metrics = pd.read_csv(output_dir / "floor_metrics.csv")
     assert floor_metrics["r2"].apply(np.isfinite).all()
+
+
+def test_nonlinear_oof_predictions_are_written_only_on_request(tmp_path: Path) -> None:
+    feature_dir, target_csv = _write_synthetic_directory_csvs(tmp_path)
+    tables = {}
+    for flag in (False, True):
+        output_dir = tmp_path / f"results_{flag}"
+        run(
+            InformativenessConfig(
+                feature_csv=str(feature_dir),
+                target_csv=str(target_csv),
+                id_column="cell_id",
+                group_by="sample_id",
+                n_splits=2,
+                morphology_feature_patterns=["area", "perimeter"],
+                suspect_feature_patterns=["mean_intensity"],
+                plate_layout_json=str(REAL_LAYOUT_PATH),
+                write_nonlinear_oof_predictions=flag,
+                output_dir=str(output_dir),
+            )
+        )
+        tables[flag] = output_dir / "nonlinear_oof_predictions.parquet"
+
+    assert not tables[False].exists()
+    oof = pd.read_parquet(tables[True])
+    assert len(oof) == len(WELLS) * 15
+    assert set(CELL_KEY) <= set(oof.columns)
+    assert not oof.duplicated(subset=CELL_KEY).any()
+    predictions = oof.filter(like="y_pred_")
+    assert predictions.shape[1] >= 1 and predictions.notna().all().all()
 
 
 def test_pipeline_reads_a_parquet_directory_and_honours_exclusions(

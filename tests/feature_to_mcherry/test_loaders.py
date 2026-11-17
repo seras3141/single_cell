@@ -151,7 +151,7 @@ def test_load_features_with_explicit_sample_id_timepoint_and_z_index_columns(
 def test_load_features_uses_already_present_sample_id_timepoint_z_index_columns(
     tmp_path: Path,
 ) -> None:
-    # Real-world shape (incarta split_data, current format): sample_id/timepoint/
+    # Real-world shape (handcrafted split_data, current format): sample_id/timepoint/
     # z_index are already native columns in every row; no image_filename column at
     # all. No explicit *_column args should be needed.
     df = pd.DataFrame(
@@ -286,7 +286,7 @@ def test_load_features_raises_when_no_numeric_feature_columns_remain(
 def test_load_features_from_directory_concatenates_already_present_columns(
     tmp_path: Path,
 ) -> None:
-    # Real-world shape (incarta split_data, current format): one file per
+    # Real-world shape (handcrafted split_data, current format): one file per
     # (well, timepoint, z), each already carrying sample_id/timepoint/z_index/cell_id.
     for z in (10, 11):
         df = pd.DataFrame(

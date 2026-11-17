@@ -1,0 +1,34 @@
+# Baselines on the per-well handcrafted-feature CSV tables; the driver overrides
+# feature_csv, target_csv, dmso_well and output_dir per culture and tree. Position
+# columns and the aliased, boundary-dominated gabor features are excluded from modelling.
+
+feature_to_mcherry:
+  feature_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/HD1509 MF5V1 0-72h 23-02-26/inference_filtered_sharpness/cellpose_sam/features_incarta/split_data"
+  target_csv: "data/MF5V1_processed Timelapse samples 19.03.2024/HD1509 MF5V1 0-72h 23-02-26/inference_filtered_sharpness/cellpose_sam/mcherry_metrics/instance_metrics.csv"
+  id_column: cell_id
+  sample_id_column: null
+  timepoint_column: null
+  z_index_column: null
+  target_columns: [percentile_75, percentile_90, percentile_95]
+  exclude_feature_columns:
+    - centroid_x
+    - centroid_y
+    - center_of_mass_x
+    - center_of_mass_y
+    - mass_displacement
+    - gabor_mean
+    - gabor_std
+  group_by: sample_id
+  n_splits: 5
+  ridge_alpha: 1.0
+  quantile_alpha: 0.0
+  quantile_solver: highs
+  quantile_train_subsample_size: 25000
+  quantile_train_subsample_seed: 0
+  sort_quantiles: true
+  normalize_to_dmso: true
+  dmso_well: N11
+  dmso_gate_min_peak_fraction: 0.10
+  dmso_gate_absolute_floor: 30
+  write_well_timepoint_outputs: true
+  output_dir: results/feature_to_mcherry_handcrafted

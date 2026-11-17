@@ -269,5 +269,5 @@ scratch_cookies.txt
 scratch_public.js
 scratch_share_page.html
 
-# Retired incarta-era configs, kept locally only (incarta is replaced by pyradiomics/scportrait).
+# Retired handcrafted-era configs, kept locally only (handcrafted is replaced by pyradiomics/scportrait).
 config/archive/

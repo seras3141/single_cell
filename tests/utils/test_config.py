@@ -22,7 +22,7 @@ def minimal_valid_yaml(tmp_path) -> Path:
             "tracking": {"search_range": 5.0, "min_area": 10, "max_area": 5000},
             "filtering": {"blur_threshold": 0.5},
         },
-        "feature_extraction": {"method": "incarta"},
+        "feature_extraction": {"method": "handcrafted"},
     }
     p = tmp_path / "config.yaml"
     with open(p, "w") as f:

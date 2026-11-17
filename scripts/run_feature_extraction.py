@@ -41,10 +41,15 @@ from src.utils.logging_utils import setup_logging, add_file_handler
 from src.utils.config import ConfigManager
 from src.utils.config_schemas import (
     FEATURE_METHODS,
+    canonical_feature_method,
     check_feature_method_available,
     validate_feature_extraction_n_jobs,
 )
 from src.dataset_analysis.run_manifest import create_or_load_manifest
+
+
+def _configured_method(feature_config: Dict[str, Any]) -> str:
+    return canonical_feature_method(feature_config.get("method", "handcrafted"))
 
 
 def _run_name(value: str) -> str:
@@ -111,7 +116,7 @@ def get_args():
     )
     parser.add_argument(
         "--method",
-        type=str,
+        type=canonical_feature_method,
         default=None,
         choices=list(FEATURE_METHODS),
         help="Feature extraction method (overrides config). "
@@ -217,7 +222,7 @@ def validate_inputs(config: Dict[str, Any]) -> None:
         ValueError: if required paths are missing for the selected mode.
     """
     paths_config = config.get("paths", {})
-    method = config.get("feature_extraction", {}).get("method", "incarta")
+    method = _configured_method(config.get("feature_extraction", {}))
 
     if _is_single_file(paths_config):
         # Single-file mode
@@ -242,7 +247,7 @@ def preflight(config: Dict[str, Any]) -> None:
     """Reject an unusable method or missing inputs before any output is written."""
     # Availability first: report the real cause.
     feature_config = config.get("feature_extraction", {})
-    check_feature_method_available(feature_config.get("method", "incarta"))
+    check_feature_method_available(_configured_method(feature_config))
     validate_feature_extraction_n_jobs(feature_config.get("n_jobs"))
     validate_inputs(config)
 
@@ -279,7 +284,7 @@ def run_feature_extraction_from_config(config: Dict[str, Any]) -> pd.DataFrame:
 
     paths_config = config.get("paths", {})
     feature_config = config.get("feature_extraction", {})
-    method = feature_config.get("method", "incarta")
+    method = _configured_method(feature_config)
     image_pattern = feature_config.get("image_pattern")
     mask_pattern = feature_config.get("mask_pattern")
 
@@ -352,13 +357,15 @@ def _get_extract_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
             "mask_file": paths.get("mask_file"),
         }
     else:
-        method = feature_config.get("method", "incarta")
+        method = _configured_method(feature_config)
         inputs = {
             "image_dir": paths.get("image_dir"),
             "mask_dir": _batch_mask_dir(paths, method),
         }
     snapshot = {
-        "method": feature_config.get("method"),
+        "method": (
+            _configured_method(feature_config) if "method" in feature_config else None
+        ),
         "n_jobs": feature_config.get("n_jobs"),
         **inputs,
     }

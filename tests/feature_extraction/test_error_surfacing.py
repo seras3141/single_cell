@@ -314,7 +314,7 @@ class TestUnpairedMasks:
 def test_output_dir_from_config_only(tmp_path):
     pipeline = FeatureExtractionPipeline(
         config={
-            "method": "incarta",
+            "method": "handcrafted",
             "output": {"output_dir": str(tmp_path / "cfg_out")},
         },
         exclusions=DataExclusions.empty(),
@@ -472,7 +472,7 @@ def test_n_jobs_zero_runs_cells_sequentially(tmp_path, monkeypatch):
 
     monkeypatch.setattr(fep, "extract_all_instance_features", record_n_jobs)
     pipeline = FeatureExtractionPipeline(
-        config={"method": "incarta", "n_jobs": 0, "output": {}},
+        config={"method": "handcrafted", "n_jobs": 0, "output": {}},
         output_dir=str(tmp_path / "out"),
         exclusions=DataExclusions.empty(),
     )
