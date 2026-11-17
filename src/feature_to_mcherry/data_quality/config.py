@@ -87,7 +87,7 @@ class DataQualityConfig:
         single ungrouped "Features" bucket — this is what makes the tool usable
         out-of-the-box on a new experiment with unfamiliar column names; a specific
         experiment's own config file can supply the categorization it wants (see
-        ``config/data_quality_config.yaml`` for the MF5V1/incarta example).
+        ``config/data_quality_config.yaml`` for the MF5V1/handcrafted example).
     flag_timepoints : list[int]
         Timepoints to mark with a dashed vertical reference line in the interactive
         report (e.g. a timepoint found to be enriched for extreme values).

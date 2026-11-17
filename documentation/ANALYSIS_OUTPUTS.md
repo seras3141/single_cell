@@ -35,7 +35,7 @@ CSVs under `results/feature_to_mcherry/<LABEL>/` and `results/dataset_analysis/<
 
 ## 1. `results/feature_to_mcherry/<LABEL>/decomposition/`
 
-Feature→mCherry R² decomposed by well and timepoint (incarta features → mCherry percentiles).
+Feature→mCherry R² decomposed by well and timepoint (handcrafted features → mCherry percentiles).
 
 ### `r2_by_well_timepoint.csv` — **well × timepoint grid** (324 rows = 9 wells × 36 t)
 | column | meaning |

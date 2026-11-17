@@ -18,7 +18,7 @@ paths:
 # Feature extraction parameters
 feature_extraction:
   # Feature extraction method
-  method: "incarta"  # Options: "incarta", "regionprops", "pyradiomics", "scportrait"
+  method: "handcrafted"  # Options: "handcrafted", "regionprops", "pyradiomics", "scportrait"
 
   # File matching patterns
   image_pattern: "*_BF.tif"

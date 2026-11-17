@@ -38,35 +38,35 @@ def _keys(wells=WELLS) -> pd.DataFrame:
 def _write_tables(
     tmp_path: Path,
     radiomics: pd.DataFrame = None,
-    incarta: pd.DataFrame = None,
+    handcrafted: pd.DataFrame = None,
     target: pd.DataFrame = None,
 ) -> List[Path]:
-    radiomics_dir, incarta_dir = tmp_path / "radiomics", tmp_path / "incarta"
+    radiomics_dir, handcrafted_dir = tmp_path / "radiomics", tmp_path / "handcrafted"
     radiomics_dir.mkdir()
-    incarta_dir.mkdir()
+    handcrafted_dir.mkdir()
     radiomics = _keys() if radiomics is None else radiomics
-    incarta = _keys() if incarta is None else incarta
+    handcrafted = _keys() if handcrafted is None else handcrafted
     target = _keys() if target is None else target
     for well, rows in radiomics.groupby("sample_id"):
         rows.assign(original_shape2D_Elongation=0.5).to_parquet(
             radiomics_dir / f"{well}.parquet", index=False
         )
-    for well, rows in incarta.groupby("sample_id"):
-        rows.assign(area=10.0).to_csv(incarta_dir / f"{well}.csv", index=False)
+    for well, rows in handcrafted.groupby("sample_id"):
+        rows.assign(area=10.0).to_csv(handcrafted_dir / f"{well}.csv", index=False)
     target_csv = tmp_path / "instance_metrics.csv"
     target.assign(percentile_75=1.0, percentile_90=2.0, percentile_95=3.0).to_csv(
         target_csv, index=False
     )
-    return [radiomics_dir, incarta_dir, target_csv]
+    return [radiomics_dir, handcrafted_dir, target_csv]
 
 
 def _report(tmp_path: Path, **tables):
-    radiomics_dir, incarta_dir, target_csv = _write_tables(tmp_path, **tables)
+    radiomics_dir, handcrafted_dir, target_csv = _write_tables(tmp_path, **tables)
     return compare_tables(
         "test",
         {
             "radiomics": load_feature_keys(radiomics_dir, "*.parquet"),
-            "incarta": load_feature_keys(incarta_dir, "*.csv"),
+            "handcrafted": load_feature_keys(handcrafted_dir, "*.csv"),
             "target": load_target_keys(target_csv),
         },
     )
@@ -77,19 +77,19 @@ def test_identical_tables_join_exactly(tmp_path: Path) -> None:
 
     assert report.exact
     assert gaps.empty
-    assert report.rows == {"radiomics": 12, "incarta": 12, "target": 12}
+    assert report.rows == {"radiomics": 12, "handcrafted": 12, "target": 12}
     assert all(pair.matched == 12 for pair in report.pairs)
 
 
 def test_a_cell_missing_from_one_table_is_a_gap_in_two_pairs(tmp_path: Path) -> None:
-    incarta = _keys().iloc[1:]
+    handcrafted = _keys().iloc[1:]
 
-    report, gaps = _report(tmp_path, incarta=incarta)
+    report, gaps = _report(tmp_path, handcrafted=handcrafted)
     pairs = {(pair.left, pair.right): pair for pair in report.pairs}
 
     assert not report.exact
-    assert pairs[("radiomics", "incarta")].left_only == 1
-    assert pairs[("incarta", "target")].right_only == 1
+    assert pairs[("radiomics", "handcrafted")].left_only == 1
+    assert pairs[("handcrafted", "target")].right_only == 1
     assert pairs[("radiomics", "target")].exact
     assert set(gaps["only_in"]) == {"radiomics", "target"}
 
@@ -111,9 +111,9 @@ def test_an_extra_target_row_names_its_well_and_timepoint(tmp_path: Path) -> Non
 
 
 def test_a_repeated_key_is_reported_and_not_exact(tmp_path: Path) -> None:
-    report, _ = _report(tmp_path, incarta=pd.concat([_keys(), _keys().iloc[:1]]))
+    report, _ = _report(tmp_path, handcrafted=pd.concat([_keys(), _keys().iloc[:1]]))
 
-    assert report.duplicates["incarta"] == 1
+    assert report.duplicates["handcrafted"] == 1
     assert not report.exact
 
 
@@ -180,7 +180,7 @@ def _cli_args(tmp_path: Path, paths: List[Path]) -> List[object]:
         "t",
         "--radiomics-dir",
         paths[0],
-        "--incarta-dir",
+        "--handcrafted-dir",
         paths[1],
         "--target-csv",
         paths[2],
@@ -199,7 +199,7 @@ def test_cli_exit_codes_and_report_files(tmp_path: Path, monkeypatch) -> None:
 
     gap = tmp_path / "gap"
     gap.mkdir()
-    args = _cli_args(gap, _write_tables(gap, incarta=_keys().iloc[1:]))
+    args = _cli_args(gap, _write_tables(gap, handcrafted=_keys().iloc[1:]))
     assert _run_cli(monkeypatch, *args) == 1
     assert (gap / "out" / "t.gaps.csv").exists()
 
@@ -207,12 +207,20 @@ def test_cli_exit_codes_and_report_files(tmp_path: Path, monkeypatch) -> None:
     assert _run_cli(monkeypatch, *args) == 2
 
 
+def test_the_older_incarta_flag_names_still_work(tmp_path: Path, monkeypatch) -> None:
+    exact = tmp_path / "exact"
+    exact.mkdir()
+    args = _cli_args(exact, _write_tables(exact))
+    args[args.index("--handcrafted-dir")] = "--incarta-dir"
+    assert _run_cli(monkeypatch, *args) == 0
+
+
 def test_cli_exits_1_on_a_repeated_key_and_2_on_any_other_failure(
     tmp_path: Path, monkeypatch
 ) -> None:
     repeated = tmp_path / "repeated"
     repeated.mkdir()
-    paths = _write_tables(repeated, incarta=pd.concat([_keys(), _keys().iloc[:1]]))
+    paths = _write_tables(repeated, handcrafted=pd.concat([_keys(), _keys().iloc[:1]]))
     assert _run_cli(monkeypatch, *_cli_args(repeated, paths)) == 1
 
     crash = tmp_path / "crash"
@@ -362,7 +370,7 @@ def test_cli_takes_the_feature_id_column_and_warns_on_a_long_breakdown(
     tmp_path: Path, monkeypatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     renamed = _keys().rename(columns={"cell_id": "label"})
-    paths = _write_tables(tmp_path, radiomics=renamed, incarta=renamed)
+    paths = _write_tables(tmp_path, radiomics=renamed, handcrafted=renamed)
     args = _cli_args(tmp_path, paths)
     assert _run_cli(monkeypatch, *args, "--id-column", "label") == 0
 

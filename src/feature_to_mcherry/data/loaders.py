@@ -192,7 +192,7 @@ def load_features(
     """Load a per-cell feature table as CELL_KEY + feature columns.
 
     Works generically across feature-extraction backends (regionprops, pyradiomics,
-    incarta, or any future source) via the ``id_column``/``sample_id_column``/
+    handcrafted, or any future source) via the ``id_column``/``sample_id_column``/
     ``timepoint_column``/``z_index_column`` knobs, rather than backend-specific
     branches.
 
@@ -202,12 +202,12 @@ def load_features(
         Path to a per-cell feature table; a ``.parquet`` suffix is read as Parquet.
     id_column : str
         Name of the per-cell id column in this CSV (e.g. ``"instance_id"`` for the
-        regionprops/incarta backends). Renamed to ``cell_id`` internally.
+        regionprops/handcrafted backends). Renamed to ``cell_id`` internally.
     sample_id_column, timepoint_column, z_index_column : str, optional
         Column names already carrying ``sample_id``/``timepoint``/``z_index`` in this
         CSV. Resolution order per field: (1) if given explicitly, rename that column;
         (2) else if a column already named ``sample_id``/``timepoint``/``z_index``
-        exists (e.g. the incarta ``split_data`` layout, which already carries these
+        exists (e.g. the handcrafted ``split_data`` layout, which already carries these
         per row), use it as-is; (3) else if ``image_filename_column`` is present,
         derive via :class:`ConfigurableFileHandler` (e.g. the regionprops layout, one
         CSV covering many source images); (4) else raise ``ValueError`` — z_index in
@@ -252,7 +252,7 @@ def load_features(
         df = df.rename(columns={column_arg: canonical_name})
 
     # Resolution order per field: (1) explicit *_column arg, already applied above;
-    # (2) a column already named sample_id/timepoint/z_index (e.g. incarta's
+    # (2) a column already named sample_id/timepoint/z_index (e.g. handcrafted's
     # split_data layout, which already carries these per row); (3) derive from an
     # image_filename column via ConfigurableFileHandler (e.g. regionprops, one CSV
     # covering many source images); (4) unresolved -> raise.
@@ -348,7 +348,7 @@ def load_features_from_directory(
     """Load and concatenate a directory of feature tables (CSV or Parquet).
 
     Some feature-extraction backends write one CSV per (well, timepoint, z) slice
-    (e.g. the incarta ``split_data`` layout —
+    (e.g. the handcrafted ``split_data`` layout —
     ``pMF5V1_<well>_t<tp>_z<z>_BF_features.csv``), so a single :func:`load_features`
     call only covers one slice. This globs
     ``directory`` for matching files, loads each with :func:`load_features` (same

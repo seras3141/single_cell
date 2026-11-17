@@ -11,5 +11,5 @@ known_missing: []
 
 # HD1883 H09_t201 was excluded on 2026-09-24 (masks z-shifted while BF z4 was missing) and
 # removed the same day, after BF z4 was restored and every derived H09_t201 file was
-# regenerated and verified (per-cell incarta == mCherry in both mask trees).
+# regenerated and verified (per-cell handcrafted == mCherry in both mask trees).
 excluded_stacks: []

@@ -84,7 +84,7 @@ def load_features(
     features_dir: Union[str, Path],
     features: Sequence[str] = BIOLOGICAL_FEATURES,
 ) -> pd.DataFrame:
-    """Concatenate the per-image incarta feature CSVs, keeping keys + requested features."""
+    """Concatenate the per-image handcrafted feature CSVs, keeping keys + requested features."""
     files = sorted(glob.glob(str(Path(features_dir) / "*.csv")))
     if not files:
         raise FileNotFoundError(f"no *.csv under {features_dir}")

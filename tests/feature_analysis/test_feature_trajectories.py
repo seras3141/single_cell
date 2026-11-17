@@ -21,7 +21,7 @@ from src.feature_to_mcherry.pre_collapse import (
 
 
 def _rows(well, t, cell, area, z_values):
-    """One incarta-style row per z-slice for a cell."""
+    """One handcrafted-style row per z-slice for a cell."""
     return [
         dict(sample_id=well, timepoint=t, cell_id=cell, z_index=z, area=a, mean_intensity=100.0)
         for z, a in z_values

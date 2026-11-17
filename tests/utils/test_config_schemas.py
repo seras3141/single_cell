@@ -171,7 +171,7 @@ def test_invalid_feature_extraction_method_raises():
         validate_pipeline_config(cfg)
 
 
-@pytest.mark.parametrize("method", ["incarta", "regionprops", "pyradiomics"])
+@pytest.mark.parametrize("method", ["handcrafted", "regionprops", "pyradiomics"])
 def test_valid_feature_extraction_methods(method):
     cfg = PipelineConfig()
     cfg.feature_extraction.method = method

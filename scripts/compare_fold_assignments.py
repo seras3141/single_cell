@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare fold assignments between the radiomics and incarta baselines runs.
+"""Compare fold assignments between the radiomics and handcrafted baselines runs.
 
 Usage:
     uv run scripts/compare_fold_assignments.py [--root results/radiomics_phase6]
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Check that radiomics and incarta baselines used the same folds."
+        description="Check that radiomics and handcrafted baselines used the same folds."
     )
     parser.add_argument("--root", type=Path, default=Path("results/radiomics_phase6"))
     args = parser.parse_args()

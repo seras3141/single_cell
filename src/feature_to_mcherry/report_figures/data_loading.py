@@ -1,4 +1,4 @@
-"""Small aggregation helpers over the raw incarta ``split_data`` feature CSVs.
+"""Small aggregation helpers over the raw handcrafted ``split_data`` feature CSVs.
 
 Used only where a result CSV doesn't already carry the aggregate needed (e.g. mean
 cell area by z-slice) — prefer an existing small result file over these where one

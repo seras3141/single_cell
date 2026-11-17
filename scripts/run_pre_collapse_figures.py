@@ -242,7 +242,7 @@ def _plot_collapse_reason(
 
 
 def _load_experiment(experiment: str, id_column: str) -> tuple:
-    """Features + targets for one experiment, from the canonical incarta/mCherry
+    """Features + targets for one experiment, from the canonical handcrafted/mCherry
     paths."""
     exp_dir = DATA_ROOT / EXP_DIR[experiment]
     feature_dir = (

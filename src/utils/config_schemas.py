@@ -303,8 +303,8 @@ class MorphologyConfig:
     extract_glszm: bool = False
 
 @dataclass
-class IncartaConfig:
-    """Incarta feature extraction configuration."""
+class HandcraftedConfig:
+    """Handcrafted feature extraction configuration."""
     features: Dict[str, bool] = field(default_factory=lambda: {
         "morphology": True,
         "intensity": True,
@@ -315,15 +315,23 @@ class IncartaConfig:
 
 #: Every feature-extraction method name the pipeline, schema and CLI recognise.
 FEATURE_METHODS: Tuple[str, ...] = (
-    "incarta",
+    "handcrafted",
     "regionprops",
     "pyradiomics",
     "scportrait",
 )
 
+#: Older names that configs and scripts may still use, mapped to the current name.
+FEATURE_METHOD_ALIASES: Dict[str, str] = {"incarta": "handcrafted"}
+
 #: Recognised but not usable yet, mapped to the reason given to the user. The
 #: name stays reserved so configs, the CLI and the schema keep accepting it.
 UNAVAILABLE_FEATURE_METHODS: Dict[str, str] = {}
+
+
+def canonical_feature_method(method: str) -> str:
+    """``method`` with an older alias replaced by its current name."""
+    return FEATURE_METHOD_ALIASES.get(method, method)
 
 
 def validate_feature_extraction_n_jobs(n_jobs: Optional[int]) -> None:
@@ -343,6 +351,7 @@ def check_feature_method_available(method: str) -> None:
         ValueError: ``method`` is not in :data:`FEATURE_METHODS`.
         NotImplementedError: ``method`` is reserved but not yet available.
     """
+    method = canonical_feature_method(method)
     if method not in FEATURE_METHODS:
         raise ValueError(
             f"Unsupported feature extraction method: {method!r}; "
@@ -360,7 +369,7 @@ class FeatureExtractionConfig:
     """Feature extraction configuration."""
     n_jobs: int = -1  # -1: all cores; 0 or 1: sequential
 
-    method: str = "incarta"
+    method: str = "handcrafted"
     image_pattern: str = "*_BF.tif"
     mask_pattern: str = "*_pred_mask.tif"
             
@@ -674,6 +683,6 @@ def validate_pipeline_config(config: PipelineConfig) -> None:
     # Reserved-but-unavailable names are accepted here; availability is checked
     # where a run starts (pipeline constructor, CLI), see FEATURE_METHODS.
     valid_methods = list(FEATURE_METHODS)
-    if config.feature_extraction.method not in valid_methods:
+    if canonical_feature_method(config.feature_extraction.method) not in valid_methods:
         raise ValueError(f"Feature extraction method must be one of {valid_methods}, got '{config.feature_extraction.method}'")
     validate_pyradiomics_config(config.feature_extraction.pyradiomics)

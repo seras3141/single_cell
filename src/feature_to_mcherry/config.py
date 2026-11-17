@@ -28,7 +28,7 @@ class FeatureToMcherryConfig:
     ----------
     feature_csv : str
         Path to the per-cell feature CSV (any backend from ``src.feature_extraction``),
-        or a *directory* of per-(well, timepoint, z) feature CSVs (e.g. the incarta
+        or a *directory* of per-(well, timepoint, z) feature CSVs (e.g. the handcrafted
         ``split_data`` layout) — auto-detected via ``Path.is_dir()`` and loaded with
         :func:`data.loaders.load_features_from_directory` instead of
         :func:`data.loaders.load_features`. Required — no default, since there is no
@@ -45,12 +45,12 @@ class FeatureToMcherryConfig:
         by default; ``*.parquet`` for the pyradiomics per-well tables).
     id_column : str
         Name of the per-cell id column in the feature CSV (e.g. ``"instance_id"`` for
-        the regionprops/incarta backends). Renamed to ``cell_id`` internally.
+        the regionprops/handcrafted backends). Renamed to ``cell_id`` internally.
     sample_id_column, timepoint_column, z_index_column : str, optional
         Column names in the feature CSV already carrying ``sample_id``/``timepoint``/
         ``z_index``. Resolution order per field (see
         :func:`data.loaders.load_features`): explicit column here → an already-present
-        column of the canonical name (e.g. the incarta ``split_data`` layout, which
+        column of the canonical name (e.g. the handcrafted ``split_data`` layout, which
         already carries these per row) → derived from the feature CSV's
         ``image_filename`` column (e.g. the regionprops layout) → error.
     target_columns : list[str]

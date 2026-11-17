@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """CLI: feature variation over time (Phase 1) for ONE experiment — mCherry-free.
 
-Loads incarta features, collapses per-z to per-cell, and writes trajectories, drift, and
+Loads handcrafted features, collapses per-z to per-cell, and writes trajectories, drift, and
 divergence-from-DMSO tables + plots. The drift `estimable` verdict comes from the DMSO well's
 pre-collapse timepoint count read from the shared cell-population summary CSV.
 
