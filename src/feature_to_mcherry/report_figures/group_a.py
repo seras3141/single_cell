@@ -5,8 +5,9 @@ MAE-vs-R^2 methodological note."""
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import date
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -19,6 +20,7 @@ from .paths import resolve_experiment_paths
 from .theme import EXPERIMENT_COLORS, ordered_percentiles, save_fig
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 
 def _load_baseline_ladders(config: ReportFiguresConfig) -> Dict[str, pd.DataFrame]:
@@ -103,128 +105,309 @@ def figure_a1(config: ReportFiguresConfig) -> FigureStatus:
     )
 
 
-def _collect_a2_rung(
-    exp: str,
-    rung: str,
-    incarta_csv,
-    scportrait_csv,
-    model_filter,
+_A2_HANDCRAFTED = "handcrafted features"
+_A2_NATIVE = "scPortrait (native masks)"
+_A2_INJECTED = "scPortrait (injected Cellpose masks)"
+_A2_BACKEND_COLORS = {
+    _A2_HANDCRAFTED: "#0072B2",
+    _A2_NATIVE: "#E69F00",
+    _A2_INJECTED: "#CC79A7",
+}
+_A2_PENDING_COLOR = "#EEEEEE"
+_A2_RUNGS = {"ridge": "linear (Ridge)", "gradient_boosting": "nonlinear (boosting)"}
+_A2_TITLE = "Handcrafted features vs scPortrait, linear + nonlinear floor"
+# Same-day files count as pre-fix.
+_MASK_FIX_AUDITED = date(2026, 8, 18)
+
+
+def _predates_mask_fix(path: Path) -> bool:
+    return date.fromtimestamp(path.stat().st_mtime) <= _MASK_FIX_AUDITED
+
+
+def _a2_rows(
+    exp: str, backend: str, floor_csv: Optional[Path], problems: List[str]
 ) -> List[dict]:
-    """One rung's (incarta, scPortrait) rows for experiment ``exp``, or ``[]`` if
-    either side is missing."""
-    if incarta_csv is None or scportrait_csv is None:
+    """``with_suspect`` percentile-target floor rows of one backend, both rungs.
+
+    A CSV that cannot be read, or leaves no rows, adds a ``problems`` entry.
+    """
+    if floor_csv is None:
         return []
-    incarta = pd.read_csv(incarta_csv)
-    scportrait = pd.read_csv(scportrait_csv)
-    rows = []
-    for backend, table in (("incarta", incarta), ("scPortrait", scportrait)):
-        subset = model_filter(table)
-        for _, row in subset.iterrows():
-            rows.append(
-                {
-                    "experiment": exp,
-                    "rung": rung,
-                    "backend": backend,
-                    "target": row["target"],
-                    "r2": row["r2"],
-                }
-            )
-    return rows
+    unreadable = f"{exp}: unreadable {backend} floor_metrics.csv"
+    try:
+        floor = pd.read_csv(floor_csv)
+    except (ValueError, OSError) as error:
+        problems.append(f"{unreadable} ({type(error).__name__})")
+        return []
+    if not {"variant", "model", "target", "r2"} <= set(floor.columns):
+        problems.append(f"{unreadable} (missing columns)")
+        return []
+    floor = floor[(floor["variant"] == "with_suspect") & floor["model"].isin(_A2_RUNGS)]
+    floor = floor[floor["target"].isin(ordered_percentiles(floor["target"].unique()))]
+    floor = floor.assign(r2=pd.to_numeric(floor["r2"], errors="coerce"))
+    floor = floor[np.isfinite(floor["r2"])]
+    if floor.empty:
+        problems.append(f"{exp}: no usable rows in {backend} floor_metrics.csv")
+    return [
+        {
+            "experiment": exp,
+            "rung": _A2_RUNGS[row["model"]],
+            "backend": backend,
+            "learner": row.get("backend", ""),
+            "target": row["target"],
+            "r2": row["r2"],
+        }
+        for _, row in floor.iterrows()
+    ]
+
+
+def _rung_targets(rows: List[dict]) -> set:
+    return {(row["rung"], row["target"]) for row in rows}
+
+
+def _covers_both_rungs(rows: List[dict], required: set) -> bool:
+    covered = _rung_targets(rows)
+    return required <= covered and {rung for rung, _ in covered} == set(
+        _A2_RUNGS.values()
+    )
 
 
 def figure_a2(config: ReportFiguresConfig) -> FigureStatus:
-    """Incarta vs scPortrait, linear (Ridge) AND nonlinear (LightGBM) floor.
+    """Handcrafted features vs scPortrait, linear and nonlinear floor.
 
-    scPortrait's weakness turned out to be its *segmentation*, not its
-    *representation* (see A5) -- so the comparison must show the verdict holds at
-    both rungs, not just the linear one the first pass showed.
+    Both rungs come from each backend's ``floor_metrics.csv``: the
+    ``baseline_ladder.csv`` runs were not redone on the regenerated masks. A pre-fix
+    injected floor is left out even when ``scportrait_injected_pending`` is false.
     """
     rows: List[dict] = []
     missing: List[str] = []
+    problems: List[str] = []
+    injected_notes: List[str] = []
+    injected_absent: List[str] = []
+    injected_incomplete: List[str] = []
+    floors_found = False
     for exp in config.scportrait_experiments:
         paths = resolve_experiment_paths(exp, config)
-
-        ridge_rows = _collect_a2_rung(
-            exp,
-            "Ridge",
-            paths.baseline_ladder_csv,
-            paths.scportrait_baseline_ladder_csv,
-            lambda df: df[df["model"] == "ridge"],
+        floors_found |= (
+            paths.floor_metrics_csv is not None
+            or paths.scportrait_floor_metrics_csv is not None
         )
-        lightgbm_rows = _collect_a2_rung(
-            exp,
-            "LightGBM",
-            paths.floor_metrics_csv,
-            paths.scportrait_floor_metrics_csv,
-            lambda df: df[(df["model"] != "ridge") & (df["variant"] == "with_suspect")],
-        )
-        rows.extend(ridge_rows)
-        rows.extend(lightgbm_rows)
-        if not ridge_rows or not lightgbm_rows:
+        handcrafted = _a2_rows(exp, _A2_HANDCRAFTED, paths.floor_metrics_csv, problems)
+        native = _a2_rows(exp, _A2_NATIVE, paths.scportrait_floor_metrics_csv, problems)
+        required = _rung_targets(handcrafted) | _rung_targets(native)
+        if not (
+            _covers_both_rungs(handcrafted, required)
+            and _covers_both_rungs(native, required)
+        ):
+            missing.append(exp)
+        rows.extend(handcrafted)
+        rows.extend(native)
+        if (
+            config.scportrait_injected_pending
+            or exp not in config.scportrait_injected_experiments
+        ):
+            continue
+        injected_csv = paths.scportrait_injected_floor_metrics_csv
+        floors_found |= injected_csv is not None
+        if injected_csv is None or not injected_csv.is_file():
+            injected_notes.append(f"{exp}: no injected floor")
+            injected_absent.append(exp)
+        elif _predates_mask_fix(injected_csv):
+            injected_notes.append(f"{exp}: injected floor predates the mask fix")
+            injected_absent.append(exp)
+        else:
+            injected = _a2_rows(exp, _A2_INJECTED, injected_csv, problems)
+            rows.extend(injected)
+            if _covers_both_rungs(injected, required):
+                continue
+            if injected:
+                injected_notes.append(f"{exp}: injected floor incomplete")
+                injected_incomplete.append(exp)
+            else:
+                injected_absent.append(exp)
+        if exp not in missing:
             missing.append(exp)
 
-    if not rows:
+    notes = problems + injected_notes
+    pending_note = "Injected-mask rung drawn as pending (scportrait_injected_pending)."
+    pending_requested = config.scportrait_injected_pending and any(
+        exp in config.scportrait_injected_experiments
+        for exp in config.scportrait_experiments
+    )
+    table = pd.DataFrame(
+        rows, columns=["experiment", "rung", "backend", "learner", "target", "r2"]
+    )
+    if table.empty:
         return FigureStatus(
             figure_id="A2",
-            title=(
-                "Handcrafted vs deep features (incarta vs scPortrait), "
-                "linear + nonlinear floor"
-            ),
+            title=_A2_TITLE,
             status="blocked",
             missing=missing,
-            note="No experiment has both an incarta and a scPortrait result, at "
-            "either rung.",
+            note="; ".join(
+                [
+                    (
+                        "No usable floor rows for any scPortrait experiment "
+                        "(with_suspect ridge/gradient_boosting, percentile target, "
+                        "finite R²)"
+                        if floors_found
+                        else "No floor_metrics.csv found for any scPortrait experiment"
+                    )
+                ]
+                + ([pending_note] if pending_requested else [])
+                + notes
+            ),
         )
 
-    table = pd.DataFrame(rows)
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
-    for ax, rung in zip(axes, ("Ridge", "LightGBM")):
-        subset = table[table["rung"] == rung]
+    key_columns = ["experiment", "backend", "rung", "target"]
+    duplicated = table[table.duplicated(key_columns, keep=False)]
+    if not duplicated.empty:
+        keys = sorted(
+            {"/".join(map(str, key)) for key in duplicated[key_columns].values}
+        )
+        notes.append(f"duplicate rows averaged: {', '.join(keys)}")
+    nonlinear = table[table["rung"] == _A2_RUNGS["gradient_boosting"]]
+    learners = sorted(set(nonlinear["learner"].dropna()) - {""})
+    mixed_learners = len(learners) > 1
+    if mixed_learners:
+        notes.append(f"nonlinear rung mixes learners: {', '.join(learners)}")
+
+    drawn_experiments = set(table["experiment"])
+    injected_absent = [exp for exp in injected_absent if exp in drawn_experiments]
+    injected_incomplete = [
+        exp for exp in injected_incomplete if exp in drawn_experiments
+    ]
+    injected_experiments = [
+        exp
+        for exp in config.scportrait_experiments
+        if exp in config.scportrait_injected_experiments and exp in drawn_experiments
+    ]
+    pending = config.scportrait_injected_pending and bool(injected_experiments)
+    if pending:
+        notes.insert(0, pending_note)
+
+    def is_pending(backend: str) -> bool:
+        return pending and backend == _A2_INJECTED
+
+    backends = [_A2_HANDCRAFTED, _A2_NATIVE]
+    if pending or injected_absent or _A2_INJECTED in set(table["backend"]):
+        backends.append(_A2_INJECTED)
+    present = set(zip(table["experiment"], table["target"]))
+    targets = ordered_percentiles(table["target"].unique())
+    groups = [
+        (exp, target)
+        for exp in config.scportrait_experiments
+        for target in targets
+        if (exp, target) in present
+    ]
+    bar_width = 0.8 / len(backends)
+    y_max = max(0.05, float(table["r2"].max()) * 1.15)
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), sharey=True)
+    for ax, rung in zip(axes, _A2_RUNGS.values()):
+        subset = (
+            table[table["rung"] == rung]
+            .groupby(["experiment", "target", "backend"])["r2"]
+            .mean()
+        )
         if subset.empty:
             ax.text(
                 0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes
             )
+        for b_idx, backend in enumerate([] if subset.empty else backends):
+            offset = (b_idx - (len(backends) - 1) / 2) * bar_width
+            for g_idx, (exp, target) in enumerate(groups):
+                x = g_idx + offset
+                key = (exp, target, backend)
+                if is_pending(backend) and exp in injected_experiments:
+                    ax.bar(x, y_max, width=bar_width, color=_A2_PENDING_COLOR)
+                    ax.text(
+                        x,
+                        y_max / 2,
+                        "pending GPU",
+                        rotation=90,
+                        ha="center",
+                        va="center",
+                        fontsize=7,
+                        color="#4D4D4D",
+                    )
+                elif key in subset.index:
+                    value = float(subset.loc[key])
+                    ax.bar(x, value, width=bar_width, color=_A2_BACKEND_COLORS[backend])
+                    ax.text(
+                        x,
+                        value,
+                        f"{value:.2f}",
+                        ha="center",
+                        va="bottom" if value >= 0 else "top",
+                        fontsize=7,
+                    )
+        if subset.empty:
             ax.set_xticks([])
-            ax.set_yticks([])
         else:
-            pivot = subset.pivot_table(
-                index=["experiment", "target"], columns="backend", values="r2"
+            ax.set_xticks(range(len(groups)))
+            ax.set_xticklabels(
+                [f"{exp}\n{target}" for exp, target in groups], rotation=45, ha="right"
             )
-            pivot.index = [f"{exp}\n{target}" for exp, target in pivot.index]
-            pivot.plot(
-                kind="bar", ax=ax, color={"incarta": "#0072B2", "scPortrait": "#E69F00"}
-            )
-            ax.tick_params(axis="x", rotation=45)
+        ax.axhline(0, color="grey", linewidth=0.8)
         ax.set_title(f"{rung} floor")
-        ax.set_ylabel("R²")
-        ax.set_xlabel("")
-    fig.suptitle("Incarta vs scPortrait: linear + nonlinear floor")
-    fig.text(
-        0.5,
-        -0.02,
-        "Verdict holds at both rungs -- scPortrait shows no nonlinear gain. Cell "
-        "populations/targets differ between backends (scPortrait re-extracts its "
-        "target against its own masks).",
-        ha="center",
-        fontsize=8,
-        style="italic",
+    axes[0].set_ylabel("R²")
+    handles = [
+        Patch(color=_A2_PENDING_COLOR if is_pending(b) else _A2_BACKEND_COLORS[b])
+        for b in backends
+    ]
+
+    def legend_label(backend: str) -> str:
+        if is_pending(backend):
+            return f"{backend} -- pending GPU re-featurization"
+        if backend != _A2_INJECTED:
+            return backend
+        gaps = []
+        if injected_absent:
+            gaps.append(f"not plotted for {', '.join(injected_absent)}")
+        if injected_incomplete:
+            gaps.append(f"incomplete for {', '.join(injected_incomplete)}")
+        return f"{backend} -- {'; '.join(gaps)}" if gaps else backend
+
+    r2_min = float(table["r2"].min())
+    y_min = 0.0 if r2_min >= 0 else r2_min - 0.2 * (y_max - r2_min)
+    axes[0].set_ylim(y_min, y_max)
+    labels = [legend_label(b) for b in backends]
+    fig.suptitle(_A2_TITLE, y=0.99)
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        ncol=len(backends),
+        bbox_to_anchor=(0.5, 0.94),
     )
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0.05, 1, 0.9))
+    if _A2_NATIVE in set(table["backend"]):
+        fig.text(
+            0.5,
+            0.0,
+            "scPortrait on native masks re-extracts its target against its own masks, "
+            "so its cell population and target differ from the other bars.",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            style="italic",
+        )
 
     written = save_fig(
         fig, config.output_dir, "A2_incarta_vs_scportrait", config.formats, config.dpi
     )
 
-    status = "generated" if not missing else "partial"
     return FigureStatus(
         figure_id="A2",
-        title=(
-            "Handcrafted vs deep features (incarta vs scPortrait), "
-            "linear + nonlinear floor"
+        title=_A2_TITLE,
+        status=(
+            "partial"
+            if missing or not duplicated.empty or mixed_learners
+            else "generated"
         ),
-        status=status,
         output_paths=[str(p) for p in written],
         missing=missing,
+        note="; ".join(notes),
     )
 
 

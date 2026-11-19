@@ -21,6 +21,7 @@ _PERCENTILE_TARGET_RE = re.compile(r"(?:z_)?percentile_[0-9]+")
 DEFAULT_EXPERIMENTS: List[str] = ["HD1509", "SA110", "HD1883", "Ew2-1", "Ew2-2"]
 DEFAULT_SCPORTRAIT_EXPERIMENTS: List[str] = ["HD1509", "SA110", "Ew2-2"]
 DEFAULT_A5_EXPERIMENTS: List[str] = ["HD1509", "SA110"]
+DEFAULT_SCPORTRAIT_INJECTED_EXPERIMENTS: List[str] = ["HD1509"]
 DEFAULT_COHORT_SIZES: Dict[str, int] = {
     "HD1509": 851800,
     "SA110": 439016,
@@ -47,7 +48,12 @@ class ReportFiguresConfig:
     scportrait_injected_pending : bool
         When true, A2 draws the injected-mask scPortrait rung as a "pending GPU
         re-featurization" placeholder instead of reading its result: the only
-        injected run used the uint8-wrapped Cellpose masks.
+        injected run used the uint8-wrapped Cellpose masks. When false, A2 still
+        leaves out an injected floor written on or before the mask-fix re-audit
+        (``group_a._MASK_FIX_AUDITED``) and reports the experiment as partial.
+    scportrait_injected_experiments : list[str]
+        Experiments with an injected-mask scPortrait run; only these get the
+        injected rung in A2.
     signal_location_target : str
         mCherry target shown in A7 (nested and per-timepoint R^2).
     a5_area_p90_dir : str
@@ -80,6 +86,9 @@ class ReportFiguresConfig:
         default_factory=lambda: list(DEFAULT_A5_EXPERIMENTS)
     )
     scportrait_injected_pending: bool = True
+    scportrait_injected_experiments: List[str] = field(
+        default_factory=lambda: list(DEFAULT_SCPORTRAIT_INJECTED_EXPERIMENTS)
+    )
     signal_location_target: str = "percentile_90"
     a5_area_p90_dir: str = "data/scportrait_diagnostics_area_p90"
     cohort_sizes: Dict[str, int] = field(

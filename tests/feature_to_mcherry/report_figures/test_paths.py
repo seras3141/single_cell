@@ -48,15 +48,18 @@ def test_resolves_hyphenated_experiment_scportrait_dir_folds_hyphen_to_underscor
     # Regression test: real HPC dir is feature_to_mcherry_ew2_2_scportrait (hyphen
     # folded to underscore too), not feature_to_mcherry_ew2-2_scportrait.
     config = _make_config(tmp_path)
-    scportrait_dir = tmp_path / "feature_to_mcherry_ew2_2_scportrait"
-    scportrait_dir.mkdir(parents=True)
-    (scportrait_dir / "baseline_ladder.csv").write_text("model,target\n")
+    floor = (
+        tmp_path
+        / "feature_to_mcherry_ew2_2_scportrait"
+        / "morphology_informativeness"
+        / "floor_metrics.csv"
+    )
+    floor.parent.mkdir(parents=True)
+    floor.write_text("variant\n")
 
     paths = resolve_experiment_paths("Ew2-2", config)
 
-    assert (
-        paths.scportrait_baseline_ladder_csv == scportrait_dir / "baseline_ladder.csv"
-    )
+    assert paths.scportrait_floor_metrics_csv == floor
 
 
 def test_resolves_scportrait_floor_metrics_csv(tmp_path: Path) -> None:
@@ -93,7 +96,6 @@ def test_missing_experiment_returns_none_fields_not_exception(tmp_path: Path) ->
     assert paths.baseline_ladder_csv is None
     assert set(missing_fields(paths)) == {
         "baseline_ladder_csv",
-        "scportrait_baseline_ladder_csv",
         "scportrait_floor_metrics_csv",
         "scportrait_injected_floor_metrics_csv",
         "informativeness_dir",
@@ -203,13 +205,18 @@ def test_resolves_underscore_naming_convention_case_insensitively(
 
 def test_resolves_scportrait_dir_case_insensitively(tmp_path: Path) -> None:
     config = _make_config(tmp_path)
-    exp_dir = tmp_path / "feature_to_mcherry_hd1509_scportrait"
-    exp_dir.mkdir(parents=True)
-    (exp_dir / "baseline_ladder.csv").write_text("model,target\n")
+    floor = (
+        tmp_path
+        / "feature_to_mcherry_HD1509_Scportrait"
+        / "morphology_informativeness"
+        / "floor_metrics.csv"
+    )
+    floor.parent.mkdir(parents=True)
+    floor.write_text("variant\n")
 
     paths = resolve_experiment_paths("HD1509", config)
 
-    assert paths.scportrait_baseline_ladder_csv == exp_dir / "baseline_ladder.csv"
+    assert paths.scportrait_floor_metrics_csv == floor
 
 
 def test_resolves_nested_per_experiment_convention(tmp_path: Path) -> None:

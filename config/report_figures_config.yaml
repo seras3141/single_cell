@@ -12,6 +12,7 @@ report_figures:
   scportrait_experiments: [HD1509, SA110, Ew2-2]
   a5_experiments: [HD1509, SA110]
   scportrait_injected_pending: true
+  scportrait_injected_experiments: [HD1509]
   signal_location_target: percentile_90
   a5_area_p90_dir: data/scportrait_diagnostics_area_p90
   cohort_sizes:

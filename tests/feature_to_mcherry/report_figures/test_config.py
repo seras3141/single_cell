@@ -82,3 +82,7 @@ def test_accepts_raw_and_normalized_signal_location_targets(target: str) -> None
 def test_rejects_malformed_signal_location_target(target: str) -> None:
     with pytest.raises(ValueError, match="signal_location_target"):
         ReportFiguresConfig(signal_location_target=target)
+
+
+def test_injected_rung_defaults_to_hd1509_only() -> None:
+    assert ReportFiguresConfig().scportrait_injected_experiments == ["HD1509"]
