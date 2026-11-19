@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from matplotlib.text import Text
 
 from src.feature_to_mcherry.report_figures import group_a
@@ -1288,3 +1289,738 @@ def test_figure_a1_blocks_when_no_percentile_targets(tmp_path: Path) -> None:
 
     assert status.status == "blocked"
     assert "No percentile targets" in (status.note or "")
+
+
+def _write_decomposition(
+    config: ReportFiguresConfig, exp: str, nested: dict, curve: dict
+) -> None:
+    decomposition = Path(config.feature_to_mcherry_dir) / exp / "decomposition"
+    decomposition.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [
+            {"target": target, "level": level, "r2": r2, "n": 100}
+            for target in ("percentile_75", "percentile_90")
+            for level, r2 in nested.items()
+        ]
+    ).to_csv(decomposition / "nested_r2.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "target": target,
+                "timepoint": timepoint,
+                "r2": r2,
+                "n_cells": 50,
+                "n_wells": 9,
+            }
+            for target in ("percentile_75", "percentile_90")
+            for timepoint, r2 in curve.items()
+        ]
+    ).to_csv(decomposition / "r2_by_timepoint.csv", index=False)
+
+
+def test_figure_a7_plots_nested_levels_and_timepoint_curve(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["HD1509", "SA110"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: 0.2, 11: 0.28, 351: 0.1},
+    )
+    _write_decomposition(
+        config,
+        "SA110",
+        {"pooled(5fold)": 0.18, "within_timepoint": 0.07, "within_well_timepoint": 0.1},
+        {1: -0.1, 11: 0.05, 351: -0.2},
+    )
+    captured = _capture_figures(monkeypatch)
+
+    status = group_a.figure_a7(config)
+
+    assert status.status == "generated"
+    assert Path(status.output_paths[0]).exists()
+    ax_levels, ax_time = captured[0].axes
+    assert {"0.27", "0.26", "0.25", "0.18", "0.07", "0.10"} <= {
+        text.get_text() for text in ax_levels.texts
+    }
+    sa110_line = [line for line in ax_time.lines if line.get_label() == "SA110"][0]
+    assert list(sa110_line.get_xdata()) == pytest.approx([0.0, 10 * 72 / 350, 72.0])
+    assert list(sa110_line.get_ydata()) == pytest.approx([-0.1, 0.05, -0.2])
+
+
+def test_figure_a7_clips_extreme_negative_r2_and_reports_minimum(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["Ew2-2"])
+    _write_decomposition(
+        config,
+        "Ew2-2",
+        {"pooled(5fold)": 0.2, "within_timepoint": 0.14, "within_well_timepoint": 0.13},
+        {1: 0.1, 11: -4.07, 21: -0.5},
+    )
+    captured = _capture_figures(monkeypatch)
+
+    group_a.figure_a7(config)
+
+    ax_time = captured[0].axes[1]
+    line = [line for line in ax_time.lines if line.get_label() == "Ew2-2"][0]
+    assert list(line.get_ydata()) == pytest.approx([0.1, -1.0, -0.5])
+    assert any("Ew2-2 -4.07" in text.get_text() for text in ax_time.texts)
+
+
+def test_figure_a7_partial_when_experiment_lacks_decomposition(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["HD1509", "SA110"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: 0.2, 11: 0.28},
+    )
+
+    status = group_a.figure_a7(config)
+
+    assert status.status == "partial"
+    assert status.missing == ["SA110"]
+
+
+def test_figure_a7_blocked_when_target_absent(tmp_path: Path) -> None:
+    config = replace(
+        _make_config(tmp_path, ["HD1509"]), signal_location_target="percentile_95"
+    )
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: 0.2},
+    )
+
+    status = group_a.figure_a7(config)
+
+    assert status.status == "blocked"
+
+
+def test_figure_a7_accepts_the_plain_pooled_level_name(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {"pooled": 0.27, "within_timepoint": 0.26, "within_well_timepoint": 0.25},
+        {1: 0.2, 11: 0.28},
+    )
+    captured = _capture_figures(monkeypatch)
+
+    status = group_a.figure_a7(config)
+
+    assert status.status == "generated"
+    labels = {text.get_text() for text in captured[0].axes[0].texts}
+    assert {"0.27", "0.26", "0.25"} <= labels
+
+
+def test_figure_a7_partial_and_noted_when_a_nested_level_is_missing(
+    tmp_path: Path,
+) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {"within_timepoint": 0.26, "within_well_timepoint": 0.25},
+        {1: 0.2, 11: 0.28},
+    )
+
+    status = group_a.figure_a7(config)
+
+    assert status.status == "partial"
+    assert status.note == "HD1509: missing nested levels pooled"
+
+
+def test_figure_a7_averages_duplicate_nested_levels(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: 0.2},
+    )
+    nested_csv = (
+        Path(config.feature_to_mcherry_dir)
+        / "HD1509"
+        / "decomposition"
+        / "nested_r2.csv"
+    )
+    table = pd.read_csv(nested_csv)
+    duplicate = table[table["level"] == "pooled(5fold)"].assign(r2=0.31)
+    pd.concat([table, duplicate]).to_csv(nested_csv, index=False)
+    captured = _capture_figures(monkeypatch)
+
+    status = group_a.figure_a7(config)
+
+    assert "0.29" in {text.get_text() for text in captured[0].axes[0].texts}
+    assert status.note == "HD1509: duplicate nested levels averaged"
+
+
+def test_figure_a7_reports_the_minimum_ignoring_nan_timepoints(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["Ew2-2"])
+    _write_decomposition(
+        config,
+        "Ew2-2",
+        {"pooled(5fold)": 0.2, "within_timepoint": 0.14, "within_well_timepoint": 0.13},
+        {1: float("nan"), 11: -4.07},
+    )
+    captured = _capture_figures(monkeypatch)
+
+    group_a.figure_a7(config)
+
+    assert any("Ew2-2 -4.07" in text.get_text() for text in captured[0].axes[1].texts)
+
+
+def test_figure_a7_notes_why_an_experiment_is_missing(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["HD1509", "SA110"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: 0.2},
+    )
+
+    status = group_a.figure_a7(config)
+
+    assert status.note == "SA110: no decomposition dir"
+
+
+def test_figure_a7_plots_only_the_configured_target(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: 0.2},
+    )
+    nested_csv = (
+        Path(config.feature_to_mcherry_dir)
+        / "HD1509"
+        / "decomposition"
+        / "nested_r2.csv"
+    )
+    table = pd.read_csv(nested_csv)
+    table.loc[table["target"] == "percentile_75", "r2"] = 0.9
+    table.to_csv(nested_csv, index=False)
+    captured = _capture_figures(monkeypatch)
+
+    group_a.figure_a7(config)
+
+    labels = {text.get_text() for text in captured[0].axes[0].texts}
+    assert {"0.27", "0.26", "0.25"} <= labels
+    assert "0.90" not in labels
+
+
+def test_figure_a7_accepts_any_fold_count_in_the_pooled_label(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(3fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: 0.2},
+    )
+
+    status = group_a.figure_a7(config)
+
+    assert status.status == "generated"
+
+
+def test_figure_a7_averages_duplicate_timepoints(tmp_path: Path, monkeypatch) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: 0.2, 11: 0.3},
+    )
+    curve_csv = (
+        Path(config.feature_to_mcherry_dir)
+        / "HD1509"
+        / "decomposition"
+        / "r2_by_timepoint.csv"
+    )
+    table = pd.read_csv(curve_csv)
+    pd.concat([table, table.assign(r2=table["r2"] + 0.1)]).to_csv(
+        curve_csv, index=False
+    )
+    captured = _capture_figures(monkeypatch)
+
+    status = group_a.figure_a7(config)
+
+    line = [line for line in captured[0].axes[1].lines if line.get_label() == "HD1509"][
+        0
+    ]
+    assert list(line.get_ydata()) == pytest.approx([0.25, 0.35])
+    assert status.note == "HD1509: duplicate timepoints averaged"
+
+
+def test_figure_a7_skips_an_unreadable_decomposition_table(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["HD1509", "SA110"])
+    for exp in ("HD1509", "SA110"):
+        _write_decomposition(
+            config,
+            exp,
+            {
+                "pooled(5fold)": 0.27,
+                "within_timepoint": 0.26,
+                "within_well_timepoint": 0.25,
+            },
+            {1: 0.2},
+        )
+    (
+        Path(config.feature_to_mcherry_dir)
+        / "SA110"
+        / "decomposition"
+        / "nested_r2.csv"
+    ).write_text("")
+
+    status = group_a.figure_a7(config)
+
+    assert status.status == "partial"
+    assert status.note == "SA110: unreadable decomposition table (EmptyDataError)"
+
+
+def test_figure_a7_clipped_markers_share_their_line_colour(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["HD1509", "UNCOLOURED"])
+    for exp in ("HD1509", "UNCOLOURED"):
+        _write_decomposition(
+            config,
+            exp,
+            {
+                "pooled(5fold)": 0.2,
+                "within_timepoint": 0.1,
+                "within_well_timepoint": 0.1,
+            },
+            {1: 0.1, 11: -3.0},
+        )
+    captured = _capture_figures(monkeypatch)
+
+    group_a.figure_a7(config)
+
+    lines = captured[0].axes[1].lines
+    uncoloured = [line for line in lines if line.get_label() == "UNCOLOURED"][0]
+    markers = lines[lines.index(uncoloured) + 1]
+    assert markers.get_color() == uncoloured.get_color()
+
+
+def test_figure_a7_shades_negative_band_only_for_negative_values(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: 0.2, 11: 0.3},
+    )
+    captured = _capture_figures(monkeypatch)
+
+    group_a.figure_a7(config)
+
+    assert len(captured[0].axes[1].patches) == 0
+
+
+def test_figure_a7_leaves_room_below_clipped_markers(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["Ew2-2"])
+    _write_decomposition(
+        config,
+        "Ew2-2",
+        {"pooled(5fold)": 0.2, "within_timepoint": 0.14, "within_well_timepoint": 0.13},
+        {1: 0.1, 11: -4.07},
+    )
+    captured = _capture_figures(monkeypatch)
+
+    group_a.figure_a7(config)
+
+    assert captured[0].axes[1].get_ylim()[0] <= -1.25
+
+
+def test_figure_a7_uses_grey_levels_distinct_from_culture_colours() -> None:
+    from src.feature_to_mcherry.report_figures.theme import EXPERIMENT_COLORS
+
+    assert not set(group_a._A7_LEVEL_COLORS) & set(EXPERIMENT_COLORS.values())
+
+
+def test_figure_a7_leaves_out_the_pooled_bar_for_two_pooled_labels(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled": 0.2,
+            "pooled(5fold)": 0.3,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.21,
+        },
+        {1: 0.2},
+    )
+    captured = _capture_figures(monkeypatch)
+
+    status = group_a.figure_a7(config)
+
+    labels = {text.get_text() for text in captured[0].axes[0].texts}
+    assert "0.25" not in labels
+    assert status.status == "partial"
+    assert status.note == (
+        "HD1509: pooled bar left out, several pooled levels: pooled, pooled(5fold)"
+    )
+
+
+def test_figure_a7_treats_a_nan_level_as_missing(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": float("nan"),
+        },
+        {1: 0.2},
+    )
+
+    status = group_a.figure_a7(config)
+
+    assert status.status == "partial"
+    assert status.note == "HD1509: missing nested levels within_well_timepoint"
+
+
+def test_figure_a7_notes_duplicates_alongside_two_pooled_labels(
+    tmp_path: Path,
+) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled": 0.2,
+            "pooled(5fold)": 0.3,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.21,
+        },
+        {1: 0.2},
+    )
+    nested_csv = (
+        Path(config.feature_to_mcherry_dir)
+        / "HD1509"
+        / "decomposition"
+        / "nested_r2.csv"
+    )
+    table = pd.read_csv(nested_csv)
+    pd.concat([table, table[table["level"] == "within_timepoint"]]).to_csv(
+        nested_csv, index=False
+    )
+
+    status = group_a.figure_a7(config)
+
+    assert "HD1509: duplicate nested levels averaged" in status.note
+
+
+def test_figure_a7_skips_non_numeric_curve_values(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: 0.2, 11: 0.3},
+    )
+    curve_csv = (
+        Path(config.feature_to_mcherry_dir)
+        / "HD1509"
+        / "decomposition"
+        / "r2_by_timepoint.csv"
+    )
+    table = pd.read_csv(curve_csv)
+    table["r2"] = table["r2"].astype(object)
+    table.loc[table["target"] == "percentile_90", "r2"] = ["r2", 0.3]
+    table.to_csv(curve_csv, index=False)
+
+    status = group_a.figure_a7(config)
+
+    assert status.status == "generated"
+
+
+def test_figure_a7_marks_an_all_nan_curve_missing(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: float("nan"), 11: float("nan")},
+    )
+
+    status = group_a.figure_a7(config)
+
+    assert status.status == "blocked"
+    assert "HD1509: no finite percentile_90 rows in r2_by_timepoint.csv" in status.note
+
+
+def test_figure_a7_leaves_headroom_for_the_level_legend(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {"pooled(5fold)": 0.3, "within_timepoint": 0.26, "within_well_timepoint": 0.25},
+        {1: 0.2},
+    )
+    captured = _capture_figures(monkeypatch)
+
+    group_a.figure_a7(config)
+
+    assert captured[0].axes[0].get_ylim()[1] >= 0.39
+
+
+def test_figure_a7_places_the_clip_note_at_the_top(tmp_path: Path, monkeypatch) -> None:
+    config = _make_config(tmp_path, ["Ew2-2"])
+    _write_decomposition(
+        config,
+        "Ew2-2",
+        {"pooled(5fold)": 0.2, "within_timepoint": 0.14, "within_well_timepoint": 0.13},
+        {1: 0.1, 11: -1.04},
+    )
+    captured = _capture_figures(monkeypatch)
+
+    group_a.figure_a7(config)
+
+    note = [t for t in captured[0].axes[1].texts if "clipped" in t.get_text()][0]
+    assert note.get_position()[1] > 0.9
+    assert "Ew2-2 -1.04" in note.get_text()
+
+
+def test_figure_a7_treats_an_infinite_level_as_missing(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": float("-inf"),
+        },
+        {1: 0.2},
+    )
+
+    status = group_a.figure_a7(config)
+
+    assert status.status == "partial"
+    assert status.note == "HD1509: missing nested levels within_well_timepoint"
+
+
+def test_figure_a7_headroom_scales_with_the_axis_range(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": -2.0,
+        },
+        {1: 0.2},
+    )
+    captured = _capture_figures(monkeypatch)
+
+    group_a.figure_a7(config)
+
+    bottom, top = captured[0].axes[0].get_ylim()
+    assert top - 0.27 >= 0.25 * (top - bottom)
+
+
+def test_figure_a7_names_the_empty_nested_table(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: 0.2},
+    )
+    nested_csv = (
+        Path(config.feature_to_mcherry_dir)
+        / "HD1509"
+        / "decomposition"
+        / "nested_r2.csv"
+    )
+    table = pd.read_csv(nested_csv)
+    table[table["target"] != "percentile_90"].to_csv(nested_csv, index=False)
+
+    status = group_a.figure_a7(config)
+
+    assert "HD1509: no finite percentile_90 rows in nested_r2.csv" in status.note
+
+
+def test_figure_a7_notes_dropped_timepoint_rows(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: float("nan"), 11: 0.3},
+    )
+
+    status = group_a.figure_a7(config)
+
+    assert status.note == "HD1509: 1 unusable timepoint rows dropped"
+
+
+def test_figure_a7_leaves_headroom_above_the_curves(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: -0.2, 11: 0.3},
+    )
+    captured = _capture_figures(monkeypatch)
+
+    group_a.figure_a7(config)
+
+    bottom, top = captured[0].axes[1].get_ylim()
+    assert top - 0.3 >= 0.15 * (top - bottom)
+
+
+def test_figure_a7_marks_averaged_duplicates_partial(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+        },
+        {1: 0.2, 11: 0.3},
+    )
+    curve_csv = (
+        Path(config.feature_to_mcherry_dir)
+        / "HD1509"
+        / "decomposition"
+        / "r2_by_timepoint.csv"
+    )
+    table = pd.read_csv(curve_csv)
+    pd.concat([table, table]).to_csv(curve_csv, index=False)
+
+    status = group_a.figure_a7(config)
+
+    assert status.status == "partial"
+    assert status.missing == []
+
+
+def test_figure_a7_notes_ignored_nested_levels(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": 0.25,
+            "within_well": 0.2,
+        },
+        {1: 0.2},
+    )
+
+    status = group_a.figure_a7(config)
+
+    assert status.note == "HD1509: ignored nested levels within_well"
+
+
+def test_figure_a7_puts_negative_level_labels_below_the_bar(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _make_config(tmp_path, ["HD1509"])
+    _write_decomposition(
+        config,
+        "HD1509",
+        {
+            "pooled(5fold)": 0.27,
+            "within_timepoint": 0.26,
+            "within_well_timepoint": -0.15,
+        },
+        {1: 0.2},
+    )
+    captured = _capture_figures(monkeypatch)
+
+    group_a.figure_a7(config)
+
+    label = [t for t in captured[0].axes[0].texts if t.get_text() == "-0.15"][0]
+    assert label.get_position()[1] == pytest.approx(-0.15)
+    assert label.get_va() == "top"

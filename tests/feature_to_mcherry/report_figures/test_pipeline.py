@@ -24,7 +24,7 @@ def _make_config(tmp_path: Path) -> ReportFiguresConfig:
     )
 
 
-def test_run_covers_all_eighteen_brief_figures() -> None:
+def test_run_covers_all_brief_figures() -> None:
     assert set(FIGURE_FUNCTIONS) == {
         "A1",
         "A2",
@@ -32,6 +32,7 @@ def test_run_covers_all_eighteen_brief_figures() -> None:
         "A4",
         "A5",
         "A6",
+        "A7",
         "B1",
         "B2",
         "B3",

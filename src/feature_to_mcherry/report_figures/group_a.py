@@ -1,4 +1,4 @@
-"""Group A — headline figures (A1-A6): the report's central R^2 results, the
+"""Group A — headline figures (A1-A7): the report's central R^2 results, the
 handcrafted-vs-deep-feature comparison, the segmentation diagnosis, and the
 MAE-vs-R^2 methodological note."""
 
@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
+from ..dataset_design_figures import TI_TO_HOURS
 from .a5_paths import MASK_SOURCES, resolve_area_p90_csv
 from .config import ReportFiguresConfig
 from .manifest import FigureStatus
@@ -843,4 +844,224 @@ def figure_a6(config: ReportFiguresConfig) -> FigureStatus:
         status=status,
         output_paths=[str(p) for p in written],
         missing=missing,
+    )
+
+
+_A7_LEVELS = {
+    "pooled": "pooled",
+    "within_timepoint": "within timepoint",
+    "within_well_timepoint": "within (well, timepoint)",
+}
+_A7_POOLED_PATTERN = r"pooled(\([0-9]+fold\))?"
+_A7_LEVEL_COLORS = ["#4D4D4D", "#8C8C8C", "#C7C7C7"]
+_A7_R2_FLOOR = -1.0
+_A7_TITLE = "Signal location - nested R² and R² by timepoint"
+
+
+def figure_a7(config: ReportFiguresConfig) -> FigureStatus:
+    """Where the feature->mCherry signal lives: pooled vs within-timepoint vs
+    within-(well, timepoint) R^2 per experiment, and within-timepoint R^2 over time.
+
+    Reads ``<ftm>/<exp>/decomposition/{nested_r2,r2_by_timepoint}.csv``, not the
+    ``evaluation.nested_r2`` output, which has no per-timepoint curve.
+    """
+    target = config.signal_location_target
+    nested: Dict[str, pd.Series] = {}
+    by_timepoint: Dict[str, pd.DataFrame] = {}
+    missing: List[str] = []
+    notes: List[str] = []
+    averaged = False
+    for exp in config.experiments:
+        decomposition_dir = resolve_experiment_paths(exp, config).decomposition_dir
+        if decomposition_dir is None:
+            missing.append(exp)
+            notes.append(f"{exp}: no decomposition dir")
+            continue
+        nested_csv = decomposition_dir / "nested_r2.csv"
+        curve_csv = decomposition_dir / "r2_by_timepoint.csv"
+        absent = [csv.name for csv in (nested_csv, curve_csv) if not csv.exists()]
+        if absent:
+            missing.append(exp)
+            notes.append(f"{exp}: missing {', '.join(absent)}")
+            continue
+        try:
+            nested_table = pd.read_csv(nested_csv)
+            curve_table = pd.read_csv(curve_csv)
+        except (ValueError, OSError) as error:
+            missing.append(exp)
+            notes.append(
+                f"{exp}: unreadable decomposition table ({type(error).__name__})"
+            )
+            continue
+        if not (
+            {"target", "level", "r2"} <= set(nested_table.columns)
+            and {"target", "timepoint", "r2"} <= set(curve_table.columns)
+        ):
+            missing.append(exp)
+            notes.append(f"{exp}: decomposition table missing columns")
+            continue
+        nested_table = nested_table[nested_table["target"] == target].assign(
+            r2=lambda table: pd.to_numeric(table["r2"], errors="coerce")
+        )
+        nested_table = nested_table[np.isfinite(nested_table["r2"])]
+        curve_table = curve_table[curve_table["target"] == target].assign(
+            r2=lambda table: pd.to_numeric(table["r2"], errors="coerce"),
+            timepoint=lambda table: pd.to_numeric(table["timepoint"], errors="coerce"),
+        )
+        usable = curve_table["timepoint"].notna() & np.isfinite(curve_table["r2"])
+        if not usable.all() and usable.any():
+            notes.append(
+                f"{exp}: {int((~usable).sum())} unusable timepoint rows dropped"
+            )
+        curve_table = curve_table[usable]
+        if nested_table.empty:
+            missing.append(exp)
+            notes.append(f"{exp}: no finite {target} rows in nested_r2.csv")
+            continue
+        if curve_table.empty:
+            missing.append(exp)
+            notes.append(f"{exp}: no finite {target} rows in r2_by_timepoint.csv")
+            continue
+        raw_levels = nested_table["level"].astype(str)
+        is_pooled = raw_levels.str.fullmatch(_A7_POOLED_PATTERN)
+        levels = raw_levels.where(~is_pooled, "pooled")
+        pooled_labels = sorted(set(raw_levels[is_pooled]))
+        several_pooled = len(pooled_labels) > 1
+        if several_pooled:
+            notes.append(
+                f"{exp}: pooled bar left out, several pooled levels: "
+                + ", ".join(pooled_labels)
+            )
+            nested_table, levels = nested_table[~is_pooled], levels[~is_pooled]
+        if levels.duplicated().any():
+            notes.append(f"{exp}: duplicate nested levels averaged")
+            averaged = True
+        ignored_levels = sorted(set(levels) - set(_A7_LEVELS))
+        if ignored_levels:
+            notes.append(f"{exp}: ignored nested levels {', '.join(ignored_levels)}")
+        nested[exp] = nested_table.groupby(levels)["r2"].mean()
+        absent_levels = [
+            level
+            for level in _A7_LEVELS
+            if pd.isna(nested[exp].get(level))
+            and not (several_pooled and level == "pooled")
+        ]
+        if absent_levels:
+            notes.append(f"{exp}: missing nested levels {', '.join(absent_levels)}")
+        if several_pooled or absent_levels:
+            missing.append(exp)
+        if curve_table["timepoint"].duplicated().any():
+            notes.append(f"{exp}: duplicate timepoints averaged")
+            averaged = True
+        by_timepoint[exp] = curve_table.groupby("timepoint", as_index=False)[
+            "r2"
+        ].mean()
+
+    if not nested:
+        return FigureStatus(
+            figure_id="A7",
+            title=_A7_TITLE,
+            status="blocked",
+            missing=missing,
+            note="; ".join(
+                [f"No decomposition tables with target {target!r} for any experiment"]
+                + notes
+            ),
+        )
+
+    experiments = list(nested)
+    fig, (ax_levels, ax_time) = plt.subplots(
+        1, 2, figsize=(14, 4.8), gridspec_kw={"width_ratios": [1, 1.4]}
+    )
+    bar_width = 0.8 / len(_A7_LEVELS)
+    for l_idx, (level, label) in enumerate(_A7_LEVELS.items()):
+        offset = (l_idx - (len(_A7_LEVELS) - 1) / 2) * bar_width
+        values = [nested[exp].get(level, np.nan) for exp in experiments]
+        positions = np.arange(len(experiments)) + offset
+        ax_levels.bar(
+            positions,
+            values,
+            width=bar_width,
+            color=_A7_LEVEL_COLORS[l_idx],
+            label=label,
+        )
+        for x, value in zip(positions, values):
+            if pd.notna(value):
+                ax_levels.text(
+                    x,
+                    value,
+                    f"{value:.2f}",
+                    ha="center",
+                    va="bottom" if value >= 0 else "top",
+                    fontsize=7,
+                )
+    ax_levels.set_xticks(range(len(experiments)))
+    ax_levels.set_xticklabels(experiments)
+    ax_levels.axhline(0, color="grey", linewidth=0.8)
+    ax_levels.set_ylabel("R² (grouped-by-well out-of-fold)")
+    ax_levels.set_title("(a) nested R²")
+    bottom, top = ax_levels.get_ylim()
+    ax_levels.set_ylim(bottom, max(top, 0.0) + 0.3 * (top - bottom))
+    ax_levels.legend(fontsize=8, loc="upper right")
+
+    clipped_minima: Dict[str, float] = {}
+    any_negative = False
+    for exp in experiments:
+        curve = by_timepoint[exp]
+        hours = (curve["timepoint"].to_numpy(dtype=float) - 1) * TI_TO_HOURS
+        r2 = curve["r2"].to_numpy(dtype=float)
+        (line,) = ax_time.plot(
+            hours,
+            np.maximum(r2, _A7_R2_FLOOR),
+            marker="o",
+            markersize=3,
+            color=EXPERIMENT_COLORS.get(exp),
+            label=exp,
+        )
+        any_negative = any_negative or bool(np.nanmin(r2) < 0)
+        clipped = r2 < _A7_R2_FLOOR
+        if clipped.any():
+            clipped_minima[exp] = float(np.nanmin(r2))
+            ax_time.plot(
+                hours[clipped],
+                np.full(clipped.sum(), _A7_R2_FLOOR),
+                "v",
+                markersize=7,
+                color=line.get_color(),
+            )
+    ax_time.axhline(0, color="grey", linewidth=0.8)
+    bottom, top = ax_time.get_ylim()
+    if clipped_minima:
+        bottom = min(bottom, _A7_R2_FLOOR - 0.25)
+    if any_negative:
+        ax_time.axhspan(bottom, 0, color="firebrick", alpha=0.08)
+    ax_time.set_ylim(bottom, top + 0.2 * (top - bottom))
+    if clipped_minima:
+        ax_time.text(
+            0.01,
+            0.98,
+            f"▼ clipped at R² = {_A7_R2_FLOOR:g}; minima:\n"
+            + "\n".join(f"{exp} {value:.2f}" for exp, value in clipped_minima.items()),
+            transform=ax_time.transAxes,
+            va="top",
+            fontsize=8,
+            color="#4D4D4D",
+        )
+    ax_time.set_xlabel("time (h)")
+    ax_time.set_ylabel("within-timepoint R²")
+    ax_time.set_title("(b) R² by timepoint")
+    ax_time.legend(fontsize=8, loc="upper right")
+    fig.suptitle(f"Where the signal lives ({target})")
+    fig.tight_layout()
+
+    written = save_fig(
+        fig, config.output_dir, "A7_signal_location", config.formats, config.dpi
+    )
+    return FigureStatus(
+        figure_id="A7",
+        title=_A7_TITLE,
+        status="partial" if missing or averaged else "generated",
+        output_paths=[str(p) for p in written],
+        missing=missing,
+        note="; ".join(notes),
     )
