@@ -17,6 +17,7 @@ from .paths import resolve_experiment_paths
 from .theme import EXPERIMENT_COLORS, ordered_percentiles, save_fig
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 
 def figure_b1(config: ReportFiguresConfig) -> FigureStatus:
@@ -61,6 +62,9 @@ def figure_b1(config: ReportFiguresConfig) -> FigureStatus:
         note="One heatmap per experiment (150 dpi PNG + HTML, via the reused "
         "informativeness plotting function) rather than a single montage.",
     )
+
+
+_B2_VARIANT_COLORS = {"with_suspect": "#0072B2", "without_suspect": "#009E73"}
 
 
 def figure_b2(config: ReportFiguresConfig) -> FigureStatus:
@@ -108,6 +112,21 @@ def figure_b2(config: ReportFiguresConfig) -> FigureStatus:
             ),
         )
 
+    drawn = table[table["target"].isin(percentiles)]
+    plotted = [
+        variant
+        for variant in _B2_VARIANT_COLORS
+        if drawn.loc[drawn["variant"] == variant, "r2"].notna().any()
+    ]
+    if not plotted:
+        return FigureStatus(
+            figure_id="B2",
+            title="Signal survives intensity-proxy removal",
+            status="blocked",
+            missing=missing,
+            note="No finite nonlinear R² for any variant on a percentile target.",
+        )
+
     fig, axes = plt.subplots(
         1, len(percentiles), figsize=(4 * len(percentiles), 4), squeeze=False
     )
@@ -116,18 +135,24 @@ def figure_b2(config: ReportFiguresConfig) -> FigureStatus:
         pivot = table[table["target"] == target].pivot(
             index="experiment", columns="variant", values="r2"
         )
-        pivot = pivot.reindex(columns=["with_suspect", "without_suspect"])
-        pivot.plot(
-            kind="bar",
-            ax=ax,
-            color={"with_suspect": "#0072B2", "without_suspect": "#009E73"},
-        )
+        pivot = pivot.reindex(columns=plotted)
+        pivot.plot(kind="bar", ax=ax, color=_B2_VARIANT_COLORS, legend=False)
         ax.set_title(target)
         ax.set_ylabel("nonlinear floor R²" if idx == 0 else "")
         ax.set_xlabel("")
         ax.tick_params(axis="x", rotation=45)
-    fig.suptitle("Signal survives intensity-proxy removal (nonlinear floor)")
-    fig.tight_layout()
+    fig.suptitle("Signal survives intensity-proxy removal (nonlinear floor)", y=0.99)
+    fig.legend(
+        handles=[
+            Patch(color=_B2_VARIANT_COLORS[variant], label=variant)
+            for variant in plotted
+        ],
+        title="variant",
+        loc="upper center",
+        ncol=len(plotted),
+        bbox_to_anchor=(0.5, 0.92),
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.74))
 
     written = save_fig(
         fig, config.output_dir, "B2_intensity_proxy_removal", config.formats, config.dpi

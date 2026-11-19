@@ -10,15 +10,18 @@ question to defer with a required ``???`` field.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from omegaconf import DictConfig, OmegaConf
 
+_PERCENTILE_TARGET_RE = re.compile(r"(?:z_)?percentile_[0-9]+")
 DEFAULT_EXPERIMENTS: List[str] = ["HD1509", "SA110", "HD1883", "Ew2-1", "Ew2-2"]
 DEFAULT_SCPORTRAIT_EXPERIMENTS: List[str] = ["HD1509", "SA110", "Ew2-2"]
 DEFAULT_A5_EXPERIMENTS: List[str] = ["HD1509", "SA110"]
+DEFAULT_SCPORTRAIT_INJECTED_EXPERIMENTS: List[str] = ["HD1509"]
 DEFAULT_COHORT_SIZES: Dict[str, int] = {
     "HD1509": 851800,
     "SA110": 439016,
@@ -42,6 +45,17 @@ class ReportFiguresConfig:
     a5_experiments : list[str]
         Subset of ``experiments`` covered by A5 (segmentation diagnosis) --
         narrower than, and not required to coincide with, ``scportrait_experiments``.
+    scportrait_injected_pending : bool
+        When true, A2 draws the injected-mask scPortrait rung as a "pending GPU
+        re-featurization" placeholder instead of reading its result: the only
+        injected run used the uint8-wrapped Cellpose masks. When false, A2 still
+        leaves out an injected floor written on or before the mask-fix re-audit
+        (``group_a._MASK_FIX_AUDITED``) and reports the experiment as partial.
+    scportrait_injected_experiments : list[str]
+        Experiments with an injected-mask scPortrait run; only these get the
+        injected rung in A2.
+    signal_location_target : str
+        mCherry target shown in A7 (nested and per-timepoint R^2).
     a5_area_p90_dir : str
         Directory holding A5's extracted ``<exp>_<mask_source>.csv`` files (see
         ``docs_local/sync_a5_area_p90.sh``), each just the ``area``/
@@ -71,6 +85,11 @@ class ReportFiguresConfig:
     a5_experiments: List[str] = field(
         default_factory=lambda: list(DEFAULT_A5_EXPERIMENTS)
     )
+    scportrait_injected_pending: bool = True
+    scportrait_injected_experiments: List[str] = field(
+        default_factory=lambda: list(DEFAULT_SCPORTRAIT_INJECTED_EXPERIMENTS)
+    )
+    signal_location_target: str = "percentile_90"
     a5_area_p90_dir: str = "data/scportrait_diagnostics_area_p90"
     cohort_sizes: Dict[str, int] = field(
         default_factory=lambda: dict(DEFAULT_COHORT_SIZES)
@@ -104,6 +123,11 @@ class ReportFiguresConfig:
             raise ValueError("formats must contain at least one format")
         if self.dpi < 1:
             raise ValueError("dpi must be positive")
+        if not _PERCENTILE_TARGET_RE.fullmatch(self.signal_location_target):
+            raise ValueError(
+                "signal_location_target must be percentile_<N> or z_percentile_<N>, "
+                f"got {self.signal_location_target!r}"
+            )
 
 
 def load_config(

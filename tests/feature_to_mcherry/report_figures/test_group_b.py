@@ -6,6 +6,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
+from matplotlib.figure import Figure
 
 from src.feature_to_mcherry.report_figures import group_b
 from src.feature_to_mcherry.report_figures.config import ReportFiguresConfig
@@ -106,6 +108,135 @@ def test_figure_b2_generated(tmp_path: Path) -> None:
 
     assert status.status == "generated"
     assert Path(status.output_paths[0]).exists()
+
+
+def _capture_b2_figure(
+    config: ReportFiguresConfig, monkeypatch: pytest.MonkeyPatch
+) -> Figure:
+    captured = []
+    real_save_fig = group_b.save_fig
+
+    def _capturing_save_fig(fig, *args, **kwargs):
+        captured.append(fig)
+        return real_save_fig(fig, *args, **kwargs)
+
+    monkeypatch.setattr(group_b, "save_fig", _capturing_save_fig)
+    group_b.figure_b2(config)
+    return captured[0]
+
+
+def test_figure_b2_uses_one_figure_legend_not_per_panel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _make_config(tmp_path, ["Ew2-1"])
+    _write_floor_metrics_with_variants(
+        Path(config.informativeness_dir) / "Ew2-1" / "floor_metrics.csv", 0.33, 0.30
+    )
+
+    fig = _capture_b2_figure(config, monkeypatch)
+
+    assert all(ax.get_legend() is None for ax in fig.axes)
+    assert len(fig.legends) == 1
+    assert fig.legends[0].get_title().get_text() == "variant"
+
+
+def test_figure_b2_legend_stays_inside_the_figure_and_clear_of_the_title(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _make_config(tmp_path, ["Ew2-1"])
+    _write_floor_metrics_with_variants(
+        Path(config.informativeness_dir) / "Ew2-1" / "floor_metrics.csv", 0.33, 0.30
+    )
+
+    fig = _capture_b2_figure(config, monkeypatch)
+
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    legend_box = fig.legends[0].get_window_extent(renderer)
+    title = [t for t in fig.texts if t.get_text().startswith("Signal survives")][0]
+    assert not legend_box.overlaps(title.get_window_extent(renderer))
+    assert legend_box.y1 <= fig.bbox.y1
+    for ax in fig.axes:
+        assert not legend_box.overlaps(ax.title.get_window_extent(renderer))
+        assert not legend_box.overlaps(ax.get_window_extent(renderer))
+
+
+def test_figure_b2_legend_lists_only_plotted_variants(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _make_config(tmp_path, ["Ew2-1"])
+    floor = Path(config.informativeness_dir) / "Ew2-1" / "floor_metrics.csv"
+    _write_floor_metrics_with_variants(floor, 0.33, 0.30)
+    table = pd.read_csv(floor)
+    table[table["variant"] == "with_suspect"].to_csv(floor, index=False)
+
+    fig = _capture_b2_figure(config, monkeypatch)
+
+    labels = [text.get_text() for text in fig.legends[0].get_texts()]
+    assert labels == ["with_suspect"]
+
+
+def test_figure_b2_legend_ignores_variants_only_in_non_percentile_targets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _make_config(tmp_path, ["Ew2-1"])
+    floor = Path(config.informativeness_dir) / "Ew2-1" / "floor_metrics.csv"
+    _write_floor_metrics_with_variants(floor, 0.33, 0.30)
+    table = pd.read_csv(floor)
+    table.loc[table["variant"] == "without_suspect", "target"] = "mean"
+    table.to_csv(floor, index=False)
+
+    fig = _capture_b2_figure(config, monkeypatch)
+
+    labels = [text.get_text() for text in fig.legends[0].get_texts()]
+    assert labels == ["with_suspect"]
+
+
+def test_figure_b2_blocked_without_plotted_variants(tmp_path: Path) -> None:
+    config = _make_config(tmp_path, ["Ew2-1"])
+    floor = Path(config.informativeness_dir) / "Ew2-1" / "floor_metrics.csv"
+    _write_floor_metrics_with_variants(floor, float("nan"), float("nan"))
+
+    status = group_b.figure_b2(config)
+
+    assert status.status == "blocked"
+    assert status.output_paths == []
+
+
+def test_figure_b2_draws_only_plotted_variant_bars(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _make_config(tmp_path, ["Ew2-1"])
+    floor = Path(config.informativeness_dir) / "Ew2-1" / "floor_metrics.csv"
+    _write_floor_metrics_with_variants(floor, 0.33, 0.30)
+    table = pd.read_csv(floor)
+    table[table["variant"] == "with_suspect"].to_csv(floor, index=False)
+
+    fig = _capture_b2_figure(config, monkeypatch)
+
+    assert len(fig.axes[0].containers) == 1
+
+
+def test_figure_b2_legend_clears_every_panel_with_two_targets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _make_config(tmp_path, ["Ew2-1", "Ew2-2"])
+    for exp in ("Ew2-1", "Ew2-2"):
+        floor = Path(config.informativeness_dir) / exp / "floor_metrics.csv"
+        _write_floor_metrics_with_variants(floor, 0.33, 0.30)
+        table = pd.read_csv(floor)
+        p90 = table.assign(target="percentile_90", tau=0.9)
+        pd.concat([table, p90]).to_csv(floor, index=False)
+
+    fig = _capture_b2_figure(config, monkeypatch)
+
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    legend_box = fig.legends[0].get_window_extent(renderer)
+    assert len(fig.axes) == 2
+    for ax in fig.axes:
+        assert not legend_box.overlaps(ax.get_window_extent(renderer))
+        assert not legend_box.overlaps(ax.title.get_window_extent(renderer))
 
 
 def test_figure_b3_generated_from_feature_importances(tmp_path: Path) -> None:

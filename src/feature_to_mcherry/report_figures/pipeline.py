@@ -20,6 +20,7 @@ FIGURE_FUNCTIONS: Dict[str, Callable[[ReportFiguresConfig], FigureStatus]] = {
     "A4": group_a.figure_a4,
     "A5": group_a.figure_a5,
     "A6": group_a.figure_a6,
+    "A7": group_a.figure_a7,
     "B1": group_b.figure_b1,
     "B2": group_b.figure_b2,
     "B3": group_b.figure_b3,
